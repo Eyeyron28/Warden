@@ -34,11 +34,18 @@ api.interceptors.response.use(
 );
 
 /**
- * Pulls the backend's `{ error: { message } }` shape out of a failed
- * axios call, falling back to a generic message for network errors etc.
+ * Pulls the backend's `{ error: { message, errors? } }` shape out of a
+ * failed axios call, falling back to a generic message for network errors
+ * etc. When the backend sends a specific `errors` array (e.g. a password
+ * policy rejection), that's joined and preferred over the generic message
+ * so the caller doesn't have to reach into the response shape itself.
  */
 export function extractErrorMessage(error, fallback = 'Something went wrong. Please try again.') {
-  return error?.response?.data?.error?.message || fallback;
+  const apiError = error?.response?.data?.error;
+  if (Array.isArray(apiError?.errors) && apiError.errors.length > 0) {
+    return apiError.errors.join(' ');
+  }
+  return apiError?.message || fallback;
 }
 
 export default api;

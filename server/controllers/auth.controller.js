@@ -11,6 +11,7 @@ const {
   hashRecoveryKey,
   verifyRecoveryKey,
 } = require('../utils/crypto');
+const { validatePassword } = require('../utils/passwordPolicy');
 const { createSession } = require('../utils/sessionStore');
 
 const FAILED_ATTEMPTS_THROTTLE_THRESHOLD = 5;
@@ -25,6 +26,13 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 function badRequest(message) {
   const error = new Error(message);
   error.status = 400;
+  return error;
+}
+
+function passwordPolicyError(errors) {
+  const error = new Error('Password does not meet the security requirements.');
+  error.status = 400;
+  error.errors = errors;
   return error;
 }
 
@@ -69,6 +77,11 @@ const setup = asyncHandler(async (req, res) => {
     const error = new Error('The vault has already been set up.');
     error.status = 409;
     throw error;
+  }
+
+  const { valid, errors } = validatePassword(password);
+  if (!valid) {
+    throw passwordPolicyError(errors);
   }
 
   const salt = generateSalt();
@@ -186,6 +199,11 @@ const recover = asyncHandler(async (req, res) => {
   }
   if (!newPassword || typeof newPassword !== 'string') {
     throw badRequest('A new password is required.');
+  }
+
+  const { valid, errors } = validatePassword(newPassword);
+  if (!valid) {
+    throw passwordPolicyError(errors);
   }
 
   const user = await User.findOne();

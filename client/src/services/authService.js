@@ -28,3 +28,14 @@ export async function unlockVault(password) {
   const { data } = await api.post('/auth/unlock', { password });
   return data;
 }
+
+/**
+ * POST /api/auth/recover - the "forgot password" flow.
+ * @param {string} recoveryKey
+ * @param {string} newPassword
+ * @returns {Promise<{ sessionToken: string }>}
+ */
+export async function recoverVault(recoveryKey, newPassword) {
+  const { data } = await api.post('/auth/recover', { recoveryKey, newPassword });
+  return data;
+}

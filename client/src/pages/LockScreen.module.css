@@ -122,7 +122,59 @@
 }
 
 .primaryButton:disabled {
-  opacity: 0.75;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.linkButton {
+  align-self: center;
+  color: var(--color-text-faint);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.linkButton:hover {
+  color: var(--color-text-muted);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+}
+
+.fieldLabel {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.textInput {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  letter-spacing: 0.03em;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.textInput::placeholder {
+  color: var(--color-text-faint);
+  letter-spacing: normal;
+}
+
+.textInput:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
 }
 
 .footerBadges {

@@ -9,12 +9,19 @@ const notFound = (req, res, next) => {
 const errorHandler = (err, req, res, next) => {
   const status = err.status || (res.statusCode !== 200 ? res.statusCode : 500);
 
+  const errorBody = {
+    message: err.message || 'Internal Server Error',
+    status,
+  };
+  // Optional: a list of specific validation failures (e.g. password
+  // policy violations), for callers that need more than one message.
+  if (Array.isArray(err.errors)) {
+    errorBody.errors = err.errors;
+  }
+
   res.status(status).json({
     success: false,
-    error: {
-      message: err.message || 'Internal Server Error',
-      status,
-    },
+    error: errorBody,
   });
 };
 

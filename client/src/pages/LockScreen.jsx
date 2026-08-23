@@ -5,20 +5,26 @@ import VaultDial from '../components/VaultDial.jsx';
 import PasswordField from '../components/PasswordField.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
-import { setupVault, unlockVault } from '../services/authService.js';
+import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
+import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { validatePassword } from '../utils/passwordPolicy.js';
 import styles from './LockScreen.module.css';
 
 const SETTLE_DELAY_MS = 350;
 const ERROR_DIAL_RESET_MS = 500;
-const MIN_PASSWORD_LENGTH = 8;
 
 function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   // Unlock flow
   const [passphrase, setPassphrase] = useState('');
+  const [unlockMode, setUnlockMode] = useState('unlock'); // 'unlock' | 'recover'
+
+  // Forgot-password / recovery flow
+  const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   // First-run setup flow
-  const [setupPhase, setSetupPhase] = useState('form'); // 'form' | 'recovery'
+  const [setupPhase, setSetupPhase] = useState('form'); // 'form' | 'reveal'
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [confirmError, setConfirmError] = useState('');
@@ -37,6 +43,19 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     setError(message);
     setDialStatus('error');
     timeoutRef.current = setTimeout(() => setDialStatus('idle'), ERROR_DIAL_RESET_MS);
+  };
+
+  const switchToRecover = () => {
+    setError('');
+    setPassphrase('');
+    setUnlockMode('recover');
+  };
+
+  const switchToUnlock = () => {
+    setError('');
+    setRecoveryKeyInput('');
+    setNewPassword('');
+    setUnlockMode('unlock');
   };
 
   const handleUnlockSubmit = async (event) => {
@@ -63,14 +82,50 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     }
   };
 
+  const recoverPolicy = validatePassword(newPassword);
+  const isRecoverFormValid = recoveryKeyInput.trim().length > 0 && recoverPolicy.valid;
+
+  const handleRecoverSubmit = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+
+    if (!recoveryKeyInput.trim()) {
+      flashError('Enter your recovery key.');
+      return;
+    }
+
+    if (!recoverPolicy.valid) {
+      flashError(recoverPolicy.errors.join(' '));
+      return;
+    }
+
+    setError('');
+    setSubmitting(true);
+    setDialStatus('unlocking');
+
+    try {
+      const { sessionToken } = await recoverVault(recoveryKeyInput.trim(), newPassword);
+      setDialStatus('unlocked');
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
+    } catch (err) {
+      setSubmitting(false);
+      flashError(extractErrorMessage(err, 'Recovery failed.'));
+    }
+  };
+
+  const setupPolicy = validatePassword(password);
+  const isSetupFormValid =
+    setupPolicy.valid && confirmPassword.length > 0 && password === confirmPassword;
+
   const handleSetupSubmit = async (event) => {
     event.preventDefault();
     if (submitting) return;
 
     setConfirmError('');
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      flashError(`Master password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    if (!setupPolicy.valid) {
+      flashError(setupPolicy.errors.join(' '));
       return;
     }
 
@@ -90,7 +145,7 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
       const { sessionToken, recoveryKey } = await setupVault(password);
       setDialStatus('unlocked');
       setPendingSession({ sessionToken, recoveryKey });
-      setSetupPhase('recovery');
+      setSetupPhase('reveal');
     } catch (err) {
       setSubmitting(false);
       flashError(extractErrorMessage(err, 'Could not set up the vault.'));
@@ -102,23 +157,24 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   };
 
   const isChecking = statusLoading;
-  const isSetupRecovery = !isChecking && !initialized && setupPhase === 'recovery' && pendingSession;
+  const isSetupReveal = !isChecking && !initialized && setupPhase === 'reveal' && pendingSession;
   const isSetupForm = !isChecking && !initialized && setupPhase === 'form';
-  const isUnlock = !isChecking && initialized;
+  const isUnlock = !isChecking && initialized && unlockMode === 'unlock';
+  const isRecover = !isChecking && initialized && unlockMode === 'recover';
 
   return (
     <main className={styles.screen}>
       <div className={styles.grid} aria-hidden="true" />
 
       <div className={styles.panel}>
-        {!isSetupRecovery && (
+        {!isSetupReveal && (
           <div className={styles.brandRow}>
             <span className={styles.mark}>W</span>
             <span className={styles.wordmark}>WARDEN</span>
           </div>
         )}
 
-        {!isSetupRecovery && <VaultDial status={dialStatus} />}
+        {!isSetupReveal && <VaultDial status={dialStatus} />}
 
         {isChecking && (
           <div className={styles.copy}>
@@ -145,6 +201,9 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
                 error={error}
                 autoFocus
               />
+
+              <PasswordStrengthMeter password={password} />
+
               <PasswordField
                 label="Confirm password"
                 value={confirmPassword}
@@ -153,7 +212,11 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
                 error={confirmError}
               />
 
-              <button type="submit" className={styles.primaryButton} disabled={submitting}>
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={submitting || !isSetupFormValid}
+              >
                 <span>{submitting ? 'Creating vault' : 'Create vault'}</span>
                 <ArrowRight size={18} weight="bold" />
               </button>
@@ -184,18 +247,76 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
                 <span>{submitting ? 'Unlocking' : 'Unlock vault'}</span>
                 <ArrowRight size={18} weight="bold" />
               </button>
+
+              <button type="button" className={styles.linkButton} onClick={switchToRecover}>
+                Forgot your password? Use your recovery key
+              </button>
             </form>
           </>
         )}
 
-        {isSetupRecovery && (
+        {isRecover && (
+          <>
+            <div className={styles.copy}>
+              <h1 className={styles.title}>Reset your password</h1>
+              <p className={styles.subtitle}>
+                Enter your recovery key and choose a new master password. Your
+                documents stay exactly as they are.
+              </p>
+            </div>
+
+            <form className={styles.form} onSubmit={handleRecoverSubmit} noValidate>
+              <div className={styles.field}>
+                <label htmlFor="recovery-key-input" className={styles.fieldLabel}>
+                  Recovery key
+                </label>
+                <input
+                  id="recovery-key-input"
+                  type="text"
+                  className={styles.textInput}
+                  value={recoveryKeyInput}
+                  onChange={(e) => setRecoveryKeyInput(e.target.value)}
+                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+
+              <PasswordField
+                label="New master password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter a new strong password"
+                error={error}
+              />
+
+              <PasswordStrengthMeter password={newPassword} />
+
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={submitting || !isRecoverFormValid}
+              >
+                <span>{submitting ? 'Resetting password' : 'Reset password'}</span>
+                <ArrowRight size={18} weight="bold" />
+              </button>
+
+              <button type="button" className={styles.linkButton} onClick={switchToUnlock}>
+                Back to unlock
+              </button>
+            </form>
+          </>
+        )}
+
+        {isSetupReveal && (
           <RecoveryKeyReveal
             recoveryKey={pendingSession.recoveryKey}
             onConfirm={handleRecoveryConfirm}
           />
         )}
 
-        {!isSetupRecovery && (
+        {!isSetupReveal && (
           <div className={styles.footerBadges}>
             <StatusBadge label="AES-256" />
             <StatusBadge label="Local instance, no cloud sync" />
