@@ -76,7 +76,16 @@ async function assertBackupSource(sourcePath) {
   return manifestPath;
 }
 
-const REQUIRED_BACKUP_RECORD_FIELDS = ['filename', 'folder', 'encryptedBlob', 'iv', 'authTag', 'checksum', 'createdAt'];
+const REQUIRED_BACKUP_RECORD_FIELDS = [
+  'filename',
+  'folder',
+  'encryptedBlob',
+  'iv',
+  'authTag',
+  'checksum',
+  'mimeType',
+  'createdAt',
+];
 
 /**
  * A per-document backup file is only trustworthy if it has every field the
@@ -135,6 +144,7 @@ const exportBackup = asyncHandler(async (req, res) => {
           iv: doc.iv,
           authTag: doc.authTag,
           checksum: doc.checksum,
+          mimeType: doc.mimeType,
           createdAt: doc.createdAt,
         };
         return fs.writeFile(
@@ -264,10 +274,8 @@ const importBackup = asyncHandler(async (req, res) => {
       iv: record.iv,
       authTag: record.authTag,
       checksum: record.checksum,
+      mimeType: record.mimeType,
       createdAt: record.createdAt,
-      // Not captured by export (see exportBackup), so restored documents
-      // fall back to a generic type until the export format carries it.
-      mimeType: 'application/octet-stream',
       originDevice: 'restored',
       syncStatus: 'synced',
     });
