@@ -117,23 +117,32 @@ function verifyPassword(password, salt, storedHash) {
 }
 
 /**
- * Derives the AES-256 encryption key used to encrypt/decrypt documents.
+ * Derives a key-encryption key (KEK) from a password (or, equally, a
+ * recovery key - both are just strings as far as this function cares).
+ *
+ * This does NOT return the key documents are encrypted with. Documents
+ * are encrypted with a separate, randomly-generated DEK (see
+ * `generateDEK`) that's wrapped under this KEK via `wrapKey`. The
+ * indirection is what makes password reset possible: resetting the
+ * password only needs to re-wrap the existing DEK under a new
+ * password-derived KEK, never re-encrypt every document.
  *
  * IMPORTANT: this must use a different scrypt derivation than
- * `hashPassword`, even though both start from the same master password
- * and salt. If they produced the same output, anyone who obtained the
+ * `hashPassword`, even though both start from the same password and
+ * salt. If they produced the same output, anyone who obtained the
  * stored `passwordHash` (e.g. via a DB leak) would have effectively
- * obtained the encryption key too. Mixing a distinct context label
- * ("encryption-key" vs "password-hash") into the scrypt salt ensures the
- * two derivations are cryptographically independent - the password hash
- * and the encryption key just happen to share an origin, not a value.
+ * obtained the KEK too, and from there the DEK. Mixing a distinct
+ * context label ("encryption-key" vs "password-hash") into the scrypt
+ * salt ensures the two derivations are cryptographically independent -
+ * the password hash and the KEK just happen to share an origin, not a
+ * value.
  *
- * The returned key exists only in memory for the lifetime of an unlocked
- * session; it is never persisted.
+ * The returned key exists only in memory for the duration of the
+ * unwrap/wrap operation it's used for; it is never persisted.
  *
- * @param {string} password - the plaintext master password
+ * @param {string} password - the plaintext master password (or recovery key)
  * @param {string} salt - hex string from `generateSalt()`
- * @returns {Buffer} 32-byte AES-256 key
+ * @returns {Buffer} 32-byte AES-256 key-encryption key
  */
 function deriveEncryptionKey(password, salt) {
   return scryptDerive(password, salt, 'encryption-key', ENCRYPTION_KEY_KEYLEN);
@@ -191,6 +200,68 @@ function decryptFile(ciphertext, key, iv, authTag) {
     ]);
   } catch (err) {
     throw new Error('Decryption failed: data may be corrupted or tampered with.');
+  }
+}
+
+/**
+ * Generates the vault's Data Encryption Key (DEK) - a random AES-256 key
+ * that actually encrypts/decrypts documents. Generated once at setup and
+ * never regenerated: it's what makes password reset possible without
+ * losing access to existing documents. See `wrapKey`/`unwrapKey`.
+ *
+ * @returns {Buffer} 32-byte AES-256 key
+ */
+function generateDEK() {
+  return crypto.randomBytes(ENCRYPTION_KEY_KEYLEN);
+}
+
+/**
+ * Encrypts (wraps) a key with another key, via AES-256-GCM - mechanically
+ * identical to `encryptFile`, just operating on a raw key buffer instead
+ * of file content. Used to store the DEK encrypted under a
+ * password-derived or recovery-key-derived key (the "KEK", key-encryption
+ * key) rather than storing it in the clear.
+ *
+ * @param {Buffer} dek - the key being wrapped (e.g. the vault's DEK)
+ * @param {Buffer} kek - 32-byte AES-256 key-encryption key, e.g. from `deriveEncryptionKey()`
+ * @returns {{ wrappedKey: string, iv: string, authTag: string }} all base64
+ */
+function wrapKey(dek, kek) {
+  const iv = crypto.randomBytes(GCM_IV_LENGTH);
+  const cipher = crypto.createCipheriv(AES_ALGORITHM, kek, iv);
+  const wrappedKey = Buffer.concat([cipher.update(dek), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return {
+    wrappedKey: wrappedKey.toString('base64'),
+    iv: iv.toString('base64'),
+    authTag: authTag.toString('base64'),
+  };
+}
+
+/**
+ * Decrypts (unwraps) a key previously wrapped with `wrapKey`, recovering
+ * the original key bytes (e.g. the DEK). Throws if the KEK is wrong or
+ * the wrapped data was tampered with - same authTag guarantee as
+ * `decryptFile`.
+ *
+ * @param {string} wrappedKey - base64, from `wrapKey()`
+ * @param {Buffer} kek - the same key-encryption key used to wrap it
+ * @param {string} iv - base64, from `wrapKey()`
+ * @param {string} authTag - base64, from `wrapKey()`
+ * @returns {Buffer} the original unwrapped key
+ */
+function unwrapKey(wrappedKey, kek, iv, authTag) {
+  const decipher = crypto.createDecipheriv(AES_ALGORITHM, kek, Buffer.from(iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(authTag, 'base64'));
+
+  try {
+    return Buffer.concat([
+      decipher.update(Buffer.from(wrappedKey, 'base64')),
+      decipher.final(),
+    ]);
+  } catch (err) {
+    throw new Error('Key unwrap failed: wrong password/recovery key, or the data was tampered with.');
   }
 }
 
@@ -264,6 +335,9 @@ module.exports = {
   deriveEncryptionKey,
   encryptFile,
   decryptFile,
+  generateDEK,
+  wrapKey,
+  unwrapKey,
   generateRecoveryKey,
   hashRecoveryKey,
   verifyRecoveryKey,

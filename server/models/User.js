@@ -13,18 +13,57 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Salt used to derive the encryption key from the master password
-    // (PBKDF2/Argon2). Generated once at first-run setup.
+    // Salt used to derive the key-encryption key from the master password.
+    // Generated once at first-run setup.
     salt: {
       type: String,
       required: true,
     },
     // Hash of the recovery key. The recovery key itself is shown to the
-    // user once at setup and is never stored in plain form.
+    // user once at setup and is never stored in plain form. Its salt is
+    // embedded in this string (see utils/crypto.js hashRecoveryKey) and
+    // doubles as the salt used to derive the recovery-key KEK below.
     recoveryKeyHash: {
       type: String,
       required: true,
     },
+
+    // Documents are encrypted with a single Data Encryption Key (DEK),
+    // generated once at setup and never regenerated - not even when the
+    // master password is reset. The DEK itself is never stored directly;
+    // it's stored "wrapped" (encrypted) under two independently-derived
+    // keys, so either the password or the recovery key alone is enough to
+    // recover it. This indirection is what makes password reset possible
+    // without losing access to documents already encrypted with the old
+    // password: resetting the password only re-wraps the existing DEK
+    // under a new password-derived key (see POST /api/auth/recover) - it
+    // never touches the DEK or re-encrypts any document.
+    wrappedDEKPassword: {
+      type: String,
+      required: true,
+    },
+    wrappedDEKPasswordIv: {
+      type: String,
+      required: true,
+    },
+    wrappedDEKPasswordAuthTag: {
+      type: String,
+      required: true,
+    },
+
+    wrappedDEKRecovery: {
+      type: String,
+      required: true,
+    },
+    wrappedDEKRecoveryIv: {
+      type: String,
+      required: true,
+    },
+    wrappedDEKRecoveryAuthTag: {
+      type: String,
+      required: true,
+    },
+
     // Count of consecutive failed unlock attempts, for basic
     // lockout/throttling logic to be added later.
     failedAttempts: {
