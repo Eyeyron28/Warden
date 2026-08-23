@@ -96,7 +96,7 @@
   gap: var(--space-4);
 }
 
-.unlockButton {
+.primaryButton {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -113,15 +113,15 @@
     opacity var(--duration-fast) var(--ease-standard);
 }
 
-.unlockButton:hover:not(:disabled) {
+.primaryButton:hover:not(:disabled) {
   background: var(--color-accent-dim);
 }
 
-.unlockButton:active:not(:disabled) {
+.primaryButton:active:not(:disabled) {
   transform: scale(0.98);
 }
 
-.unlockButton:disabled {
+.primaryButton:disabled {
   opacity: 0.75;
 }
 

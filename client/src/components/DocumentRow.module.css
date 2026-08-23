@@ -1,0 +1,148 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+}
+
+.row:not(:last-child) {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin: calc(var(--space-2) * -1);
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.main:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.main:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.fileIcon {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+}
+
+.meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.filename {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.folder {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.expiry {
+  color: var(--color-text-faint);
+}
+
+.createdAt {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  white-space: nowrap;
+}
+
+.actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.deleteButton {
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  transition: color var(--duration-fast) var(--ease-standard),
+    background var(--duration-fast) var(--ease-standard);
+}
+
+.deleteButton:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-wash);
+}
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+}
+
+.confirmLabel {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.confirmYes {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-danger);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.confirmYes:disabled {
+  opacity: 0.6;
+}
+
+.confirmNo {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.confirmNo:hover {
+  color: var(--color-text);
+}
+
+@media (max-width: 560px) {
+  .subMeta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .createdAt {
+    display: none;
+  }
+}

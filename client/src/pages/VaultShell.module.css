@@ -6,10 +6,76 @@
 
 .content {
   flex: 1;
+  padding: var(--space-6) var(--space-4);
+}
+
+.contentInner {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.heading {
+  font-size: var(--fs-xl);
+}
+
+.count {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.addButton {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--space-6) var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.addButton:hover {
+  background: var(--color-accent-dim);
+}
+
+.addButton:active {
+  transform: scale(0.97);
+}
+
+.banner {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  background: var(--color-danger-wash);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 
 .emptyState {
@@ -19,6 +85,7 @@
   gap: var(--space-3);
   text-align: center;
   max-width: 32ch;
+  margin-inline: auto;
   padding: var(--space-7) var(--space-6);
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-lg);
@@ -38,4 +105,18 @@
 .emptyBody {
   font-size: var(--fs-sm);
   line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  .toolbar {
+    align-items: flex-start;
+  }
+
+  .addButton span {
+    display: none;
+  }
+
+  .addButton {
+    padding: var(--space-3);
+  }
 }
