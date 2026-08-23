@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import LockScreen from './pages/LockScreen.jsx';
 import VaultShell from './pages/VaultShell.jsx';
-import { getAuthStatus } from './services/authService.js';
+import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
 
 function App() {
@@ -42,8 +42,15 @@ function App() {
     setInitialized(true);
   }, []);
 
-  const handleLocked = useCallback(() => {
-    clearToken();
+  const handleLocked = useCallback(async () => {
+    try {
+      await logoutVault();
+    } catch {
+      // Locking the vault should never get the user stuck - worst case is
+      // an orphaned server-side session that expires naturally in 30 min.
+    } finally {
+      clearToken();
+    }
   }, []);
 
   return (

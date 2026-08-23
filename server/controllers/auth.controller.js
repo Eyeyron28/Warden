@@ -12,7 +12,7 @@ const {
   verifyRecoveryKey,
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
-const { createSession } = require('../utils/sessionStore');
+const { createSession, destroySession } = require('../utils/sessionStore');
 
 const FAILED_ATTEMPTS_THROTTLE_THRESHOLD = 5;
 
@@ -247,9 +247,23 @@ const recover = asyncHandler(async (req, res) => {
   res.status(200).json({ sessionToken });
 });
 
+/**
+ * POST /api/auth/logout
+ * Protected by requireSession. Explicitly deletes the session's entry from
+ * the in-memory store rather than letting it merely expire - this is what
+ * makes "Lock vault" a real security boundary instead of just a UI state
+ * change: the moment this responds, the old token is dead everywhere, not
+ * just forgotten on this client.
+ */
+const logout = asyncHandler(async (req, res) => {
+  destroySession(req.session.token);
+  res.status(200).json({ success: true });
+});
+
 module.exports = {
   getStatus,
   setup,
   unlock,
   recover,
+  logout,
 };
