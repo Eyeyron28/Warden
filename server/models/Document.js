@@ -51,10 +51,11 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Which client originally created/uploaded this document.
+    // Which client originally created/uploaded this document. "restored"
+    // means it arrived via backup import rather than a direct upload.
     originDevice: {
       type: String,
-      enum: ['pc', 'phone'],
+      enum: ['pc', 'phone', 'restored'],
       required: true,
     },
     // Optional renewal/expiry date, for documents like IDs or licenses.

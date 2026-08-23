@@ -44,6 +44,54 @@ async function assertWritableDirectory(targetPath) {
 }
 
 /**
+ * Confirms sourcePath exists, is a directory, and actually contains a
+ * backup-manifest.json - i.e. it looks like a warden-backup folder rather
+ * than an arbitrary directory. Returns the manifest's path for the caller
+ * to read.
+ */
+async function assertBackupSource(sourcePath) {
+  let stats;
+  try {
+    stats = await fs.stat(sourcePath);
+  } catch {
+    throw badRequest(
+      `Source path "${sourcePath}" does not exist. Check that the drive is connected and the path is correct.`
+    );
+  }
+
+  if (!stats.isDirectory()) {
+    throw badRequest(`Source path "${sourcePath}" is not a directory.`);
+  }
+
+  const manifestPath = path.join(sourcePath, 'backup-manifest.json');
+
+  try {
+    await fs.access(manifestPath, fs.constants.R_OK);
+  } catch {
+    throw badRequest(
+      `Source path "${sourcePath}" does not contain a backup-manifest.json - this doesn't look like a Warden backup folder.`
+    );
+  }
+
+  return manifestPath;
+}
+
+const REQUIRED_BACKUP_RECORD_FIELDS = ['filename', 'folder', 'encryptedBlob', 'iv', 'authTag', 'checksum', 'createdAt'];
+
+/**
+ * A per-document backup file is only trustworthy if it has every field the
+ * restore path depends on. Anything less and the import is aborted rather
+ * than silently skipped or partially applied - see importBackup.
+ */
+function isValidBackupRecord(record) {
+  return (
+    record &&
+    typeof record === 'object' &&
+    REQUIRED_BACKUP_RECORD_FIELDS.every((field) => typeof record[field] === 'string' && record[field].length > 0)
+  );
+}
+
+/**
  * POST /api/backup/export
  * Body: { targetPath }
  *
@@ -135,6 +183,110 @@ const exportBackup = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/backup/import
+ * Body: { sourcePath }
+ *
+ * Restores documents from a warden-backup folder (produced by
+ * POST /api/backup/export) into the current vault. Nothing is decrypted
+ * during import - the restored rows carry whatever ciphertext, iv, and
+ * authTag the backup had. IMPORTANT: that ciphertext was produced by
+ * whatever master password created the ORIGINAL backup. If this vault's
+ * current password is different (e.g. restoring into a fresh install),
+ * the import itself will still succeed - the rows are just opaque
+ * encrypted blobs to Mongo - but decryptFile's authTag check will fail
+ * the first time anyone tries to view one of them. That's expected, not
+ * a bug: it's the same authTag check proving the encryption actually
+ * depends on the password, working as designed against ciphertext that
+ * was never encrypted with this vault's key in the first place.
+ */
+const importBackup = asyncHandler(async (req, res) => {
+  const { sourcePath } = req.body;
+
+  if (!sourcePath || typeof sourcePath !== 'string') {
+    throw badRequest('A sourcePath is required.');
+  }
+
+  const manifestPath = await assertBackupSource(sourcePath);
+
+  let manifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  } catch (err) {
+    throw badRequest(`Could not read backup-manifest.json: ${err.message}`);
+  }
+
+  // Recompute the manifest's own tamper-evidence hash (see exportBackup)
+  // and reject the whole import before touching the vault if it doesn't
+  // match - a corrupted or edited manifest means the document files next
+  // to it can't be trusted either.
+  const { checksum: storedChecksum, ...manifestBody } = manifest;
+  const recomputedChecksum = crypto.createHash('sha256').update(JSON.stringify(manifestBody)).digest('hex');
+
+  if (!storedChecksum || recomputedChecksum !== storedChecksum) {
+    throw badRequest('This backup appears corrupted or tampered with (manifest checksum mismatch). Import aborted.');
+  }
+
+  const entries = await fs.readdir(sourcePath);
+  const documentFileNames = entries.filter((name) => name.endsWith('.json') && name !== 'backup-manifest.json');
+
+  const backupRecords = [];
+  for (const fileName of documentFileNames) {
+    let record;
+    try {
+      record = JSON.parse(await fs.readFile(path.join(sourcePath, fileName), 'utf8'));
+    } catch (err) {
+      throw badRequest(`Could not read backup file "${fileName}": ${err.message}. Import aborted.`);
+    }
+
+    if (!isValidBackupRecord(record)) {
+      throw badRequest(`Backup file "${fileName}" is missing required fields. Import aborted.`);
+    }
+
+    backupRecords.push(record);
+  }
+
+  const existingDocuments = await Document.find({}, 'checksum');
+  const existingChecksums = new Set(existingDocuments.map((doc) => doc.checksum));
+
+  let documentsImported = 0;
+  let documentsSkipped = 0;
+
+  for (const record of backupRecords) {
+    if (existingChecksums.has(record.checksum)) {
+      documentsSkipped += 1;
+      continue;
+    }
+
+    await Document.create({
+      filename: record.filename,
+      folder: record.folder,
+      encryptedBlob: Buffer.from(record.encryptedBlob, 'base64'),
+      iv: record.iv,
+      authTag: record.authTag,
+      checksum: record.checksum,
+      createdAt: record.createdAt,
+      // Not captured by export (see exportBackup), so restored documents
+      // fall back to a generic type until the export format carries it.
+      mimeType: 'application/octet-stream',
+      originDevice: 'restored',
+      syncStatus: 'synced',
+    });
+
+    // Prevents re-importing the same document twice within one import run
+    // if the backup folder happens to contain a duplicate file.
+    existingChecksums.add(record.checksum);
+    documentsImported += 1;
+  }
+
+  res.status(200).json({
+    documentsImported,
+    documentsSkipped,
+    timestamp: new Date().toISOString(),
+    note: 'Restored documents can only be decrypted with the master password that originally encrypted them.',
+  });
+});
+
+/**
  * GET /api/backup/status
  */
 const getStatus = asyncHandler(async (req, res) => {
@@ -153,5 +305,6 @@ const getStatus = asyncHandler(async (req, res) => {
 
 module.exports = {
   exportBackup,
+  importBackup,
   getStatus,
 };
