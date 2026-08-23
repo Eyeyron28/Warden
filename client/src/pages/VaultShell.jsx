@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FolderLock, Plus } from '@phosphor-icons/react';
+import { FolderLock, HardDrive, Plus } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
 import DocumentRow from '../components/DocumentRow.jsx';
 import UploadForm from '../components/UploadForm.jsx';
+import BackupPanel from '../components/BackupPanel.jsx';
 import {
   listDocuments,
   uploadDocument,
@@ -11,7 +12,9 @@ import {
   openBlob,
   deleteDocument,
 } from '../services/documentsService.js';
+import { getBackupStatus, exportBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { formatDateTime } from '../utils/formatDate.js';
 import styles from './VaultShell.module.css';
 
 // A 401 mid-request means the session just expired - the axios interceptor
@@ -33,6 +36,12 @@ function VaultShell({ onLocked }) {
   const [deletingId, setDeletingId] = useState(null);
   const [actionError, setActionError] = useState('');
 
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupSubmitting, setBackupSubmitting] = useState(false);
+  const [backupError, setBackupError] = useState('');
+  const [backupResult, setBackupResult] = useState(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setListError('');
@@ -48,9 +57,21 @@ function VaultShell({ onLocked }) {
     }
   }, []);
 
+  const refreshBackupStatus = useCallback(async () => {
+    try {
+      const data = await getBackupStatus();
+      setBackupStatus(data);
+    } catch {
+      // Status is informational, not critical path - a failed fetch here
+      // just means the "last backup" line stays blank rather than
+      // blocking the vault view with an error banner.
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    refreshBackupStatus();
+  }, [refresh, refreshBackupStatus]);
 
   const handleUpload = async ({ file, folder, expiryDate }) => {
     setUploading(true);
@@ -97,6 +118,46 @@ function VaultShell({ onLocked }) {
     }
   };
 
+  const openUploadPanel = () => {
+    setBackupOpen(false);
+    setUploadOpen((open) => !open);
+  };
+
+  const openBackupPanel = () => {
+    setUploadOpen(false);
+    setBackupOpen((open) => !open);
+  };
+
+  const closeBackupPanel = () => {
+    setBackupOpen(false);
+    setBackupError('');
+    setBackupResult(null);
+  };
+
+  const handleBackupExport = async (targetPath) => {
+    setBackupSubmitting(true);
+    setBackupError('');
+    try {
+      const result = await exportBackup(targetPath);
+      setBackupResult(result);
+      setBackupStatus({
+        lastBackupAt: result.timestamp,
+        documentCount: result.documentsBackedUp,
+        backupPath: result.backupPath,
+      });
+    } catch (err) {
+      setBackupError(extractErrorMessage(err, 'Backup failed.'));
+    } finally {
+      setBackupSubmitting(false);
+    }
+  };
+
+  const backupStatusLine = backupStatus?.lastBackupAt
+    ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
+    : backupStatus
+      ? 'No backup yet'
+      : '';
+
   return (
     <div className={styles.shell}>
       <Header onLock={onLocked} />
@@ -112,15 +173,19 @@ function VaultShell({ onLocked }) {
                   : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
               </p>
             </div>
-            <button
-              type="button"
-              className={styles.addButton}
-              onClick={() => setUploadOpen((open) => !open)}
-            >
-              <Plus size={16} weight="bold" />
-              <span>Add document</span>
-            </button>
+            <div className={styles.toolbarActions}>
+              <button type="button" className={styles.secondaryActionButton} onClick={openBackupPanel}>
+                <HardDrive size={16} weight="bold" />
+                <span>Back up to USB</span>
+              </button>
+              <button type="button" className={styles.addButton} onClick={openUploadPanel}>
+                <Plus size={16} weight="bold" />
+                <span>Add document</span>
+              </button>
+            </div>
           </div>
+
+          {backupStatusLine && <p className={styles.backupStatusLine}>{backupStatusLine}</p>}
 
           {uploadOpen && (
             <UploadForm
@@ -132,6 +197,16 @@ function VaultShell({ onLocked }) {
               uploading={uploading}
               progress={uploadProgress}
               error={uploadError}
+            />
+          )}
+
+          {backupOpen && (
+            <BackupPanel
+              onSubmit={handleBackupExport}
+              onCancel={closeBackupPanel}
+              submitting={backupSubmitting}
+              error={backupError}
+              result={backupResult}
             />
           )}
 

@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { FileText, Trash } from '@phosphor-icons/react';
 
+import { formatDate } from '../utils/formatDate.js';
 import styles from './DocumentRow.module.css';
-
-function formatDate(value) {
-  if (!value) return null;
-  return new Date(value).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 /**
  * One row in the document list. Delete has its own inline confirm step

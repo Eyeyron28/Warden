@@ -37,6 +37,13 @@
   font-family: var(--font-mono);
 }
 
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .addButton {
   display: flex;
   align-items: center;
@@ -58,6 +65,38 @@
 
 .addButton:active {
   transform: scale(0.97);
+}
+
+.secondaryActionButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    background var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.secondaryActionButton:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+
+.secondaryActionButton:active {
+  transform: scale(0.97);
+}
+
+.backupStatusLine {
+  margin-top: calc(var(--space-4) * -1);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-faint);
 }
 
 .banner {
@@ -112,11 +151,17 @@
     align-items: flex-start;
   }
 
-  .addButton span {
+  .addButton span,
+  .secondaryActionButton span {
     display: none;
   }
 
-  .addButton {
+  .addButton,
+  .secondaryActionButton {
     padding: var(--space-3);
+  }
+
+  .backupStatusLine {
+    margin-top: 0;
   }
 }
