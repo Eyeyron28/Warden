@@ -1,0 +1,160 @@
+.dial {
+  position: relative;
+  width: clamp(140px, 30vw, 200px);
+  height: clamp(140px, 30vw, 200px);
+  display: grid;
+  place-items: center;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ringOuter,
+.ringMid {
+  fill: none;
+  stroke: var(--color-border-strong);
+  stroke-width: 1.5;
+}
+
+.ticks line {
+  stroke: var(--color-border-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.core {
+  fill: var(--color-surface-raised);
+  stroke: var(--color-border);
+  stroke-width: 1;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+}
+
+.scanArc {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 40 475;
+  transform-origin: 100px 100px;
+  opacity: 0.85;
+  animation: spin 5s linear infinite;
+}
+
+.iconSlot {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+  transition: color var(--duration-base) var(--ease-standard);
+}
+
+.icon {
+  transition: transform var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard);
+}
+
+/* ---- State: unlocking ---- */
+.unlocking .scanArc {
+  animation-duration: 0.9s;
+  stroke-dasharray: 90 425;
+  opacity: 1;
+}
+
+.unlocking .ringMid {
+  animation: pulseRing 1.2s var(--ease-standard) infinite;
+}
+
+.unlocking .iconSlot {
+  color: var(--color-accent);
+}
+
+/* ---- State: unlocked ---- */
+.unlocked .scanArc {
+  animation: none;
+  stroke-dasharray: 515 0;
+  stroke: var(--color-accent);
+  opacity: 1;
+  transition: stroke-dasharray var(--duration-slow) var(--ease-standard);
+}
+
+.unlocked .core {
+  stroke: var(--color-accent);
+}
+
+.unlocked .iconSlot {
+  color: var(--color-accent);
+}
+
+.unlocked .icon {
+  transform: scale(1.08);
+}
+
+/* ---- State: error ---- */
+.error .scanArc {
+  animation: none;
+  stroke: var(--color-danger);
+  stroke-dasharray: 40 475;
+}
+
+.error .core {
+  stroke: var(--color-danger);
+}
+
+.error .iconSlot {
+  color: var(--color-danger);
+}
+
+.dial.error {
+  animation: jolt 420ms var(--ease-standard);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseRing {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes jolt {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanArc {
+    animation: none;
+  }
+  .unlocking .ringMid {
+    animation: none;
+  }
+  .dial.error {
+    animation: none;
+  }
+}

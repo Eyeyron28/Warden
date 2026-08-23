@@ -1,0 +1,18 @@
+node_modules/
+.env
+.env.local
+
+# Build artifacts
+dist/
+dist-ssr/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

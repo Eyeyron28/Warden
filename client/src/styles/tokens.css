@@ -1,0 +1,67 @@
+:root {
+  /* ---- Color: graphite/steel base + single "authenticated" signal accent ---- */
+  --color-bg: #0b0e11;
+  --color-bg-raised: #101317;
+  --color-surface: #14181d;
+  --color-surface-raised: #1b2027;
+  --color-border: #262b31;
+  --color-border-strong: #333a42;
+
+  --color-text: #edeff2;
+  --color-text-muted: #8b94a0;
+  --color-text-faint: #5b6470;
+
+  --color-accent: #3ecf8e;
+  --color-accent-dim: #2a9d6d;
+  --color-accent-wash: rgba(62, 207, 142, 0.12);
+  --color-danger: #e5484d;
+  --color-danger-wash: rgba(229, 72, 77, 0.12);
+
+  /* ---- Type ---- */
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Consolas', ui-monospace, monospace;
+
+  --fs-xs: clamp(0.72rem, 0.69rem + 0.15vw, 0.78rem);
+  --fs-sm: clamp(0.85rem, 0.82rem + 0.15vw, 0.9rem);
+  --fs-base: clamp(1rem, 0.97rem + 0.15vw, 1.05rem);
+  --fs-lg: clamp(1.15rem, 1.1rem + 0.25vw, 1.3rem);
+  --fs-xl: clamp(1.4rem, 1.25rem + 0.75vw, 1.8rem);
+  --fs-2xl: clamp(1.9rem, 1.6rem + 1.5vw, 2.6rem);
+  --fs-3xl: clamp(2.3rem, 1.9rem + 2vw, 3.2rem);
+
+  /* ---- Spacing scale ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- Radius (single system: soft, consistent) ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 300ms;
+  --duration-slow: 650ms;
+
+  /* ---- Elevation (tinted to bg hue, never pure black) ---- */
+  --shadow-elevated: 0 24px 60px -24px rgba(0, 0, 0, 0.65),
+    0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow-inset-hairline: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+
+  --header-height: 64px;
+  --max-content-width: 1200px;
+}
+
+@media (prefers-color-scheme: light) {
+  /* Warden is a security console: it commits to one dark, high-contrast
+     identity by design rather than adapting to system light mode. */
+}

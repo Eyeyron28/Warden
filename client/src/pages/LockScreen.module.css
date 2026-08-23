@@ -1,0 +1,141 @@
+.screen {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow: hidden;
+}
+
+/* Fixed, pointer-events-none texture: cheap on repaint, never on a
+   scrolling container. */
+.grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+      color-mix(in srgb, var(--color-border) 55%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-border) 55%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at 50% 38%, black 0%, transparent 70%);
+  opacity: 0.5;
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-7) var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-elevated);
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-accent);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-lg);
+  letter-spacing: 0.1em;
+}
+
+.copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--fs-xl);
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  max-width: 32ch;
+  margin-inline: auto;
+}
+
+.form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.unlockButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+  font-size: var(--fs-base);
+  transition: transform var(--duration-fast) var(--ease-standard),
+    background var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.unlockButton:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+}
+
+.unlockButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.unlockButton:disabled {
+  opacity: 0.75;
+}
+
+.footerBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 420px) {
+  .panel {
+    padding: var(--space-6) var(--space-4);
+    border-radius: var(--radius-md);
+  }
+}
