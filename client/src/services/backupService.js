@@ -18,3 +18,13 @@ export async function exportBackup(targetPath) {
   const { data } = await api.post('/backup/export', { targetPath });
   return data;
 }
+
+/**
+ * POST /api/backup/import
+ * @param {string} sourcePath
+ * @returns {Promise<{ documentsImported: number, documentsSkipped: number, timestamp: string, note: string }>}
+ */
+export async function importBackup(sourcePath) {
+  const { data } = await api.post('/backup/import', { sourcePath });
+  return data;
+}

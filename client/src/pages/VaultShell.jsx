@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FolderLock, HardDrive, Plus } from '@phosphor-icons/react';
+import { ClockCounterClockwise, FolderLock, HardDrive, Plus } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
 import DocumentRow from '../components/DocumentRow.jsx';
 import UploadForm from '../components/UploadForm.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
+import RestorePanel from '../components/RestorePanel.jsx';
 import {
   listDocuments,
   uploadDocument,
@@ -12,7 +13,7 @@ import {
   openBlob,
   deleteDocument,
 } from '../services/documentsService.js';
-import { getBackupStatus, exportBackup } from '../services/backupService.js';
+import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import styles from './VaultShell.module.css';
@@ -41,6 +42,11 @@ function VaultShell({ onLocked }) {
   const [backupSubmitting, setBackupSubmitting] = useState(false);
   const [backupError, setBackupError] = useState('');
   const [backupResult, setBackupResult] = useState(null);
+
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
+  const [restoreResult, setRestoreResult] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -120,18 +126,32 @@ function VaultShell({ onLocked }) {
 
   const openUploadPanel = () => {
     setBackupOpen(false);
+    setRestoreOpen(false);
     setUploadOpen((open) => !open);
   };
 
   const openBackupPanel = () => {
     setUploadOpen(false);
+    setRestoreOpen(false);
     setBackupOpen((open) => !open);
+  };
+
+  const openRestorePanel = () => {
+    setUploadOpen(false);
+    setBackupOpen(false);
+    setRestoreOpen((open) => !open);
   };
 
   const closeBackupPanel = () => {
     setBackupOpen(false);
     setBackupError('');
     setBackupResult(null);
+  };
+
+  const closeRestorePanel = () => {
+    setRestoreOpen(false);
+    setRestoreError('');
+    setRestoreResult(null);
   };
 
   const handleBackupExport = async (targetPath) => {
@@ -149,6 +169,20 @@ function VaultShell({ onLocked }) {
       setBackupError(extractErrorMessage(err, 'Backup failed.'));
     } finally {
       setBackupSubmitting(false);
+    }
+  };
+
+  const handleRestoreImport = async (sourcePath) => {
+    setRestoreSubmitting(true);
+    setRestoreError('');
+    try {
+      const result = await importBackup(sourcePath);
+      setRestoreResult(result);
+      await refresh();
+    } catch (err) {
+      setRestoreError(extractErrorMessage(err, 'Restore failed.'));
+    } finally {
+      setRestoreSubmitting(false);
     }
   };
 
@@ -174,6 +208,10 @@ function VaultShell({ onLocked }) {
               </p>
             </div>
             <div className={styles.toolbarActions}>
+              <button type="button" className={styles.secondaryActionButton} onClick={openRestorePanel}>
+                <ClockCounterClockwise size={16} weight="bold" />
+                <span>Restore from backup</span>
+              </button>
               <button type="button" className={styles.secondaryActionButton} onClick={openBackupPanel}>
                 <HardDrive size={16} weight="bold" />
                 <span>Back up to USB</span>
@@ -207,6 +245,16 @@ function VaultShell({ onLocked }) {
               submitting={backupSubmitting}
               error={backupError}
               result={backupResult}
+            />
+          )}
+
+          {restoreOpen && (
+            <RestorePanel
+              onSubmit={handleRestoreImport}
+              onCancel={closeRestorePanel}
+              submitting={restoreSubmitting}
+              error={restoreError}
+              result={restoreResult}
             />
           )}
 
