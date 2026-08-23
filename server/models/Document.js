@@ -27,9 +27,27 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Hash of the (decrypted) file content, used to verify integrity after
-    // sync/backup.
+    // AES-256-GCM authentication tag, required to decrypt encryptedBlob at
+    // all - GCM won't decrypt without it (and rejects the ciphertext if it
+    // doesn't match, which is what catches tampering/corruption).
+    authTag: {
+      type: String,
+      required: true,
+    },
+    // SHA-256 of the ORIGINAL, decrypted file content. Distinct from
+    // authTag: authTag verifies the ciphertext wasn't tampered with in
+    // storage, this verifies the plaintext still matches what was
+    // originally uploaded, which matters once sync/backup starts copying
+    // files around.
     checksum: {
+      type: String,
+      required: true,
+    },
+    // Original file's MIME type, captured at upload time so it can be
+    // restored on the Content-Type header when serving the file back -
+    // encryption strips that information, so it has to be stored
+    // separately.
+    mimeType: {
       type: String,
       required: true,
     },
