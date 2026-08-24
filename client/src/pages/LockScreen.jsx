@@ -5,7 +5,7 @@ import VaultDial from '../components/VaultDial.jsx';
 import PasswordField from '../components/PasswordField.jsx';
 import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
-import wardenLogo from '../assets/wardenpurple_logo.png';
+import wardenLogo from '../assets/warden_logo_badge.svg';
 import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { validatePassword } from '../utils/passwordPolicy.js';

@@ -1,6 +1,6 @@
 import { LockKey } from '@phosphor-icons/react';
 
-import wardenLogo from '../assets/wardenpurple_logo.png';
+import wardenLogo from '../assets/warden_logo_badge.svg';
 import styles from './Header.module.css';
 
 function Header({ onLock }) {
