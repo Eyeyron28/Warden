@@ -315,10 +315,6 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
             onConfirm={handleRecoveryConfirm}
           />
         )}
-
-        {!isSetupReveal && (
-          <p className={styles.trustNote}>AES-256 encryption · Local instance, no cloud sync</p>
-        )}
       </div>
     </main>
   );

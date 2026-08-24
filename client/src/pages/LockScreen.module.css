@@ -172,14 +172,6 @@
   box-shadow: 0 0 0 3px var(--color-accent-wash);
 }
 
-.trustNote {
-  text-align: center;
-  color: var(--color-text-faint);
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  letter-spacing: 0.02em;
-}
-
 @media (max-width: 420px) {
   .panel {
     padding: var(--space-6) var(--space-4);
