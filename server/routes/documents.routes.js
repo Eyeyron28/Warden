@@ -6,6 +6,7 @@ const requireSession = require('../middleware/requireSession');
 const {
   createDocument,
   listDocuments,
+  listExpiringDocuments,
   viewDocument,
   deleteDocument,
 } = require('../controllers/documents.controller');
@@ -40,6 +41,7 @@ router.use(requireSession);
 
 router.post('/', handleUpload, createDocument);
 router.get('/', listDocuments);
+router.get('/expiring', listExpiringDocuments);
 router.get('/:id/view', viewDocument);
 router.delete('/:id', deleteDocument);
 

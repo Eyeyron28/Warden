@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { FileText, Trash } from '@phosphor-icons/react';
 
+import StatusBadge from './StatusBadge.jsx';
 import { formatDate } from '../utils/formatDate.js';
 import styles from './DocumentRow.module.css';
+
+function expiryBadgeLabel(daysUntilExpiry) {
+  if (daysUntilExpiry === 0) return 'Expires today';
+  return `Expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}`;
+}
 
 /**
  * One row in the document list. Delete has its own inline confirm step
@@ -35,8 +41,11 @@ function DocumentRow({ document, onView, onDelete, isViewing, isDeleting }) {
           <span className={styles.filename}>{document.filename}</span>
           <span className={styles.subMeta}>
             <span className={styles.folder}>{document.folder}</span>
-            {document.expiryDate && (
-              <span className={styles.expiry}>Expires {formatDate(document.expiryDate)}</span>
+            {document.expiryStatus === 'expired' && (
+              <StatusBadge label="Expired" tone="danger" />
+            )}
+            {document.expiryStatus === 'expiring_soon' && (
+              <StatusBadge label={expiryBadgeLabel(document.daysUntilExpiry)} tone="warning" />
             )}
           </span>
         </span>

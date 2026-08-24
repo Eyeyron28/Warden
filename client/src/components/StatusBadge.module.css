@@ -36,3 +36,12 @@
   border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
   background: var(--color-danger-wash);
 }
+
+/* Same danger hue as .danger but without the filled wash/border, so an
+   "expiring soon" badge reads as a softer heads-up next to a hard
+   "expired" one instead of introducing a second warning color. */
+.warning {
+  color: var(--color-danger);
+  border-color: var(--color-border);
+  background: transparent;
+}

@@ -67,10 +67,6 @@
   letter-spacing: 0.04em;
 }
 
-.expiry {
-  color: var(--color-text-faint);
-}
-
 .createdAt {
   flex-shrink: 0;
   font-family: var(--font-mono);

@@ -16,6 +16,7 @@ import {
 import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
+import { sortByExpiryUrgency } from '../utils/documentSort.js';
 import styles from './VaultShell.module.css';
 
 // A 401 mid-request means the session just expired - the axios interceptor
@@ -53,7 +54,7 @@ function VaultShell({ onLocked }) {
     setListError('');
     try {
       const data = await listDocuments();
-      setDocuments(data);
+      setDocuments(sortByExpiryUrgency(data));
     } catch (err) {
       if (!isSessionExpired(err)) {
         setListError(extractErrorMessage(err, 'Could not load your documents.'));

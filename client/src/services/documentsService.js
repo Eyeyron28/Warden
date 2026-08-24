@@ -2,10 +2,20 @@ import api from './api.js';
 
 /**
  * GET /api/documents
- * @returns {Promise<Array<{ id: string, filename: string, folder: string, expiryDate: string|null, syncStatus: string, createdAt: string }>>}
+ * @returns {Promise<Array<{ id: string, filename: string, folder: string, expiryDate: string|null, daysUntilExpiry: number|null, expiryStatus: 'expired'|'expiring_soon'|'ok', syncStatus: string, createdAt: string }>>}
  */
 export async function listDocuments() {
   const { data } = await api.get('/documents');
+  return data;
+}
+
+/**
+ * GET /api/documents/expiring - same shape as listDocuments, filtered to
+ * expired/expiring_soon documents and sorted soonest-first. Not wired into
+ * any view yet; this is what a future reminders widget would call.
+ */
+export async function listExpiringDocuments() {
+  const { data } = await api.get('/documents/expiring');
   return data;
 }
 
