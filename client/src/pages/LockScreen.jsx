@@ -3,9 +3,9 @@ import { ArrowRight } from '@phosphor-icons/react';
 
 import VaultDial from '../components/VaultDial.jsx';
 import PasswordField from '../components/PasswordField.jsx';
-import StatusBadge from '../components/StatusBadge.jsx';
 import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
+import wardenLogo from '../assets/wardenpurple_logo.png';
 import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
@@ -169,7 +169,7 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
       <div className={styles.panel}>
         {!isSetupReveal && (
           <div className={styles.brandRow}>
-            <span className={styles.mark}>W</span>
+            <img src={wardenLogo} alt="Warden" className={styles.mark} />
             <span className={styles.wordmark}>WARDEN</span>
           </div>
         )}
@@ -317,10 +317,7 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
         )}
 
         {!isSetupReveal && (
-          <div className={styles.footerBadges}>
-            <StatusBadge label="AES-256" />
-            <StatusBadge label="Local instance, no cloud sync" />
-          </div>
+          <p className={styles.trustNote}>AES-256 encryption · Local instance, no cloud sync</p>
         )}
       </div>
     </main>

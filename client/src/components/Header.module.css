@@ -21,17 +21,11 @@
 }
 
 .mark {
-  display: grid;
-  place-items: center;
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-accent);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 0.95rem;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .wordmark {
@@ -76,10 +70,6 @@
 @media (max-width: 640px) {
   .header {
     padding-inline: var(--space-4);
-  }
-
-  .secondaryBadge {
-    display: none;
   }
 
   .lockButton span {

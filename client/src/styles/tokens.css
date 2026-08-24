@@ -1,19 +1,29 @@
 :root {
-  /* ---- Color: graphite/steel base + single "authenticated" signal accent ---- */
-  --color-bg: #0b0e11;
-  --color-bg-raised: #101317;
-  --color-surface: #14181d;
-  --color-surface-raised: #1b2027;
-  --color-border: #262b31;
-  --color-border-strong: #333a42;
+  /* ---- Color: aubergine/plum base (hue ~313, from brand mark #391D33)
+     + a lighter, more saturated tint of the same hue as the interactive
+     accent. Every neutral below shares that hue at low saturation instead
+     of a hue-less graphite, so the whole app reads as one material with
+     the logo rather than a colored mark on an unrelated gray shell. ---- */
+  --color-bg: #130c11;
+  --color-bg-raised: #181017;
+  --color-surface: #1f141d;
+  --color-surface-raised: #281b25;
+  --color-border: #352732;
+  --color-border-strong: #473343;
 
-  --color-text: #edeff2;
-  --color-text-muted: #8b94a0;
-  --color-text-faint: #5b6470;
+  --color-text: #f4f1f3;
+  --color-text-muted: #a2909e;
+  --color-text-faint: #725f6e;
 
-  --color-accent: #3ecf8e;
-  --color-accent-dim: #2a9d6d;
-  --color-accent-wash: rgba(62, 207, 142, 0.12);
+  /* #391D33 itself is too dark to stand out as a button/link/focus-ring
+     color against a near-black background (that's what it's used FOR as
+     the header mark's own background) - --color-accent is the same hue
+     lifted to a lightness/saturation that keeps ~5.6:1 contrast against
+     --color-bg, so text-on-accent (which reuses --color-bg as the dark
+     "on-accent" text color, see buttons) and accent-on-bg both stay AA. */
+  --color-accent: #d45ebb;
+  --color-accent-dim: #c355ab;
+  --color-accent-wash: rgba(212, 94, 187, 0.12);
   --color-danger: #e5484d;
   --color-danger-wash: rgba(229, 72, 77, 0.12);
 

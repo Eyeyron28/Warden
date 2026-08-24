@@ -52,16 +52,11 @@
 }
 
 .mark {
-  display: grid;
-  place-items: center;
   width: 34px;
   height: 34px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-accent);
-  font-family: var(--font-display);
-  font-weight: 600;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .wordmark {
@@ -177,12 +172,12 @@
   box-shadow: 0 0 0 3px var(--color-accent-wash);
 }
 
-.footerBadges {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
+.trustNote {
+  text-align: center;
+  color: var(--color-text-faint);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 420px) {
