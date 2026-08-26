@@ -15,6 +15,7 @@ const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.rout
 const sharedViewRoutes = require('./routes/sharedView.routes');
 const pairingRoutes = require('./routes/pairing.routes');
 const pairCompleteRoutes = require('./routes/pairComplete.routes');
+const devicesRoutes = require('./routes/devices.routes');
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/pair', pairingRoutes);
 // Deliberately mounted with no requireSession anywhere in its chain -
 // see routes/pairComplete.routes.js.
 app.use('/api/pair', pairCompleteRoutes);
+app.use('/api/devices', devicesRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -5,6 +5,7 @@ import {
   FolderLock,
   HardDrive,
   Plus,
+  ShieldCheck,
 } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
@@ -13,6 +14,7 @@ import UploadForm from '../components/UploadForm.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
 import RestorePanel from '../components/RestorePanel.jsx';
 import PairDevicePanel from '../components/PairDevicePanel.jsx';
+import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import {
   listDocuments,
@@ -60,6 +62,7 @@ function VaultShell({ onLocked }) {
   const [restoreResult, setRestoreResult] = useState(null);
 
   const [pairOpen, setPairOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -141,6 +144,7 @@ function VaultShell({ onLocked }) {
     setBackupOpen(false);
     setRestoreOpen(false);
     setPairOpen(false);
+    setDevicesOpen(false);
     setUploadOpen((open) => !open);
   };
 
@@ -148,6 +152,7 @@ function VaultShell({ onLocked }) {
     setUploadOpen(false);
     setRestoreOpen(false);
     setPairOpen(false);
+    setDevicesOpen(false);
     setBackupOpen((open) => !open);
   };
 
@@ -155,6 +160,7 @@ function VaultShell({ onLocked }) {
     setUploadOpen(false);
     setBackupOpen(false);
     setPairOpen(false);
+    setDevicesOpen(false);
     setRestoreOpen((open) => !open);
   };
 
@@ -162,7 +168,16 @@ function VaultShell({ onLocked }) {
     setUploadOpen(false);
     setBackupOpen(false);
     setRestoreOpen(false);
+    setDevicesOpen(false);
     setPairOpen((open) => !open);
+  };
+
+  const openDevicesPanel = () => {
+    setUploadOpen(false);
+    setBackupOpen(false);
+    setRestoreOpen(false);
+    setPairOpen(false);
+    setDevicesOpen((open) => !open);
   };
 
   const closeBackupPanel = () => {
@@ -235,6 +250,10 @@ function VaultShell({ onLocked }) {
                 <DeviceMobile size={16} weight="bold" />
                 <span>Pair a device</span>
               </button>
+              <button type="button" className={styles.secondaryActionButton} onClick={openDevicesPanel}>
+                <ShieldCheck size={16} weight="bold" />
+                <span>Paired devices</span>
+              </button>
               <button type="button" className={styles.secondaryActionButton} onClick={openRestorePanel}>
                 <ClockCounterClockwise size={16} weight="bold" />
                 <span>Restore from backup</span>
@@ -286,6 +305,8 @@ function VaultShell({ onLocked }) {
           )}
 
           {pairOpen && <PairDevicePanel onClose={() => setPairOpen(false)} />}
+
+          {devicesOpen && <PairedDevicesPanel onCancel={() => setDevicesOpen(false)} />}
 
           {actionError && <p className={styles.banner}>{actionError}</p>}
           {listError && <p className={styles.banner}>{listError}</p>}
