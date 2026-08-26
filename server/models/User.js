@@ -64,11 +64,18 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Count of consecutive failed unlock attempts, for basic
-    // lockout/throttling logic to be added later.
+    // Count of consecutive failed unlock attempts since the last lockout
+    // (or since the last successful unlock). Resets to 0 either time.
     failedAttempts: {
       type: Number,
       default: 0,
+    },
+    // Set once failedAttempts crosses the lockout threshold; unlock is
+    // rejected outright (without even checking the password) while this
+    // is present and in the future. Absent/undefined means not locked.
+    lockedUntil: {
+      type: Date,
+      required: false,
     },
   },
   {

@@ -18,6 +18,13 @@ const errorHandler = (err, req, res, next) => {
   if (Array.isArray(err.errors)) {
     errorBody.errors = err.errors;
   }
+  // Optional: vault lockout state (see POST /api/auth/unlock), so the
+  // frontend can show a countdown instead of a generic error.
+  if (err.locked) {
+    errorBody.locked = true;
+    errorBody.lockedUntil = err.lockedUntil;
+    errorBody.minutesRemaining = err.minutesRemaining;
+  }
 
   res.status(status).json({
     success: false,

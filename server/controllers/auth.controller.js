@@ -14,9 +14,8 @@ const {
 const { validatePassword } = require('../utils/passwordPolicy');
 const { createSession, destroySession } = require('../utils/sessionStore');
 
-const FAILED_ATTEMPTS_THROTTLE_THRESHOLD = 5;
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -33,6 +32,21 @@ function passwordPolicyError(errors) {
   const error = new Error('Password does not meet the security requirements.');
   error.status = 400;
   error.errors = errors;
+  return error;
+}
+
+// Rejects the request outright with the vault's lockout state - used both
+// when a lockout is already active and the moment one is newly triggered,
+// so a locked-out caller always gets this shape rather than a plain 401.
+function lockoutError(lockedUntil) {
+  const minutesRemaining = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 60000));
+  const error = new Error(
+    `Too many failed attempts. Try again in ${minutesRemaining} minute${minutesRemaining === 1 ? '' : 's'}.`
+  );
+  error.status = 403;
+  error.locked = true;
+  error.lockedUntil = lockedUntil.toISOString();
+  error.minutesRemaining = minutesRemaining;
   return error;
 }
 
@@ -122,10 +136,14 @@ const setup = asyncHandler(async (req, res) => {
  * POST /api/auth/unlock
  * Body: { password }
  * Verifies the master password against the stored hash and, on success,
- * unwraps the DEK and opens a session with it. Failed attempts are
- * counted on the User record; once they cross the throttle threshold, a
- * short artificial delay is added before responding as basic
- * brute-force friction.
+ * unwraps the DEK and opens a session with it.
+ *
+ * Lockout, not just throttling: 3 consecutive failed attempts sets
+ * lockedUntil 5 minutes out, and while that's in the future, unlock is
+ * rejected before password verification even runs - a correct password
+ * doesn't bypass an active lockout. Crossing the threshold also resets
+ * failedAttempts to 0, so the count after the lockout expires starts
+ * fresh rather than being pre-loaded toward an instant re-lock.
  */
 const unlock = asyncHandler(async (req, res) => {
   const { password } = req.body;
@@ -141,15 +159,23 @@ const unlock = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+    throw lockoutError(user.lockedUntil);
+  }
+
   const isValid = verifyPassword(password, user.salt, user.passwordHash);
 
   if (!isValid) {
     user.failedAttempts += 1;
-    await user.save();
 
-    if (user.failedAttempts >= FAILED_ATTEMPTS_THROTTLE_THRESHOLD) {
-      await delay(1000 + Math.random() * 1000);
+    if (user.failedAttempts >= FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
+      user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      user.failedAttempts = 0;
+      await user.save();
+      throw lockoutError(user.lockedUntil);
     }
+
+    await user.save();
 
     const error = new Error('Incorrect password.');
     error.status = 401;
@@ -157,6 +183,7 @@ const unlock = asyncHandler(async (req, res) => {
   }
 
   user.failedAttempts = 0;
+  user.lockedUntil = undefined;
   await user.save();
 
   const passwordKek = deriveEncryptionKey(password, user.salt);
@@ -240,6 +267,7 @@ const recover = asyncHandler(async (req, res) => {
   user.wrappedDEKPasswordIv = rewrapped.iv;
   user.wrappedDEKPasswordAuthTag = rewrapped.authTag;
   user.failedAttempts = 0;
+  user.lockedUntil = undefined;
   await user.save();
 
   const sessionToken = createSession(dek);
