@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import LockScreen from './pages/LockScreen.jsx';
 import VaultShell from './pages/VaultShell.jsx';
 import SharedDocumentPage from './pages/SharedDocumentPage.jsx';
+import DevLocalVault from './pages/DevLocalVault.jsx';
 import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
 
@@ -78,6 +79,13 @@ function App() {
           LockScreen/VaultShell involved at all. A recipient opening a share
           link has never unlocked this vault and never will. */}
       <Route path="/shared/:token" element={<SharedDocumentPage />} />
+      {/* TEMPORARY, dev-build-only: excluded from production entirely via
+          import.meta.env.DEV, so it never ships in the installable app.
+          Remove this route along with pages/DevLocalVault.jsx once real
+          pairing/sync replaces it in the next pass. */}
+      {import.meta.env.DEV && (
+        <Route path="/dev/local-vault" element={<DevLocalVault />} />
+      )}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
