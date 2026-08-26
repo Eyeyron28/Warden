@@ -22,7 +22,22 @@ const app = express();
 connectDB();
 
 app.use(cors(corsOptions));
-app.use(express.json());
+// Express's default JSON body limit (100kb) is far too small for
+// POST /api/sync/push: it receives an entire encrypted document as base64
+// inside the JSON body, and base64 inflates raw bytes by ~4/3. The PC
+// upload route already caps a document at 20MB (MAX_FILE_SIZE_BYTES in
+// documents.routes.js, enforced by multer - unaffected by this setting,
+// which only applies to JSON bodies), so a full-size document arrives
+// here as roughly 20MB * 4/3 ≈ 26.7MB of base64 alone, before the small
+// surrounding JSON envelope (filename, iv, authTag, checksum, etc). 30mb
+// covers that real worst case with headroom - anchored to the actual
+// upload cap, not an arbitrary large number - while still rejecting a
+// genuinely oversized body with a clean 413 (via this same errorHandler)
+// rather than accepting anything without limit. Applied globally rather
+// than scoped per-route since every other JSON body in this app (auth,
+// document metadata edits, share/pairing/device actions) is tiny by
+// comparison and a 30mb ceiling on them is generous, not risky.
+app.use(express.json({ limit: '30mb' }));
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ success: true, status: 'ok' });
