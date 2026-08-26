@@ -20,3 +20,16 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>
 );
+
+// Production only: Vite's dev server serves unbundled ES modules over
+// its own HMR/websocket machinery, which a cache-first service worker
+// would fight with (serving a stale cached module instead of the one
+// Vite just recompiled). The service worker is purely an installed-app/
+// production concern, so it never registers under `npm run dev`.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+      console.error('Service worker registration failed:', err);
+    });
+  });
+}

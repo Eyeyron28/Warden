@@ -6,6 +6,21 @@
     <meta name="theme-color" content="#130C11" />
     <meta name="description" content="Warden - encrypted, locally-hosted personal document vault." />
     <link rel="icon" type="image/svg+xml" href="/src/assets/warden_logo_badge.svg" />
+
+    <!-- PWA install: manifest.json's icons list PNGs first because
+         installability/"Add to Home Screen" icon support for SVG is
+         inconsistent - notably iOS Safari doesn't read the manifest's
+         icons at all for its home-screen icon, only apple-touch-icon
+         below, and older Chromium/Android install flows have been known
+         to reject SVG-only icon lists. The SVG is still listed last in
+         the manifest for browsers that do support it at any size. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Warden" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
     <title>Warden - Document Vault</title>
   </head>
   <body>
