@@ -20,6 +20,7 @@ const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 const ENCRYPTION_KEY_KEYLEN = 32; // 256-bit key, required by AES-256
 const GCM_TAG_LENGTH_BITS = 128; // 16-byte AES-GCM auth tag, same as server's authTag
+const GCM_IV_LENGTH_BYTES = 12; // 96-bit IV, same as server's GCM_IV_LENGTH
 
 // The unwrapped DEK, kept ONLY in memory for this page's lifetime - never
 // written to localStorage/IndexedDB. Mirrors the server's in-memory
@@ -171,6 +172,65 @@ export async function decryptDocument(encryptedBlob, ivBase64, authTagBase64) {
   } catch {
     throw new Error('Could not decrypt this document: it may be corrupted.');
   }
+}
+
+/**
+ * Encrypts a file's plaintext bytes using the DEK currently unwrapped in
+ * memory - the phone-side counterpart of the server's `encryptFile`
+ * (server/utils/crypto.js), same AES-256-GCM algorithm. WebCrypto's
+ * AES-GCM encrypt appends the auth tag to the ciphertext; the last 16
+ * bytes are split off here so the result matches the separate
+ * ciphertext/iv/authTag shape used everywhere else in this app (the
+ * Document model, the sync pull/push payloads, saveDocumentLocally).
+ *
+ * Throws "Local vault is locked." if called with no DEK unwrapped - the
+ * add-document UI should never be reachable in that state, but this is
+ * the same self-guard decryptDocument already has, not a new check.
+ *
+ * @param {ArrayBuffer} plaintext
+ * @returns {Promise<{ ciphertext: ArrayBuffer, iv: string, authTag: string }>} iv/authTag are base64
+ */
+export async function encryptDocument(plaintext) {
+  if (!unwrappedDEK) {
+    throw new Error('Local vault is locked.');
+  }
+
+  const cryptoKey = await crypto.subtle.importKey('raw', unwrappedDEK, 'AES-GCM', false, [
+    'encrypt',
+  ]);
+  const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_LENGTH_BYTES));
+
+  const combined = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, tagLength: GCM_TAG_LENGTH_BITS },
+      cryptoKey,
+      plaintext
+    )
+  );
+
+  const tagBytes = GCM_TAG_LENGTH_BITS / 8;
+  const ciphertext = combined.slice(0, combined.length - tagBytes);
+  const authTag = combined.slice(combined.length - tagBytes);
+
+  return {
+    ciphertext: ciphertext.buffer,
+    iv: bytesToBase64(iv),
+    authTag: bytesToBase64(authTag),
+  };
+}
+
+/**
+ * SHA-256 of the original plaintext, hex-encoded - the exact format the
+ * server's createDocument stores as `checksum` (documents.controller.js),
+ * so a document added on the phone carries the same integrity signal a
+ * PC upload does.
+ *
+ * @param {ArrayBuffer} plaintext
+ * @returns {Promise<string>} hex-encoded SHA-256 digest
+ */
+export async function computeChecksum(plaintext) {
+  const digest = await crypto.subtle.digest('SHA-256', plaintext);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export { base64ToBytes, bytesToBase64 };

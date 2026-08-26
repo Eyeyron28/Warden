@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, DeviceMobile, LockKey } from '@phosphor-icons/react';
+import { ArrowRight, DeviceMobile, LockKey, Plus } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
+import UploadForm from '../components/UploadForm.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
 import {
   getAllDeviceAuth,
   getAllLocalDocuments,
@@ -12,6 +14,8 @@ import {
   unlockLocalVault,
   lockLocalVault,
   decryptDocument,
+  encryptDocument,
+  computeChecksum,
   base64ToBytes,
   bytesToBase64,
 } from '../services/localCrypto.js';
@@ -42,6 +46,10 @@ function PhoneVault() {
 
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState('');
 
   const [viewingId, setViewingId] = useState(null);
   const [viewError, setViewError] = useState('');
@@ -114,7 +122,52 @@ function PhoneVault() {
     setDocuments([]);
     setSyncMessage('');
     setSyncError('');
+    setAddOpen(false);
+    setAddError('');
     setPhase('locked');
+  };
+
+  /**
+   * Encrypts and stores a file entirely offline: SHA-256 checksum of the
+   * raw plaintext (same integrity purpose as the PC upload's checksum),
+   * AES-256-GCM encryption via the DEK already unwrapped in memory from
+   * PIN unlock, then straight into IndexedDB with a client-generated id
+   * (there's no server _id yet) and syncStatus: "pending" - no network
+   * call anywhere in this path. The saved shape (filename, folder,
+   * expiryDate, encryptedBlob as an ArrayBuffer, iv/authTag/checksum as
+   * strings, mimeType) is exactly what handleSync's push already reads
+   * from local documents, so a phone-added file becomes push-eligible
+   * with no changes needed there.
+   */
+  const handleAddDocument = async ({ file, folder, expiryDate }) => {
+    setAdding(true);
+    setAddError('');
+    try {
+      const plaintext = await file.arrayBuffer();
+      const checksum = await computeChecksum(plaintext);
+      const { ciphertext, iv, authTag } = await encryptDocument(plaintext);
+
+      await saveDocumentLocally({
+        id: crypto.randomUUID(),
+        filename: file.name,
+        folder: folder || 'root',
+        expiryDate: expiryDate || null,
+        encryptedBlob: ciphertext,
+        iv,
+        authTag,
+        checksum,
+        mimeType: file.type || 'application/octet-stream',
+        originDevice: 'phone',
+        syncStatus: 'pending',
+      });
+
+      setAddOpen(false);
+      await loadDocuments();
+    } catch (err) {
+      setAddError(err.message || 'Could not add this document.');
+    } finally {
+      setAdding(false);
+    }
   };
 
   const handleView = async (doc) => {
@@ -280,17 +333,43 @@ function PhoneVault() {
                     : `${documents.length} document${documents.length === 1 ? '' : 's'} stored on this device`}
                 </p>
               </div>
-              <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
-                {syncing ? 'Syncing...' : 'Sync now'}
-              </button>
+              <div className={styles.vaultHeaderActions}>
+                <button
+                  type="button"
+                  className={styles.addButton}
+                  onClick={() => {
+                    setAddOpen((open) => !open);
+                    setAddError('');
+                  }}
+                >
+                  <Plus size={16} weight="bold" />
+                  <span>Add document</span>
+                </button>
+                <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
+                  {syncing ? 'Syncing...' : 'Sync now'}
+                </button>
+              </div>
             </div>
+
+            {addOpen && (
+              <UploadForm
+                onSubmit={handleAddDocument}
+                onCancel={() => {
+                  setAddOpen(false);
+                  setAddError('');
+                }}
+                uploading={adding}
+                progress={100}
+                error={addError}
+              />
+            )}
 
             {syncMessage && <p className={styles.syncMessage}>{syncMessage}</p>}
             {syncError && <p className={styles.fieldError}>{syncError}</p>}
             {viewError && <p className={styles.fieldError}>{viewError}</p>}
 
             {!docsLoading && documents.length === 0 && (
-              <p className={styles.hint}>Nothing stored locally yet - try syncing.</p>
+              <p className={styles.hint}>Nothing stored locally yet - try syncing, or add a document.</p>
             )}
 
             {documents.length > 0 && (
@@ -298,10 +377,13 @@ function PhoneVault() {
                 {documents.map((doc) => (
                   <li key={doc.id} className={styles.row}>
                     <div className={styles.meta}>
-                      <span className={styles.filename}>{doc.filename}</span>
-                      <span className={styles.sub}>
-                        {doc.folder || 'root'} · {doc.syncStatus}
+                      <span className={styles.filenameRow}>
+                        <span className={styles.filename}>{doc.filename}</span>
+                        {doc.syncStatus === 'pending' && (
+                          <StatusBadge label="Pending sync" tone="accent" dot />
+                        )}
                       </span>
+                      <span className={styles.sub}>{doc.folder || 'root'}</span>
                     </div>
                     <button
                       type="button"

@@ -6,7 +6,6 @@ import VaultShell from './pages/VaultShell.jsx';
 import SharedDocumentPage from './pages/SharedDocumentPage.jsx';
 import PairPage from './pages/PairPage.jsx';
 import PhoneVault from './pages/PhoneVault.jsx';
-import DevLocalVault from './pages/DevLocalVault.jsx';
 import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
 
@@ -89,13 +88,6 @@ function App() {
           phone's own local vault, unlocked with its paired PIN and backed
           by IndexedDB, not a PC session at all. */}
       <Route path="/phone" element={<PhoneVault />} />
-      {/* TEMPORARY, dev-build-only: excluded from production entirely via
-          import.meta.env.DEV, so it never ships in the installable app.
-          Remove this route along with pages/DevLocalVault.jsx once real
-          pairing/sync replaces it in the next pass. */}
-      {import.meta.env.DEV && (
-        <Route path="/dev/local-vault" element={<DevLocalVault />} />
-      )}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
