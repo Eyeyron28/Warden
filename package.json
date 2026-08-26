@@ -1,0 +1,12 @@
+{
+  "name": "warden",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Warden - encrypted, locally-hosted personal document vault. This root package.json is a coordinating layer only (via `concurrently`) - it does not replace server/package.json or client/package.json. See README.md.",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm --prefix server run dev\" \"npm --prefix client run dev -- --host\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
