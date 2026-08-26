@@ -7,6 +7,8 @@ const {
   createDocument,
   listDocuments,
   listExpiringDocuments,
+  listFolders,
+  updateDocument,
   viewDocument,
   deleteDocument,
 } = require('../controllers/documents.controller');
@@ -42,7 +44,9 @@ router.use(requireSession);
 router.post('/', handleUpload, createDocument);
 router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
+router.get('/folders', listFolders);
 router.get('/:id/view', viewDocument);
+router.patch('/:id', updateDocument);
 router.delete('/:id', deleteDocument);
 
 module.exports = router;

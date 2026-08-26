@@ -28,6 +28,7 @@ function assertValidId(id) {
 }
 
 const EXPIRING_SOON_THRESHOLD_DAYS = 30;
+const FOLDER_ROOT = 'root';
 
 /**
  * Computes how many calendar days remain until expiryDate, and the coarse
@@ -163,6 +164,89 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/documents/folders
+ * Distinct folder names currently in use across all documents, plus
+ * "root" even if nothing is explicitly filed there - every uncategorized
+ * document already defaults to "root" via the schema, so the frontend
+ * can always offer it as a destination even in a freshly-emptied vault.
+ * "root" is sorted first since it's the default/catch-all rather than a
+ * folder the owner named; everything else is alphabetical.
+ */
+const listFolders = asyncHandler(async (req, res) => {
+  const folders = await Document.distinct('folder');
+  const folderSet = new Set(folders.filter(Boolean));
+  folderSet.add(FOLDER_ROOT);
+
+  const sorted = [...folderSet].sort((a, b) => {
+    if (a === FOLDER_ROOT) return -1;
+    if (b === FOLDER_ROOT) return 1;
+    return a.localeCompare(b);
+  });
+
+  res.status(200).json(sorted);
+});
+
+/**
+ * PATCH /api/documents/:id
+ * Body: any subset of { filename, folder, expiryDate }
+ *
+ * Metadata-only editing - deliberately does NOT touch encryptedBlob, iv,
+ * authTag, or checksum, and never decrypts anything. Renaming a document
+ * or moving it to a different folder is just changing how it's labeled;
+ * none of those labels are inputs to the encryption, so the vault
+ * doesn't need to do anything with the actual encrypted bytes to change
+ * them. This is also why this route never touches req.session.encryptionKey.
+ *
+ * Only fields actually present in the body are updated - omitted fields
+ * are left exactly as they were, so a caller can rename a document
+ * without also having to resend its current folder and expiry date.
+ */
+const updateDocument = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+
+  const document = await Document.findById(req.params.id);
+  if (!document) {
+    throw documentNotFound();
+  }
+
+  const { filename, folder, expiryDate } = req.body;
+
+  if (filename !== undefined) {
+    if (typeof filename !== 'string' || !filename.trim()) {
+      throw badRequest('filename cannot be empty.');
+    }
+    document.filename = filename.trim();
+  }
+
+  if (folder !== undefined) {
+    if (typeof folder !== 'string') {
+      throw badRequest('folder must be a string.');
+    }
+    document.folder = folder.trim() || FOLDER_ROOT;
+  }
+
+  if (expiryDate !== undefined) {
+    if (expiryDate === null) {
+      document.expiryDate = null;
+    } else {
+      const parsed = new Date(expiryDate);
+      if (Number.isNaN(parsed.getTime())) {
+        throw badRequest('expiryDate must be a valid date, or null to clear it.');
+      }
+      document.expiryDate = parsed;
+    }
+  }
+
+  await document.save();
+
+  // toListSummary recomputes daysUntilExpiry/expiryStatus from
+  // document.expiryDate every time it's called, so this reflects
+  // whatever expiryDate ends up as above with no separate branch needed
+  // for "did expiryDate change".
+  res.status(200).json(toListSummary(document));
+});
+
+/**
  * GET /api/documents/:id/view
  * Decrypts the document and streams it back. Before responding, re-hashes
  * the decrypted plaintext and compares it against the stored checksum -
@@ -221,6 +305,8 @@ module.exports = {
   createDocument,
   listDocuments,
   listExpiringDocuments,
+  listFolders,
+  updateDocument,
   viewDocument,
   deleteDocument,
 };
