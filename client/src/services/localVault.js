@@ -1,23 +1,36 @@
 import { openDB } from 'idb';
 
 /**
- * The phone's local IndexedDB mirror of vault documents - proof that a
- * device can hold and read its own offline copy independently of the PC's
- * live API. Pure storage only: no network calls, no pairing/sync logic,
- * no encryption/decryption. `encryptedBlob` is stored exactly as handed
- * to `saveDocumentLocally` (typically an ArrayBuffer) and returned
- * unchanged - decrypting it is a separate concern for later, via the
- * browser's Web Crypto API.
+ * The phone's local IndexedDB layer - proof that a device can hold and
+ * read its own offline data independently of the PC's live API. Pure
+ * storage only: no network calls, no pairing/sync logic beyond saving
+ * what a caller hands in, no encryption/decryption. Binary fields
+ * (encryptedBlob, and the wrapped-DEK fields below) are stored exactly
+ * as given and returned unchanged - decrypting/unwrapping them is a
+ * separate concern for later, via the browser's Web Crypto API.
+ *
+ * Two object stores in one database:
+ *   - "documents": the offline mirror of vault documents.
+ *   - "deviceAuth": this phone's own pairing credentials (the DEK,
+ *     wrapped under this phone's PIN) from POST /api/pair/complete -
+ *     what a later local-unlock-with-PIN pass reads from, so the phone
+ *     never has to send the master password again after pairing once.
  */
 
 const DB_NAME = 'warden-local';
-const DB_VERSION = 1;
-const STORE_NAME = 'documents';
+const DB_VERSION = 2;
+const DOCUMENTS_STORE = 'documents';
+const DEVICE_AUTH_STORE = 'deviceAuth';
 
 function getDB() {
   return openDB(DB_NAME, DB_VERSION, {
     upgrade(db) {
-      db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(DOCUMENTS_STORE)) {
+        db.createObjectStore(DOCUMENTS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(DEVICE_AUTH_STORE)) {
+        db.createObjectStore(DEVICE_AUTH_STORE, { keyPath: 'deviceId' });
+      }
     },
   });
 }
@@ -43,7 +56,7 @@ function getDB() {
  */
 export async function saveDocumentLocally(doc) {
   const db = await getDB();
-  await db.put(STORE_NAME, { ...doc, cachedAt: new Date().toISOString() });
+  await db.put(DOCUMENTS_STORE, { ...doc, cachedAt: new Date().toISOString() });
 }
 
 /**
@@ -51,7 +64,7 @@ export async function saveDocumentLocally(doc) {
  */
 export async function getAllLocalDocuments() {
   const db = await getDB();
-  return db.getAll(STORE_NAME);
+  return db.getAll(DOCUMENTS_STORE);
 }
 
 /**
@@ -60,7 +73,7 @@ export async function getAllLocalDocuments() {
  */
 export async function getLocalDocument(id) {
   const db = await getDB();
-  return db.get(STORE_NAME, id);
+  return db.get(DOCUMENTS_STORE, id);
 }
 
 /**
@@ -68,5 +81,49 @@ export async function getLocalDocument(id) {
  */
 export async function deleteLocalDocument(id) {
   const db = await getDB();
-  await db.delete(STORE_NAME, id);
+  await db.delete(DOCUMENTS_STORE, id);
+}
+
+/**
+ * Saves this phone's pairing credentials, exactly as returned by
+ * POST /api/pair/complete, plus the apiBase it paired against (needed
+ * later to know which PC to talk to) and `pairedAt` bookkeeping.
+ *
+ * @param {{
+ *   deviceId: string,
+ *   wrappedDEKPhonePin: string,
+ *   wrappedDEKPhonePinIv: string,
+ *   wrappedDEKPhonePinAuthTag: string,
+ *   wrappedDEKPhonePinSalt: string,
+ *   apiBase: string,
+ * }} deviceAuth
+ */
+export async function saveDeviceAuthLocally(deviceAuth) {
+  const db = await getDB();
+  await db.put(DEVICE_AUTH_STORE, { ...deviceAuth, pairedAt: new Date().toISOString() });
+}
+
+/**
+ * @returns {Promise<Array<object>>} every device-pairing record stored locally
+ */
+export async function getAllDeviceAuth() {
+  const db = await getDB();
+  return db.getAll(DEVICE_AUTH_STORE);
+}
+
+/**
+ * @param {string} deviceId
+ * @returns {Promise<object | undefined>}
+ */
+export async function getDeviceAuth(deviceId) {
+  const db = await getDB();
+  return db.get(DEVICE_AUTH_STORE, deviceId);
+}
+
+/**
+ * @param {string} deviceId
+ */
+export async function deleteDeviceAuth(deviceId) {
+  const db = await getDB();
+  await db.delete(DEVICE_AUTH_STORE, deviceId);
 }

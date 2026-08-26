@@ -3,12 +3,17 @@ const express = require('express');
 const requireSession = require('../middleware/requireSession');
 const { initPairing, getPairingStatus } = require('../controllers/pairing.controller');
 
-// Owner-only, unlike the phone-side completion endpoint that'll live
-// alongside this in the next pass - only the unlocked Vault Owner can
-// generate a pairing code in the first place.
+// Owner-only, unlike POST /api/pair/complete (routes/pairComplete.routes.js)
+// which is mounted at this same /api/pair prefix. requireSession is
+// applied per-route here rather than via a blanket router.use() - an
+// unconditional router.use(requireSession) would run for ANY path
+// Express forwards into this router, including /complete, since Express
+// only strips the mount prefix before delegating and does not know in
+// advance which of the two sibling routers actually owns a given
+// sub-path. Scoping it to each route instead means this router simply
+// never touches a /complete request at all, regardless of mount order.
 const router = express.Router();
-router.use(requireSession);
-router.post('/init', initPairing);
-router.get('/status/:token', getPairingStatus);
+router.post('/init', requireSession, initPairing);
+router.get('/status/:token', requireSession, getPairingStatus);
 
 module.exports = router;

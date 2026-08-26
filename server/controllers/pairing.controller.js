@@ -1,14 +1,36 @@
 const crypto = require('crypto');
 
 const PairingToken = require('../models/PairingToken');
+const PairedDevice = require('../models/PairedDevice');
+const User = require('../models/User');
+const { verifyPassword, deriveEncryptionKey, unwrapKey, generateSalt, wrapKey } = require('../utils/crypto');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
 // every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+function badRequest(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
+// Deliberately generic and identical whether the token never existed,
+// already expired, or was already used - same reasoning as the public
+// share-view endpoint's rejection. A 404, distinct from the 401 a wrong
+// master password gets below, is what lets the frontend tell "this QR is
+// dead, go rescan" apart from "retype the password" without this message
+// itself giving anything away.
+function invalidPairingToken() {
+  const error = new Error('This pairing code is invalid or has expired.');
+  error.status = 404;
+  return error;
+}
+
 const PAIRING_TOKEN_BYTES = 32;
 const PAIRING_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const MIN_PHONE_PIN_LENGTH = 4;
 
 /**
  * Determines the PC's LAN-reachable address for the phone to call
@@ -90,4 +112,87 @@ const getPairingStatus = asyncHandler(async (req, res) => {
   res.status(200).json({ used: pairingToken.used, expired });
 });
 
-module.exports = { initPairing, getPairingStatus };
+/**
+ * POST /api/pair/complete
+ * Body: { pairingToken, masterPassword, phonePin, deviceName }
+ * Deliberately NOT behind requireSession - the phone has no session yet.
+ * The pairingToken IS the credential proving this request is legitimate,
+ * same trust model as GET /api/shared/:token: whoever holds a still-
+ * valid, unused pairing token is trusted to attempt completing pairing
+ * with it.
+ *
+ * A wrong master password does NOT consume the token - only a
+ * successful completion marks it used - so the phone can retry a
+ * mistyped password without forcing the owner to generate and re-scan a
+ * brand new QR, as long as the token itself hasn't expired.
+ */
+const completePairing = asyncHandler(async (req, res) => {
+  const { pairingToken, masterPassword, phonePin, deviceName } = req.body;
+
+  if (!pairingToken || typeof pairingToken !== 'string') {
+    throw badRequest('A pairing token is required.');
+  }
+  if (!masterPassword || typeof masterPassword !== 'string') {
+    throw badRequest('A master password is required.');
+  }
+  if (!phonePin || typeof phonePin !== 'string' || phonePin.length < MIN_PHONE_PIN_LENGTH) {
+    throw badRequest(`Device PIN must be at least ${MIN_PHONE_PIN_LENGTH} characters.`);
+  }
+
+  const token = await PairingToken.findOne({ token: pairingToken });
+  if (!token || token.used || token.expiresAt.getTime() <= Date.now()) {
+    throw invalidPairingToken();
+  }
+
+  const user = await User.findOne();
+  if (!user) {
+    // No vault to pair against - same generic response as a dead token,
+    // rather than a distinguishable "vault not set up" that leaks state
+    // to an unauthenticated caller.
+    throw invalidPairingToken();
+  }
+
+  const isValid = verifyPassword(masterPassword, user.salt, user.passwordHash);
+  if (!isValid) {
+    const error = new Error('Incorrect master password.');
+    error.status = 401;
+    throw error;
+  }
+
+  const passwordKek = deriveEncryptionKey(masterPassword, user.salt);
+  const dek = unwrapKey(
+    user.wrappedDEKPassword,
+    passwordKek,
+    user.wrappedDEKPasswordIv,
+    user.wrappedDEKPasswordAuthTag
+  );
+
+  // Same wrap-the-DEK pattern as every other KEK in this app: a COPY of
+  // the DEK, wrapped under a key derived from the phone's own PIN, so
+  // the phone can unwrap it later using only something it holds itself -
+  // the master password is never sent again after this one request.
+  const pinSalt = generateSalt();
+  const pinKek = deriveEncryptionKey(phonePin, pinSalt);
+  const wrappedPin = wrapKey(dek, pinKek);
+
+  const device = await PairedDevice.create({
+    deviceName: typeof deviceName === 'string' && deviceName.trim() ? deviceName.trim() : undefined,
+    wrappedDEKPhonePin: wrappedPin.wrappedKey,
+    wrappedDEKPhonePinIv: wrappedPin.iv,
+    wrappedDEKPhonePinAuthTag: wrappedPin.authTag,
+    wrappedDEKPhonePinSalt: pinSalt,
+  });
+
+  token.used = true;
+  await token.save();
+
+  res.status(201).json({
+    deviceId: device._id,
+    wrappedDEKPhonePin: device.wrappedDEKPhonePin,
+    wrappedDEKPhonePinIv: device.wrappedDEKPhonePinIv,
+    wrappedDEKPhonePinAuthTag: device.wrappedDEKPhonePinAuthTag,
+    wrappedDEKPhonePinSalt: device.wrappedDEKPhonePinSalt,
+  });
+});
+
+module.exports = { initPairing, getPairingStatus, completePairing };

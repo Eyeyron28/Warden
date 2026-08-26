@@ -16,13 +16,21 @@ function formatCountdown(msRemaining) {
 }
 
 /**
- * Owner-side pairing UI: generates a pairing code, renders it as a QR
- * (apiBase + pairingToken as JSON - the phone's camera reads this
- * directly, no typing involved), counts down its 5-minute window, and
- * polls GET /api/pair/status/:token every couple seconds so the screen
- * moves from "Waiting for phone..." to "Paired successfully" on its own.
- * Only the PC side - nothing here verifies a phone or completes pairing;
- * that's the next pass.
+ * Owner-side pairing UI: generates a pairing code, renders it as a QR,
+ * counts down its 5-minute window, and polls GET /api/pair/status/:token
+ * every couple seconds so the screen moves from "Waiting for phone..."
+ * to "Paired successfully" on its own.
+ *
+ * The QR encodes a full, directly-openable URL -
+ * `${window.location.origin}/pair/:token?apiBase=...` - rather than a
+ * JSON payload for some dedicated in-app scanner: the phone's own native
+ * camera app can open it straight into pages/PairPage.jsx with zero
+ * Warden-specific scanning code and no new dependency. apiBase is
+ * embedded as a query param because the PC's LAN-reachable API address
+ * (where PairPage needs to POST the completed pairing) has nothing to
+ * do with wherever this frontend itself happens to be hosted - exactly
+ * the same reasoning as ShareModal building shareUrl from
+ * window.location.origin instead of trusting the backend's guess.
  */
 function PairDevicePanel({ onClose }) {
   const [status, setStatus] = useState('loading'); // loading | waiting | success | expired | error
@@ -75,8 +83,8 @@ function PairDevicePanel({ onClose }) {
     }
 
     let cancelled = false;
-    const payload = JSON.stringify({ apiBase, pairingToken });
-    QRCode.toDataURL(payload, { margin: 1, width: 220 })
+    const pairUrl = `${window.location.origin}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
+    QRCode.toDataURL(pairUrl, { margin: 1, width: 220 })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);
       })
