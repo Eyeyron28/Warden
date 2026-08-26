@@ -96,7 +96,15 @@ function ShareModal({ documentId, filename, onClose }) {
     setCreateError('');
     try {
       const result = await createShare(documentId, durationHours);
-      setCreatedShare(result);
+      // Built from window.location.origin rather than trusted from the
+      // backend's shareUrl: the backend can only guess its own host:port
+      // (req.get('host')), which has no relationship to wherever the
+      // React app serving /shared/:token actually lives - especially in
+      // dev, where the API and the frontend run on different ports. The
+      // frontend already knows its own origin correctly in every
+      // environment without any special-casing.
+      const shareUrl = `${window.location.origin}/shared/${result.token}`;
+      setCreatedShare({ ...result, shareUrl });
       setCopied(false);
       refreshShares();
     } catch (err) {
