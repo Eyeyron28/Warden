@@ -6,6 +6,7 @@ import DocumentRow from '../components/DocumentRow.jsx';
 import UploadForm from '../components/UploadForm.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
 import RestorePanel from '../components/RestorePanel.jsx';
+import ShareModal from '../components/ShareModal.jsx';
 import {
   listDocuments,
   uploadDocument,
@@ -37,6 +38,8 @@ function VaultShell({ onLocked }) {
   const [viewingId, setViewingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [actionError, setActionError] = useState('');
+
+  const [sharingDocument, setSharingDocument] = useState(null);
 
   const [backupStatus, setBackupStatus] = useState(null);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -278,6 +281,7 @@ function VaultShell({ onLocked }) {
                   document={doc}
                   onView={handleView}
                   onDelete={handleDelete}
+                  onShare={setSharingDocument}
                   isViewing={viewingId === doc.id}
                   isDeleting={deletingId === doc.id}
                 />
@@ -286,6 +290,14 @@ function VaultShell({ onLocked }) {
           )}
         </div>
       </main>
+
+      {sharingDocument && (
+        <ShareModal
+          documentId={sharingDocument.id}
+          filename={sharingDocument.filename}
+          onClose={() => setSharingDocument(null)}
+        />
+      )}
     </div>
   );
 }

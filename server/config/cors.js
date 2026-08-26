@@ -15,6 +15,13 @@ const corsOptions = {
     }
   },
   credentials: true,
+  // Content-Disposition isn't in the CORS response-header safelist, so
+  // without this, frontend code reading response.headers['content-
+  // disposition'] (documents/:id/view, shared/:token) silently gets
+  // nothing back whenever the frontend and API are on different origins
+  // (e.g. separate dev ports) - the filename parsing then falls back to
+  // a generic name instead of the real one, with no error to notice.
+  exposedHeaders: ['Content-Disposition'],
 };
 
 module.exports = corsOptions;

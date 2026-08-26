@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import LockScreen from './pages/LockScreen.jsx';
 import VaultShell from './pages/VaultShell.jsx';
+import SharedDocumentPage from './pages/SharedDocumentPage.jsx';
 import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
 
@@ -73,6 +74,10 @@ function App() {
         path="/vault"
         element={sessionToken ? <VaultShell onLocked={handleLocked} /> : <Navigate to="/" replace />}
       />
+      {/* Deliberately outside the auth flow above: no sessionToken check, no
+          LockScreen/VaultShell involved at all. A recipient opening a share
+          link has never unlocked this vault and never will. */}
+      <Route path="/shared/:token" element={<SharedDocumentPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

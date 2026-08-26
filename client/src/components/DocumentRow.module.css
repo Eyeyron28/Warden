@@ -81,6 +81,7 @@
   align-items: center;
 }
 
+.shareButton,
 .deleteButton {
   display: grid;
   place-items: center;
@@ -89,6 +90,11 @@
   color: var(--color-text-faint);
   transition: color var(--duration-fast) var(--ease-standard),
     background var(--duration-fast) var(--ease-standard);
+}
+
+.shareButton:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-wash);
 }
 
 .deleteButton:hover {

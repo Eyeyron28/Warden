@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Trash } from '@phosphor-icons/react';
+import { FileText, ShareNetwork, Trash } from '@phosphor-icons/react';
 
 import StatusBadge from './StatusBadge.jsx';
 import { formatDate } from '../utils/formatDate.js';
@@ -15,7 +15,7 @@ function expiryBadgeLabel(daysUntilExpiry) {
  * (rather than a separate modal component) so a misclick can't destroy a
  * document - the row itself owns that confirmation state.
  */
-function DocumentRow({ document, onView, onDelete, isViewing, isDeleting }) {
+function DocumentRow({ document, onView, onDelete, onShare, isViewing, isDeleting }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const handleDeleteClick = () => {
@@ -56,14 +56,24 @@ function DocumentRow({ document, onView, onDelete, isViewing, isDeleting }) {
 
       <div className={styles.actions}>
         {!confirmingDelete ? (
-          <button
-            type="button"
-            className={styles.deleteButton}
-            onClick={handleDeleteClick}
-            aria-label={`Delete ${document.filename}`}
-          >
-            <Trash size={16} />
-          </button>
+          <>
+            <button
+              type="button"
+              className={styles.shareButton}
+              onClick={() => onShare(document)}
+              aria-label={`Share ${document.filename}`}
+            >
+              <ShareNetwork size={16} />
+            </button>
+            <button
+              type="button"
+              className={styles.deleteButton}
+              onClick={handleDeleteClick}
+              aria-label={`Delete ${document.filename}`}
+            >
+              <Trash size={16} />
+            </button>
+          </>
         ) : (
           <div className={styles.confirmRow}>
             <span className={styles.confirmLabel}>Delete?</span>

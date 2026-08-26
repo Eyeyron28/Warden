@@ -1,7 +1,12 @@
 const express = require('express');
 
 const requireSession = require('../middleware/requireSession');
-const { createShare, listShares, revokeShare } = require('../controllers/shares.controller');
+const {
+  createShare,
+  listShares,
+  revokeShare,
+  revokeShareById,
+} = require('../controllers/shares.controller');
 
 // Two routers, mounted at two different prefixes in server.js, rather than
 // one router carrying all three routes: /:id/share, /:id/shares, and
@@ -23,6 +28,10 @@ documentSharesRoutes.get('/:id/shares', listShares);
 // on this owner-only router.)
 const shareTokenRoutes = express.Router();
 shareTokenRoutes.use(requireSession);
+// Registered before the shorter /:token/revoke pattern is irrelevant here
+// (different segment counts, so Express can't confuse the two), but kept
+// grouped together since they're the two ways to revoke the same thing.
+shareTokenRoutes.post('/id/:shareId/revoke', revokeShareById);
 shareTokenRoutes.post('/:token/revoke', revokeShare);
 
 module.exports = { documentSharesRoutes, shareTokenRoutes };

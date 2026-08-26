@@ -22,9 +22,9 @@ function documentNotFound() {
   return error;
 }
 
-function assertValidId(id) {
+function assertValidId(id, label = 'document') {
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw badRequest('Invalid document id.');
+    throw badRequest(`Invalid ${label} id.`);
   }
 }
 
@@ -128,8 +128,24 @@ const revokeShare = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true });
 });
 
+/**
+ * POST /api/shares/id/:shareId/revoke
+ * Same idempotent behavior as revokeShare above, addressed by the
+ * ShareToken's own _id instead of its token. GET /api/documents/:id/shares
+ * deliberately never re-exposes a share's raw token after creation (the
+ * same one-time-secret hygiene as the recovery key never being shown
+ * again) - this is what lets the owner revoke a share from that list
+ * without the frontend ever having to hold or redisplay the live token.
+ */
+const revokeShareById = asyncHandler(async (req, res) => {
+  assertValidId(req.params.shareId, 'share');
+  await ShareToken.updateOne({ _id: req.params.shareId }, { $set: { revoked: true } });
+  res.status(200).json({ success: true });
+});
+
 module.exports = {
   createShare,
   listShares,
   revokeShare,
+  revokeShareById,
 };
