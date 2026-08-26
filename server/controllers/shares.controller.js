@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
 const ShareToken = require('../models/ShareToken');
+const { generateSalt, deriveEncryptionKey, wrapKey } = require('../utils/crypto');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -54,10 +55,23 @@ const createShare = asyncHandler(async (req, res) => {
   const token = crypto.randomBytes(SHARE_TOKEN_BYTES).toString('hex');
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
+  // Wrap a COPY of the vault's DEK (available here via req.session -
+  // requireSession already unwrapped it for this owner's unlocked
+  // session) under a key derived from this specific token, so
+  // GET /api/shared/:token can unwrap it later using only the token from
+  // the URL - no session, no password, no recovery key involved at all.
+  const shareSalt = generateSalt();
+  const shareKek = deriveEncryptionKey(token, shareSalt);
+  const wrappedShare = wrapKey(req.session.encryptionKey, shareKek);
+
   const shareToken = await ShareToken.create({
     documentId: document._id,
     token,
     expiresAt,
+    wrappedDEKShare: wrappedShare.wrappedKey,
+    wrappedDEKShareIv: wrappedShare.iv,
+    wrappedDEKShareAuthTag: wrappedShare.authTag,
+    wrappedDEKShareSalt: shareSalt,
   });
 
   // Built from the request's own host rather than a hardcoded origin, so

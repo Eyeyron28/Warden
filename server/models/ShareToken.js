@@ -30,6 +30,39 @@ const shareTokenSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+
+  // A COPY of the vault's DEK, wrapped (AES-256-GCM) under a key derived
+  // from this record's own `token` - NOT under the owner's password or
+  // recovery key. This is what lets GET /api/shared/:token (deliberately
+  // public, no session) decrypt the one document it points to using only
+  // the token from the URL: it derives the same key from that token and
+  // unwraps this. wrappedDEKShareSalt is that derivation's salt, generated
+  // fresh per share the same way User's password/recovery salts are -
+  // the token is already high-entropy, so the salt isn't load-bearing for
+  // security here, but keeping it consistent with every other KEK
+  // derivation in this app keeps the design auditable rather than a
+  // special case to double-check.
+  //
+  // Because both the wrapping key AND the wrapped ciphertext are unique
+  // per share record, one token can only ever unwrap its own
+  // wrappedDEKShare - there's no shared secret across shares that would
+  // let one token's key material decrypt another share's document.
+  wrappedDEKShare: {
+    type: String,
+    required: true,
+  },
+  wrappedDEKShareIv: {
+    type: String,
+    required: true,
+  },
+  wrappedDEKShareAuthTag: {
+    type: String,
+    required: true,
+  },
+  wrappedDEKShareSalt: {
+    type: String,
+    required: true,
+  },
 });
 
 module.exports = mongoose.model('ShareToken', shareTokenSchema);

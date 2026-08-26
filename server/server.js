@@ -12,6 +12,7 @@ const documentsRoutes = require('./routes/documents.routes');
 const syncRoutes = require('./routes/sync.routes');
 const backupRoutes = require('./routes/backup.routes');
 const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.routes');
+const sharedViewRoutes = require('./routes/sharedView.routes');
 
 const app = express();
 
@@ -28,6 +29,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/documents', documentSharesRoutes);
 app.use('/api/shares', shareTokenRoutes);
+// Deliberately mounted with no requireSession anywhere in its chain -
+// see routes/sharedView.routes.js.
+app.use('/api/shared', sharedViewRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/backup', backupRoutes);
 
