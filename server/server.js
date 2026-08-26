@@ -13,6 +13,7 @@ const syncRoutes = require('./routes/sync.routes');
 const backupRoutes = require('./routes/backup.routes');
 const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.routes');
 const sharedViewRoutes = require('./routes/sharedView.routes');
+const pairingRoutes = require('./routes/pairing.routes');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/shares', shareTokenRoutes);
 app.use('/api/shared', sharedViewRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/pair', pairingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
