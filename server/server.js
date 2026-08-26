@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
 const syncRoutes = require('./routes/sync.routes');
 const backupRoutes = require('./routes/backup.routes');
+const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.routes');
 
 const app = express();
 
@@ -25,6 +26,8 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentsRoutes);
+app.use('/api/documents', documentSharesRoutes);
+app.use('/api/shares', shareTokenRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/backup', backupRoutes);
 
