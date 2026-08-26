@@ -5,6 +5,7 @@ import LockScreen from './pages/LockScreen.jsx';
 import VaultShell from './pages/VaultShell.jsx';
 import SharedDocumentPage from './pages/SharedDocumentPage.jsx';
 import PairPage from './pages/PairPage.jsx';
+import PhoneVault from './pages/PhoneVault.jsx';
 import DevLocalVault from './pages/DevLocalVault.jsx';
 import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
@@ -84,6 +85,10 @@ function App() {
           has never unlocked (or even seen) this vault before, so it can't
           depend on any of the session/auth state the routes above use. */}
       <Route path="/pair/:token" element={<PairPage />} />
+      {/* Also outside the auth flow, for the same reason: this is the
+          phone's own local vault, unlocked with its paired PIN and backed
+          by IndexedDB, not a PC session at all. */}
+      <Route path="/phone" element={<PhoneVault />} />
       {/* TEMPORARY, dev-build-only: excluded from production entirely via
           import.meta.env.DEV, so it never ships in the installable app.
           Remove this route along with pages/DevLocalVault.jsx once real

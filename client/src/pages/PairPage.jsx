@@ -64,6 +64,7 @@ function PairPage() {
 
       await saveDeviceAuthLocally({
         deviceId: result.deviceId,
+        deviceToken: result.deviceToken,
         wrappedDEKPhonePin: result.wrappedDEKPhonePin,
         wrappedDEKPhonePinIv: result.wrappedDEKPhonePinIv,
         wrappedDEKPhonePinAuthTag: result.wrappedDEKPhonePinAuthTag,

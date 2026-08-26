@@ -31,6 +31,7 @@ function invalidPairingToken() {
 const PAIRING_TOKEN_BYTES = 32;
 const PAIRING_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_PHONE_PIN_LENGTH = 4;
+const DEVICE_TOKEN_BYTES = 32;
 
 /**
  * Determines the PC's LAN-reachable address for the phone to call
@@ -175,8 +176,13 @@ const completePairing = asyncHandler(async (req, res) => {
   const pinKek = deriveEncryptionKey(phonePin, pinSalt);
   const wrappedPin = wrapKey(dek, pinKek);
 
+  // Proves future POST /api/sync/pull and /push requests come from this
+  // device without the master password - see requireDeviceAuth.js.
+  const deviceToken = crypto.randomBytes(DEVICE_TOKEN_BYTES).toString('hex');
+
   const device = await PairedDevice.create({
     deviceName: typeof deviceName === 'string' && deviceName.trim() ? deviceName.trim() : undefined,
+    deviceToken,
     wrappedDEKPhonePin: wrappedPin.wrappedKey,
     wrappedDEKPhonePinIv: wrappedPin.iv,
     wrappedDEKPhonePinAuthTag: wrappedPin.authTag,
@@ -188,6 +194,7 @@ const completePairing = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     deviceId: device._id,
+    deviceToken: device.deviceToken,
     wrappedDEKPhonePin: device.wrappedDEKPhonePin,
     wrappedDEKPhonePinIv: device.wrappedDEKPhonePinIv,
     wrappedDEKPhonePinAuthTag: device.wrappedDEKPhonePinAuthTag,

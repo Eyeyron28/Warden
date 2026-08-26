@@ -85,12 +85,31 @@ export async function deleteLocalDocument(id) {
 }
 
 /**
+ * Replaces a local-only document's record with its canonical server copy
+ * after a successful sync push - IndexedDB's keyPath is fixed per record,
+ * so "renaming" the id means deleting the old entry and inserting a new
+ * one, done here as a single transaction so a mid-write failure can't
+ * leave both the orphaned local-only copy and the new one behind.
+ *
+ * @param {string} localId - the old, locally-generated id to remove
+ * @param {object} canonicalDoc - the full record to store under its new (real) id
+ */
+export async function remapLocalDocumentId(localId, canonicalDoc) {
+  const db = await getDB();
+  const tx = db.transaction(DOCUMENTS_STORE, 'readwrite');
+  await tx.store.delete(localId);
+  await tx.store.put({ ...canonicalDoc, cachedAt: new Date().toISOString() });
+  await tx.done;
+}
+
+/**
  * Saves this phone's pairing credentials, exactly as returned by
  * POST /api/pair/complete, plus the apiBase it paired against (needed
  * later to know which PC to talk to) and `pairedAt` bookkeeping.
  *
  * @param {{
  *   deviceId: string,
+ *   deviceToken: string,
  *   wrappedDEKPhonePin: string,
  *   wrappedDEKPhonePinIv: string,
  *   wrappedDEKPhonePinAuthTag: string,

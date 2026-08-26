@@ -1,16 +1,27 @@
 const mongoose = require('mongoose');
 
-// Not wired up to any route yet - this pass only builds the PC side of
-// pairing (generating/displaying the QR). A PairedDevice record gets
-// created once the phone-side scan-and-verify flow (next pass) confirms
-// the phone's PIN against the vault and the phone commits to storing its
-// own wrapped copy of the DEK locally.
+// Created by POST /api/pair/complete once the phone-side scan-and-verify
+// flow confirms the master password against the vault and the phone
+// commits to storing its own wrapped copy of the DEK locally.
 const pairedDeviceSchema = new mongoose.Schema({
   // Set during pairing, e.g. "Josh's Phone" - purely a label for the
   // owner's benefit, never used for auth.
   deviceName: {
     type: String,
     required: false,
+  },
+
+  // Bearer credential for POST /api/sync/pull and /push (see
+  // middleware/requireDeviceAuth.js). Proves future sync requests come
+  // from this legitimately paired device without needing the master
+  // password again - same "long-lived opaque token, looked up directly"
+  // pattern as ShareToken.token and PairingToken.token, not hashed for
+  // the same reason those aren't: it's a random 256-bit value, not a
+  // user-chosen secret that could appear elsewhere.
+  deviceToken: {
+    type: String,
+    required: true,
+    unique: true,
   },
 
   // Same wrap-the-DEK pattern as the password/recovery KEKs on User: a
