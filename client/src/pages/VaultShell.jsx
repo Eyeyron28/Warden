@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ClockCounterClockwise,
   DeviceMobile,
@@ -16,12 +16,15 @@ import RestorePanel from '../components/RestorePanel.jsx';
 import PairDevicePanel from '../components/PairDevicePanel.jsx';
 import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
 import ShareModal from '../components/ShareModal.jsx';
+import EditDocumentModal from '../components/EditDocumentModal.jsx';
+import FolderFilter from '../components/FolderFilter.jsx';
 import {
   listDocuments,
   uploadDocument,
   fetchDocumentBlob,
   openBlob,
   deleteDocument,
+  listFolders,
 } from '../services/documentsService.js';
 import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -49,6 +52,10 @@ function VaultShell({ onLocked }) {
   const [actionError, setActionError] = useState('');
 
   const [sharingDocument, setSharingDocument] = useState(null);
+  const [editingDocument, setEditingDocument] = useState(null);
+
+  const [folders, setFolders] = useState([]);
+  const [activeFolder, setActiveFolder] = useState(null); // null = "All"
 
   const [backupStatus, setBackupStatus] = useState(null);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -79,6 +86,20 @@ function VaultShell({ onLocked }) {
     }
   }, []);
 
+  const refreshFolders = useCallback(async () => {
+    try {
+      const data = await listFolders();
+      setFolders(data);
+      // If the folder currently being filtered on no longer exists (its
+      // last document was moved or deleted elsewhere), fall back to "All"
+      // rather than silently showing an empty list with no way out.
+      setActiveFolder((current) => (current && !data.includes(current) ? null : current));
+    } catch {
+      // Folder list is a filtering convenience, not critical path - a
+      // failed fetch just leaves the existing filter options stale.
+    }
+  }, []);
+
   const refreshBackupStatus = useCallback(async () => {
     try {
       const data = await getBackupStatus();
@@ -93,7 +114,8 @@ function VaultShell({ onLocked }) {
   useEffect(() => {
     refresh();
     refreshBackupStatus();
-  }, [refresh, refreshBackupStatus]);
+    refreshFolders();
+  }, [refresh, refreshBackupStatus, refreshFolders]);
 
   const handleUpload = async ({ file, folder, expiryDate }) => {
     setUploading(true);
@@ -103,6 +125,7 @@ function VaultShell({ onLocked }) {
       await uploadDocument({ file, folder, expiryDate }, setUploadProgress);
       setUploadOpen(false);
       await refresh();
+      refreshFolders();
     } catch (err) {
       setUploadError(extractErrorMessage(err, 'Upload failed.'));
     } finally {
@@ -131,6 +154,7 @@ function VaultShell({ onLocked }) {
     try {
       await deleteDocument(id);
       setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+      refreshFolders();
     } catch (err) {
       if (!isSessionExpired(err)) {
         setActionError(extractErrorMessage(err, 'Could not delete this document.'));
@@ -138,6 +162,19 @@ function VaultShell({ onLocked }) {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleEditSaved = (updatedDocument) => {
+    // Splice the updated metadata straight into the already-loaded list
+    // and re-sort - PATCH's response has the same shape listDocuments
+    // returns, so there's no need to refetch the whole list just because
+    // one document's filename/folder/expiry changed.
+    setDocuments((prev) =>
+      sortByExpiryUrgency(
+        prev.map((doc) => (doc.id === updatedDocument.id ? updatedDocument : doc))
+      )
+    );
+    refreshFolders();
   };
 
   const openUploadPanel = () => {
@@ -223,6 +260,23 @@ function VaultShell({ onLocked }) {
       setRestoreSubmitting(false);
     }
   };
+
+  const folderCounts = useMemo(() => {
+    const counts = { total: documents.length };
+    for (const doc of documents) {
+      const folder = doc.folder || 'root';
+      counts[folder] = (counts[folder] || 0) + 1;
+    }
+    return counts;
+  }, [documents]);
+
+  // Filtering is purely client-side against the already-fetched list -
+  // no per-folder backend endpoint, `folders`/`activeFolder` only ever
+  // drive what's shown here.
+  const visibleDocuments = useMemo(() => {
+    if (activeFolder === null) return documents;
+    return documents.filter((doc) => (doc.folder || 'root') === activeFolder);
+  }, [documents, activeFolder]);
 
   const backupStatusLine = backupStatus?.lastBackupAt
     ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
@@ -311,6 +365,15 @@ function VaultShell({ onLocked }) {
           {actionError && <p className={styles.banner}>{actionError}</p>}
           {listError && <p className={styles.banner}>{listError}</p>}
 
+          {documents.length > 0 && (
+            <FolderFilter
+              folders={folders}
+              counts={folderCounts}
+              activeFolder={activeFolder}
+              onSelect={setActiveFolder}
+            />
+          )}
+
           {!loading && documents.length === 0 && !listError && (
             <div className={styles.emptyState}>
               <FolderLock size={40} weight="light" className={styles.emptyIcon} />
@@ -319,15 +382,24 @@ function VaultShell({ onLocked }) {
             </div>
           )}
 
-          {documents.length > 0 && (
+          {documents.length > 0 && visibleDocuments.length === 0 && (
+            <div className={styles.emptyState}>
+              <FolderLock size={40} weight="light" className={styles.emptyIcon} />
+              <h2 className={styles.emptyTitle}>No documents in this folder</h2>
+              <p className={styles.emptyBody}>Try a different folder, or switch back to All.</p>
+            </div>
+          )}
+
+          {visibleDocuments.length > 0 && (
             <ul className={styles.list}>
-              {documents.map((doc) => (
+              {visibleDocuments.map((doc) => (
                 <DocumentRow
                   key={doc.id}
                   document={doc}
                   onView={handleView}
                   onDelete={handleDelete}
                   onShare={setSharingDocument}
+                  onEdit={setEditingDocument}
                   isViewing={viewingId === doc.id}
                   isDeleting={deletingId === doc.id}
                 />
@@ -342,6 +414,14 @@ function VaultShell({ onLocked }) {
           documentId={sharingDocument.id}
           filename={sharingDocument.filename}
           onClose={() => setSharingDocument(null)}
+        />
+      )}
+
+      {editingDocument && (
+        <EditDocumentModal
+          document={editingDocument}
+          onClose={() => setEditingDocument(null)}
+          onSaved={handleEditSaved}
         />
       )}
     </div>

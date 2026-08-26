@@ -81,6 +81,7 @@
   align-items: center;
 }
 
+.editButton,
 .shareButton,
 .deleteButton {
   display: grid;
@@ -90,6 +91,11 @@
   color: var(--color-text-faint);
   transition: color var(--duration-fast) var(--ease-standard),
     background var(--duration-fast) var(--ease-standard);
+}
+
+.editButton:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
 }
 
 .shareButton:hover {

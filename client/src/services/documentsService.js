@@ -20,6 +20,31 @@ export async function listExpiringDocuments() {
 }
 
 /**
+ * GET /api/documents/folders - distinct folder names currently in use,
+ * plus "root", sorted with "root" first. Used to populate the folder
+ * filter and the edit form's folder combobox suggestions.
+ * @returns {Promise<Array<string>>}
+ */
+export async function listFolders() {
+  const { data } = await api.get('/documents/folders');
+  return data;
+}
+
+/**
+ * PATCH /api/documents/:id
+ * Metadata-only edit - filename, folder, and/or expiryDate. Callers
+ * should only include the fields that actually changed; the backend
+ * leaves anything omitted untouched.
+ * @param {string} id
+ * @param {{ filename?: string, folder?: string, expiryDate?: string|null }} updates
+ * @returns {Promise<object>} the updated document, same shape as listDocuments entries
+ */
+export async function updateDocument(id, updates) {
+  const { data } = await api.patch(`/documents/${id}`, updates);
+  return data;
+}
+
+/**
  * POST /api/documents (multipart/form-data)
  * @param {{ file: File, folder?: string, expiryDate?: string }} params
  * @param {(percent: number) => void} [onProgress]
