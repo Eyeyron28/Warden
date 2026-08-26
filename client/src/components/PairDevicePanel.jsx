@@ -22,15 +22,26 @@ function formatCountdown(msRemaining) {
  * to "Paired successfully" on its own.
  *
  * The QR encodes a full, directly-openable URL -
- * `${window.location.origin}/pair/:token?apiBase=...` - rather than a
- * JSON payload for some dedicated in-app scanner: the phone's own native
- * camera app can open it straight into pages/PairPage.jsx with zero
- * Warden-specific scanning code and no new dependency. apiBase is
+ * `http://<LAN host>:<frontend port>/pair/:token?apiBase=...` - rather
+ * than a JSON payload for some dedicated in-app scanner: the phone's own
+ * native camera app can open it straight into pages/PairPage.jsx with
+ * zero Warden-specific scanning code and no new dependency. apiBase is
  * embedded as a query param because the PC's LAN-reachable API address
  * (where PairPage needs to POST the completed pairing) has nothing to
- * do with wherever this frontend itself happens to be hosted - exactly
- * the same reasoning as ShareModal building shareUrl from
- * window.location.origin instead of trusting the backend's guess.
+ * do with wherever this frontend itself happens to be hosted.
+ *
+ * Deliberately NOT window.location.origin here, unlike ShareModal's
+ * shareUrl. ShareModal can get away with window.location.origin because
+ * a share link's generator and recipient sometimes share an origin (or
+ * at least both have a real reason to be on whatever host the owner is
+ * browsing from). Pairing is different: it ALWAYS involves two
+ * physically different devices, and the owner's own tab is very often
+ * open on "localhost:5173" (the natural thing to type on the PC itself)
+ * - which means nothing to a phone scanning the code, since "localhost"
+ * always resolves to "this device," never "the PC." The QR's host must
+ * come from the same LAN-resolved address the backend already computed
+ * for apiBase (see resolveApiBase in pairing.controller.js, with its own
+ * fail-loudly-if-undetermined guarantee), not from window.location.
  */
 function PairDevicePanel({ onClose }) {
   const [status, setStatus] = useState('loading'); // loading | waiting | success | expired | error
@@ -83,7 +94,12 @@ function PairDevicePanel({ onClose }) {
     }
 
     let cancelled = false;
-    const pairUrl = `${window.location.origin}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
+    // Same host apiBase itself uses (the backend's LAN-resolved address),
+    // not window.location.hostname - see the comment above the component
+    // for why the owner's own tab (often "localhost") can't be trusted here.
+    const lanHost = new URL(apiBase).hostname;
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const pairUrl = `http://${lanHost}${port}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
     QRCode.toDataURL(pairUrl, { margin: 1, width: 220 })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);
