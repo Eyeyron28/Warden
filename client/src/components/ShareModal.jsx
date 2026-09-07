@@ -96,15 +96,18 @@ function ShareModal({ documentId, filename, onClose }) {
     setCreateError('');
     try {
       const result = await createShare(documentId, durationHours);
-      // Built from window.location.origin rather than trusted from the
-      // backend's shareUrl: the backend can only guess its own host:port
-      // (req.get('host')), which has no relationship to wherever the
-      // React app serving /shared/:token actually lives - especially in
-      // dev, where the API and the frontend run on different ports. The
-      // frontend already knows its own origin correctly in every
-      // environment without any special-casing.
-      const shareUrl = `${window.location.origin}/shared/${result.token}`;
-      setCreatedShare({ ...result, shareUrl });
+      // result.shareUrl is now built server-side from the PC's actual
+      // LAN-reachable address (same resolveLanIp helper pairing uses),
+      // not window.location.origin - the owner's own tab is often on
+      // "localhost", which means nothing to whoever they send this link
+      // to. The localhost variant below is deliberately derived from
+      // that same URL (same token, just a different hostname) purely as
+      // a same-machine convenience for the owner: localhost is always a
+      // secure context with no cert warnings, unlike the LAN IP.
+      const localUrl = new URL(result.shareUrl);
+      localUrl.hostname = 'localhost';
+
+      setCreatedShare({ ...result, localShareUrl: localUrl.toString() });
       setCopied(false);
       refreshShares();
     } catch (err) {
@@ -186,7 +189,7 @@ function ShareModal({ documentId, filename, onClose }) {
       ) : (
         <div className={styles.resultSection}>
           <div className={styles.field}>
-            <span className={styles.label}>Share link</span>
+            <span className={styles.label}>Network link</span>
             <div className={styles.linkRow}>
               <input
                 type="text"
@@ -200,6 +203,10 @@ function ShareModal({ documentId, filename, onClose }) {
                 <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
+            <p className={styles.hint}>
+              Works from a phone or any other device on your network - this is what the QR code
+              below encodes.
+            </p>
           </div>
 
           {qrDataUrl && (
@@ -211,6 +218,20 @@ function ShareModal({ documentId, filename, onClose }) {
           <p className={styles.expiryLine}>
             {describeExpiry(createdShare.expiresAt)}, at {formatDateTime(createdShare.expiresAt)}
           </p>
+
+          <div className={styles.localLinkField}>
+            <span className={styles.hint}>
+              Open on this PC:{' '}
+              <a
+                href={createdShare.localShareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.localLink}
+              >
+                {createdShare.localShareUrl}
+              </a>
+            </span>
+          </div>
 
           <button type="button" className={styles.secondaryButton} onClick={handleGenerateAnother}>
             Generate another link

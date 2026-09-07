@@ -142,6 +142,21 @@
   color: var(--color-text-muted);
 }
 
+.localLinkField {
+  text-align: center;
+}
+
+.localLink {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.localLink:hover {
+  color: var(--color-text);
+}
+
 .secondaryButton {
   align-self: center;
   padding: var(--space-2) var(--space-4);

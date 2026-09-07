@@ -4,6 +4,14 @@ const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const ShareToken = require('../models/ShareToken');
 const { generateSalt, deriveEncryptionKey, wrapKey } = require('../utils/crypto');
+const { resolveLanIp } = require('../utils/network');
+
+// The frontend's own dev-server port (vite.config.js, README) - there's
+// no env var for it today, same as pairing.controller.js hardcoding a
+// fallback for its own PORT. /shared/:token is a React Router route
+// served by Vite, not this Express app, so the share link must point
+// there, never at this server's own port.
+const FRONTEND_PORT = 5173;
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -52,6 +60,19 @@ const createShare = asyncHandler(async (req, res) => {
     throw badRequest('durationHours must be a positive number of hours.');
   }
 
+  // Same fail-loudly-if-undetermined guarantee as POST /api/pair/init:
+  // a share link built from an unreachable address (e.g. silently
+  // falling back to "localhost") would look fine to the owner and then
+  // not work for whoever they send it to, with nothing telling them why.
+  const lanIp = resolveLanIp(req);
+  if (!lanIp) {
+    const error = new Error(
+      "Could not determine this PC's LAN address. Set the LAN_IP environment variable (see .env.example) and restart the server."
+    );
+    error.status = 500;
+    throw error;
+  }
+
   const token = crypto.randomBytes(SHARE_TOKEN_BYTES).toString('hex');
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
@@ -74,11 +95,16 @@ const createShare = asyncHandler(async (req, res) => {
     wrappedDEKShareSalt: shareSalt,
   });
 
-  // Built from the request's own host rather than a hardcoded origin, so
-  // the link is correct whether the owner reached the API via localhost
-  // or the PC's LAN IP - whichever address got the owner here is the one
-  // a recipient on the same network needs too.
-  const shareUrl = `${req.protocol}://${req.get('host')}/shared/${shareToken.token}`;
+  // Root cause of a past bug (also true of the pairing QR before it was
+  // fixed the same way): building this from the request's own host, or
+  // from the owner's browser tab (window.location.origin), captures
+  // whatever the OWNER happened to be browsing from at that moment -
+  // often "localhost", which means nothing to a recipient on a different
+  // device. lanIp (resolveLanIp, shared with pairing.controller.js) is
+  // this PC's actual LAN-reachable address regardless of how the owner
+  // themselves got here, and FRONTEND_PORT points at the React route
+  // that serves /shared/:token, not this API's own port.
+  const shareUrl = `${req.protocol}://${lanIp}:${FRONTEND_PORT}/shared/${shareToken.token}`;
 
   res.status(201).json({
     token: shareToken.token,

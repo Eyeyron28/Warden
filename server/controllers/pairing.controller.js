@@ -4,6 +4,7 @@ const PairingToken = require('../models/PairingToken');
 const PairedDevice = require('../models/PairedDevice');
 const User = require('../models/User');
 const { verifyPassword, deriveEncryptionKey, unwrapKey, generateSalt, wrapKey } = require('../utils/crypto');
+const { resolveLanIp } = require('../utils/network');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -34,40 +35,23 @@ const MIN_PHONE_PIN_LENGTH = 4;
 const DEVICE_TOKEN_BYTES = 32;
 
 /**
- * Determines the PC's LAN-reachable address for the phone to call
- * directly (not through the React dev server - the phone talks to this
- * API, wherever it lives). There's no reliable way for a Node process to
- * know its own LAN IP from inside a request handler alone: a machine can
- * have several network interfaces (Wi-Fi, Ethernet, VPN, a Docker
- * bridge...) and guessing which one a phone on the same network can
- * actually reach is exactly that - a guess.
+ * Builds the PC's LAN-reachable API address (not through the React dev
+ * server - the phone talks to this API, wherever it lives) for the phone
+ * to call directly. Which IP is "the LAN IP" is answered by resolveLanIp
+ * (utils/network.js, shared with shares.controller.js's network share
+ * link so that logic exists once, not twice) - this just adds this
+ * server's own protocol and port on top of it.
  *
- * LAN_IP is the explicit, correct answer (see .env.example) and always
- * wins if set. Absent that, req.socket.localAddress is a best-effort
- * fallback - it only produces something useful if the owner's own
- * browser happened to reach this API via its LAN IP already, since a
- * request to localhost/127.0.0.1 makes the socket's local address
- * equally useless to a phone.
+ * Root cause of a past bug: this used to hardcode "http://", so once the
+ * server moved to HTTPS-only, apiBase kept telling phones to call back
+ * over plain HTTP and every request failed. req.protocol reflects
+ * whatever this server is actually running under, so it can't go stale
+ * the same way again if the scheme ever changes back.
  */
 function resolveApiBase(req) {
   const port = process.env.PORT || 5000;
-  // Root cause of a past bug: this used to hardcode "http://", so once
-  // the server moved to HTTPS-only, apiBase kept telling phones to call
-  // back over plain HTTP and every request failed. req.protocol reflects
-  // whatever this server is actually running under, so it can't go
-  // stale the same way again if the scheme ever changes back.
-  const protocol = req.protocol;
-
-  if (process.env.LAN_IP) {
-    return `${protocol}://${process.env.LAN_IP}:${port}`;
-  }
-
-  const socketAddress = req.socket.localAddress?.replace('::ffff:', '');
-  if (socketAddress && socketAddress !== '127.0.0.1' && socketAddress !== '::1') {
-    return `${protocol}://${socketAddress}:${port}`;
-  }
-
-  return null;
+  const lanIp = resolveLanIp(req);
+  return lanIp ? `${req.protocol}://${lanIp}:${port}` : null;
 }
 
 /**
