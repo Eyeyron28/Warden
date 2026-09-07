@@ -1,5 +1,8 @@
 require('dotenv').config();
 
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 
@@ -63,6 +66,16 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Warden server running on port ${PORT}`);
+// mkcert-generated cert, valid only for the SANs it was issued with:
+// localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172. If this PC's LAN
+// IP ever changes to something outside that list, regenerate with
+// `mkcert localhost 127.0.0.1 <new-lan-ip>` and update the paths below
+// (and CORS_ORIGINS / VITE_API_BASE_URL) to match.
+const httpsOptions = {
+  key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
+};
+
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`Warden server running on port ${PORT} (https)`);
 });
