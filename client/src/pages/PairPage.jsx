@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle, LinkBreak } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
@@ -25,8 +25,11 @@ const MIN_PHONE_PIN_LENGTH = 4;
  * is read from the query string since the PC that generated it may be
  * on a different LAN address than wherever this page itself is hosted.
  */
+const REDIRECT_DELAY_MS = 1200;
+
 function PairPage() {
   const { token } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const apiBase = searchParams.get('apiBase') || window.location.origin;
 
@@ -39,6 +42,17 @@ function PairPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [tokenInvalid, setTokenInvalid] = useState(false);
+
+  // Pairing already left this device's PIN-unlock credentials in
+  // IndexedDB (saveDeviceAuthLocally, below) - the vault is ready to use
+  // the moment this succeeds, so send the phone straight to its
+  // PIN-unlock screen instead of stranding it on a static confirmation
+  // it would otherwise have to navigate away from manually.
+  useEffect(() => {
+    if (!success) return undefined;
+    const timer = setTimeout(() => navigate('/phone', { replace: true }), REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [success, navigate]);
 
   const pinTooShort = phonePin.length > 0 && phonePin.length < MIN_PHONE_PIN_LENGTH;
   const pinMismatch = confirmPin.length > 0 && phonePin !== confirmPin;

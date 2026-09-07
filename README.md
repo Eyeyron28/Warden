@@ -30,4 +30,4 @@ cd client && npm run dev
 
 The `dev` script also passes `-k` (`--kill-others`) to `concurrently`, so if either side crashes (e.g. the backend exits because MongoDB isn't running), the other is stopped too instead of being left running by itself.
 
-**If a stop ever seems to leave something behind** (e.g. `http://localhost:5000` still responds after you've stopped `npm run dev`): this is a known rough edge with `npm`/Windows console process trees in some setups, not specific to this project. Check Task Manager for a leftover `node.exe` and end it, or from another terminal: `npx kill-port 5000 5173`.
+**If a stop ever seems to leave something behind** (e.g. `http://localhost:5000` still responds after you've stopped `npm run dev`): this is a known rough edge with `npm`/Windows console process trees in some setups, not specific to this project. A `predev` script now runs `npx kill-port 5000 5173` automatically before every `npm run dev`, so this now happens automatically - but you can still run `npx kill-port 5000 5173` manually if needed, or check Task Manager for a leftover `node.exe` and end it.

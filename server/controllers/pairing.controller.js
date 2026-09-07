@@ -51,14 +51,20 @@ const DEVICE_TOKEN_BYTES = 32;
  */
 function resolveApiBase(req) {
   const port = process.env.PORT || 5000;
+  // Root cause of a past bug: this used to hardcode "http://", so once
+  // the server moved to HTTPS-only, apiBase kept telling phones to call
+  // back over plain HTTP and every request failed. req.protocol reflects
+  // whatever this server is actually running under, so it can't go
+  // stale the same way again if the scheme ever changes back.
+  const protocol = req.protocol;
 
   if (process.env.LAN_IP) {
-    return `http://${process.env.LAN_IP}:${port}`;
+    return `${protocol}://${process.env.LAN_IP}:${port}`;
   }
 
   const socketAddress = req.socket.localAddress?.replace('::ffff:', '');
   if (socketAddress && socketAddress !== '127.0.0.1' && socketAddress !== '::1') {
-    return `http://${socketAddress}:${port}`;
+    return `${protocol}://${socketAddress}:${port}`;
   }
 
   return null;

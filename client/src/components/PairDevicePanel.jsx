@@ -99,7 +99,13 @@ function PairDevicePanel({ onClose }) {
     // for why the owner's own tab (often "localhost") can't be trusted here.
     const lanHost = new URL(apiBase).hostname;
     const port = window.location.port ? `:${window.location.port}` : '';
-    const pairUrl = `http://${lanHost}${port}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
+    // Root cause of a past bug: this used to hardcode "http://" here, so
+    // after the app moved to HTTPS the QR kept pointing phones at plain
+    // HTTP against a server that no longer spoke it. Using the current
+    // page's own protocol keeps this correct automatically whenever the
+    // app's scheme changes again, instead of going stale a second time.
+    const protocol = window.location.protocol;
+    const pairUrl = `${protocol}//${lanHost}${port}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
     QRCode.toDataURL(pairUrl, { margin: 1, width: 220 })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);

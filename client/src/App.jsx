@@ -8,6 +8,42 @@ import PairPage from './pages/PairPage.jsx';
 import PhoneVault from './pages/PhoneVault.jsx';
 import { getAuthStatus, logoutVault } from './services/authService.js';
 import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
+import { isPhoneDevice } from './utils/deviceDetection.js';
+
+/**
+ * Root route ("/"): a phone should never drive the live PC session
+ * (LockScreen/VaultShell) directly - it always has its own local,
+ * PIN-unlocked experience at /phone instead. useState's lazy initializer
+ * runs the phone check exactly once, on this component's initial mount,
+ * so resizing an already-open desktop window narrower afterward can
+ * never trigger it - only the device this route is FIRST opened on
+ * decides the redirect.
+ *
+ * Deliberate tradeoff, not an oversight: this means first-time vault
+ * SETUP (the very first LockScreen visit, before any account exists) can
+ * now only be done from a PC/desktop browser. A phone always bounces to
+ * /phone, which requires an already-paired device to do anything at all -
+ * there is no path for a phone to run initial setup.
+ */
+function RootRoute({ sessionToken, statusLoading, initialized, onAuthenticated }) {
+  const [isPhone] = useState(isPhoneDevice);
+
+  if (isPhone) {
+    return <Navigate to="/phone" replace />;
+  }
+
+  if (sessionToken) {
+    return <Navigate to="/vault" replace />;
+  }
+
+  return (
+    <LockScreen
+      statusLoading={statusLoading}
+      initialized={initialized}
+      onAuthenticated={onAuthenticated}
+    />
+  );
+}
 
 function App() {
   const [statusLoading, setStatusLoading] = useState(true);
@@ -61,15 +97,12 @@ function App() {
       <Route
         path="/"
         element={
-          sessionToken ? (
-            <Navigate to="/vault" replace />
-          ) : (
-            <LockScreen
-              statusLoading={statusLoading}
-              initialized={initialized}
-              onAuthenticated={handleAuthenticated}
-            />
-          )
+          <RootRoute
+            sessionToken={sessionToken}
+            statusLoading={statusLoading}
+            initialized={initialized}
+            onAuthenticated={handleAuthenticated}
+          />
         }
       />
       <Route
