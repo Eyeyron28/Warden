@@ -65,26 +65,68 @@
 
 .documentPanel {
   width: 100%;
-  max-width: 480px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  max-width: 560px;
   padding: var(--space-5);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 
-.documentHeader {
+/* Stacked (file card above, actions below) up to the app's usual
+   breakpoint; side by side past it, per the "beside on wider screens"
+   requirement - same 560px used throughout the rest of the app's
+   responsive CSS. */
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (min-width: 560px) {
+  .panelBody {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .previewColumn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .actionsColumn {
+    flex-shrink: 0;
+    padding-top: var(--space-2);
+  }
+}
+
+.previewColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.fileCard {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
   min-width: 0;
 }
 
 .fileIcon {
   flex-shrink: 0;
   color: var(--color-text-faint);
+}
+
+.fileInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .filename {
@@ -95,6 +137,12 @@
   white-space: nowrap;
 }
 
+.fileMeta {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
 .previewImage {
   width: 100%;
   max-height: 60dvh;
@@ -103,23 +151,18 @@
   background: var(--color-bg-raised);
 }
 
-.previewFrame {
-  width: 100%;
-  height: 60dvh;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+.actionsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.noPreview {
-  padding: var(--space-6) var(--space-4);
-  text-align: center;
-  color: var(--color-text-faint);
-  font-size: var(--fs-sm);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
+.actionRow {
+  display: flex;
+  gap: var(--space-2);
 }
 
+.viewButton,
 .downloadButton {
   display: flex;
   align-items: center;
@@ -127,18 +170,54 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  color: var(--color-bg);
   font-weight: 600;
   font-size: var(--fs-sm);
+  white-space: nowrap;
   transition: background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
     transform var(--duration-fast) var(--ease-standard);
+}
+
+.viewButton {
+  flex: 1;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.viewButton:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+
+.downloadButton {
+  flex: 1;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: 1px solid transparent;
 }
 
 .downloadButton:hover {
   background: var(--color-accent-dim);
 }
 
+.viewButton:active,
 .downloadButton:active {
   transform: scale(0.98);
+}
+
+.savedHint {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}
+
+@media (min-width: 560px) {
+  .actionRow {
+    flex-direction: column;
+  }
+
+  .viewButton,
+  .downloadButton {
+    width: 100%;
+  }
 }
