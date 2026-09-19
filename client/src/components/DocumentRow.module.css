@@ -5,6 +5,13 @@
   padding-block: var(--space-3);
 }
 
+.selectCheckbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+}
+
 .row:not(:last-child) {
   border-bottom: 1px solid var(--color-border);
 }

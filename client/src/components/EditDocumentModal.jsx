@@ -4,6 +4,7 @@ import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import Modal from './Modal.jsx';
 import { updateDocument, listFolders } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import styles from './EditDocumentModal.module.css';
 
 // document.expiryDate arrives as an ISO string (e.g.
@@ -142,6 +143,7 @@ function EditDocumentModal({ document, onClose, onSaved }) {
               className={styles.textInput}
               value={expiryDate}
               onChange={(event) => setExpiryDate(event.target.value)}
+              min={getTodayDateInputValue()}
               disabled={submitting}
             />
             {expiryDate && (

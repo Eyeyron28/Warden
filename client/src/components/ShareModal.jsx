@@ -6,6 +6,7 @@ import Modal from './Modal.jsx';
 import { createShare, listShares, revokeShareById } from '../services/sharesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
+import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
 import styles from './ShareModal.module.css';
 
 const DURATION_PRESETS = [
@@ -40,6 +41,8 @@ function describeExpiry(expiresAtIso) {
 
 function ShareModal({ documentId, filename, onClose }) {
   const [durationHours, setDurationHours] = useState(DURATION_PRESETS[1].hours);
+  const [isCustomExpiry, setIsCustomExpiry] = useState(false);
+  const [customExpiry, setCustomExpiry] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createdShare, setCreatedShare] = useState(null);
@@ -91,11 +94,32 @@ function ShareModal({ documentId, filename, onClose }) {
     };
   }, [createdShare]);
 
+  // The endpoint only ever takes durationHours (an offset from now) - a
+  // custom expiry is just that same offset computed from the exact
+  // datetime the owner picked, rather than a fixed preset. No backend
+  // change needed, and fractional hours (e.g. 10 minutes = 1/6 hour) work
+  // fine since the controller only requires a positive finite number.
+  const customExpiryMs = isCustomExpiry && customExpiry ? new Date(customExpiry).getTime() : null;
+  const isCustomExpiryValid = Number.isFinite(customExpiryMs) && customExpiryMs > Date.now();
+  const canGenerate = !creating && (!isCustomExpiry || isCustomExpiryValid);
+
+  const handlePresetClick = (hours) => {
+    setIsCustomExpiry(false);
+    setDurationHours(hours);
+  };
+
+  const handleCustomClick = () => {
+    setIsCustomExpiry(true);
+    if (!customExpiry) setCustomExpiry(getNowDateTimeInputValue());
+  };
+
   const handleGenerate = async () => {
+    if (!canGenerate) return;
     setCreating(true);
     setCreateError('');
     try {
-      const result = await createShare(documentId, durationHours);
+      const hours = isCustomExpiry ? (customExpiryMs - Date.now()) / (60 * 60 * 1000) : durationHours;
+      const result = await createShare(documentId, hours);
       // result.shareUrl is now built server-side from the PC's actual
       // LAN-reachable address (same resolveLanIp helper pairing uses),
       // not window.location.origin - the owner's own tab is often on
@@ -120,6 +144,8 @@ function ShareModal({ documentId, filename, onClose }) {
   const handleGenerateAnother = () => {
     setCreatedShare(null);
     setCreateError('');
+    setIsCustomExpiry(false);
+    setCustomExpiry('');
   };
 
   const handleCopy = async () => {
@@ -168,21 +194,46 @@ function ShareModal({ documentId, filename, onClose }) {
                 <button
                   key={preset.hours}
                   type="button"
-                  className={`${styles.presetButton} ${durationHours === preset.hours ? styles.presetActive : ''}`}
-                  onClick={() => setDurationHours(preset.hours)}
+                  className={`${styles.presetButton} ${!isCustomExpiry && durationHours === preset.hours ? styles.presetActive : ''}`}
+                  onClick={() => handlePresetClick(preset.hours)}
                   disabled={creating}
                 >
                   {preset.label}
                 </button>
               ))}
+              <button
+                type="button"
+                className={`${styles.presetButton} ${isCustomExpiry ? styles.presetActive : ''}`}
+                onClick={handleCustomClick}
+                disabled={creating}
+              >
+                Custom
+              </button>
             </div>
+
+            {isCustomExpiry && (
+              <div className={styles.customExpiryField}>
+                <input
+                  type="datetime-local"
+                  className={styles.textInput}
+                  value={customExpiry}
+                  onChange={(event) => setCustomExpiry(event.target.value)}
+                  min={getNowDateTimeInputValue()}
+                  disabled={creating}
+                  aria-label="Custom expiry date and time"
+                />
+                {customExpiry && !isCustomExpiryValid && (
+                  <p className={styles.fieldError}>Pick a date and time in the future.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <p className={styles.error} role="alert">
             {createError || ' '}
           </p>
 
-          <button type="button" className={styles.generateButton} onClick={handleGenerate} disabled={creating}>
+          <button type="button" className={styles.generateButton} onClick={handleGenerate} disabled={!canGenerate}>
             {creating ? 'Generating...' : 'Generate share link'}
           </button>
         </div>

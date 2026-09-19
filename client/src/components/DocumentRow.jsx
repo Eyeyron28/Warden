@@ -15,7 +15,18 @@ function expiryBadgeLabel(daysUntilExpiry) {
  * (rather than a separate modal component) so a misclick can't destroy a
  * document - the row itself owns that confirmation state.
  */
-function DocumentRow({ document, onView, onDelete, onShare, onEdit, isViewing, isDeleting }) {
+function DocumentRow({
+  document,
+  onView,
+  onDelete,
+  onShare,
+  onEdit,
+  isViewing,
+  isDeleting,
+  selectMode,
+  selected,
+  onToggleSelect,
+}) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const handleDeleteClick = () => {
@@ -29,6 +40,16 @@ function DocumentRow({ document, onView, onDelete, onShare, onEdit, isViewing, i
 
   return (
     <li className={styles.row}>
+      {selectMode && (
+        <input
+          type="checkbox"
+          className={styles.selectCheckbox}
+          checked={selected}
+          onChange={() => onToggleSelect(document.id)}
+          aria-label={`Select ${document.filename}`}
+        />
+      )}
+
       <button
         type="button"
         className={styles.main}

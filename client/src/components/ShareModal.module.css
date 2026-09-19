@@ -46,6 +46,34 @@
   font-weight: 600;
 }
 
+.customExpiryField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.textInput {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-size: var(--fs-sm);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.textInput:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
+}
+
+.fieldError {
+  font-size: var(--fs-xs);
+  color: var(--color-danger);
+  margin: 0;
+}
+
 .error {
   min-height: 1.1em;
   font-size: var(--fs-xs);

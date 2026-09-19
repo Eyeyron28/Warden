@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { UploadSimple, X } from '@phosphor-icons/react';
 
+import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import styles from './UploadForm.module.css';
 
 function UploadForm({ onSubmit, onCancel, uploading, progress, error }) {
@@ -61,6 +62,7 @@ function UploadForm({ onSubmit, onCancel, uploading, progress, error }) {
             className={styles.textInput}
             value={expiryDate}
             onChange={(event) => setExpiryDate(event.target.value)}
+            min={getTodayDateInputValue()}
             disabled={uploading}
           />
         </div>
