@@ -178,24 +178,3 @@
     border-radius: var(--radius-md);
   }
 }
-
-/* Desktop: same single-column .panel, just given the wide viewport's
-   actual real estate instead of floating a phone-width card (420px) in a
-   lot of empty dark space. Doesn't overlap the max-width: 420px rule
-   above (900 > 420), and doesn't touch PhoneVault.module.css/.jsx at
-   all - /phone is a fully separate component. */
-@media (min-width: 900px) {
-  .panel {
-    max-width: 620px;
-    padding: var(--space-8) var(--space-7);
-    gap: var(--space-7);
-  }
-
-  .title {
-    font-size: var(--fs-2xl);
-  }
-
-  .subtitle {
-    max-width: 42ch;
-  }
-}
