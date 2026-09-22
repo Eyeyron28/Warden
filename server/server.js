@@ -67,10 +67,17 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 // mkcert-generated cert, valid only for the SANs it was issued with:
-// localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172. If this PC's LAN
-// IP ever changes to something outside that list, regenerate with
-// `mkcert localhost 127.0.0.1 <new-lan-ip>` and update the paths below
-// (and CORS_ORIGINS / VITE_API_BASE_URL) to match.
+// localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172, 192.168.1.38
+// (added when the LAN IP changed after switching Wi-Fi networks - a
+// request to an IP outside this list fails TLS validation with
+// SEC_E_WRONG_PRINCIPAL/ERR_CERT_COMMON_NAME_INVALID, which then makes
+// GET /api/auth/status look "unreachable" to the frontend and mistakenly
+// show the first-run setup screen instead of unlock, even though the
+// vault itself is untouched). If this PC's LAN IP ever changes again to
+// something outside this list, regenerate with `mkcert -key-file
+// localhost+3-key.pem -cert-file localhost+3.pem localhost 127.0.0.1
+// <every LAN IP still in use>` (run from certs/) and update CORS_ORIGINS
+// / VITE_API_BASE_URL / LAN_IP to match.
 const httpsOptions = {
   key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
   cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
