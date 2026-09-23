@@ -64,7 +64,7 @@ const createShare = asyncHandler(async (req, res) => {
   // a share link built from an unreachable address (e.g. silently
   // falling back to "localhost") would look fine to the owner and then
   // not work for whoever they send it to, with nothing telling them why.
-  const lanIp = resolveLanIp(req);
+  const lanIp = resolveLanIp();
   if (!lanIp) {
     const error = new Error(
       "Could not determine this PC's LAN address. Set the LAN_IP environment variable (see .env.example) and restart the server."

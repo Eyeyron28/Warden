@@ -2,10 +2,15 @@ import axios from 'axios';
 
 import { getToken, clearToken } from './session.js';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-
+// Relative, not an absolute host - resolves against whatever origin this
+// page itself was loaded from (localhost, a home Wi-Fi IP, a phone
+// hotspot IP...) and Vite's dev server proxy (see vite.config.js) forwards
+// it to the backend. This is what lets the app work on any network with
+// zero .env editing - a hardcoded absolute URL here went stale every time
+// the network changed, which made GET /api/auth/status fail and the app
+// wrongly fall back to showing first-run setup instead of unlock.
 const api = axios.create({
-  baseURL: `${baseURL}/api`,
+  baseURL: '/api',
 });
 // No default Content-Type here: axios infers "application/json" for plain
 // object payloads and the correct multipart boundary for FormData on its

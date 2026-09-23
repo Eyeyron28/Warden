@@ -9,6 +9,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const { detectLanIp } = require('./utils/lanIp');
 
 const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
@@ -73,11 +74,15 @@ const PORT = process.env.PORT || 5000;
 // SEC_E_WRONG_PRINCIPAL/ERR_CERT_COMMON_NAME_INVALID, which then makes
 // GET /api/auth/status look "unreachable" to the frontend and mistakenly
 // show the first-run setup screen instead of unlock, even though the
-// vault itself is untouched). If this PC's LAN IP ever changes again to
-// something outside this list, regenerate with `mkcert -key-file
-// localhost+3-key.pem -cert-file localhost+3.pem localhost 127.0.0.1
-// <every LAN IP still in use>` (run from certs/) and update CORS_ORIGINS
-// / VITE_API_BASE_URL / LAN_IP to match.
+// vault itself is untouched).
+//
+// Auto-detecting the LAN IP (utils/lanIp.js) fixes the frontend/pairing/
+// sharing side of this going stale on a network change, but it does NOT
+// fix certificate coverage - mkcert still only trusts the exact IPs
+// listed when it was generated. If a genuinely new IP is ever used,
+// regenerate with `mkcert -key-file localhost+3-key.pem -cert-file
+// localhost+3.pem localhost 127.0.0.1 <every LAN IP still in use, plus
+// the new one>` (run from certs/) and update CORS_ORIGINS to match.
 const httpsOptions = {
   key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
   cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
@@ -85,4 +90,21 @@ const httpsOptions = {
 
 https.createServer(httpsOptions, app).listen(PORT, () => {
   console.log(`Warden server running on port ${PORT} (https)`);
+
+  // Diagnostic only - pairing/sharing resolve this fresh per-request
+  // (resolveLanIp), not from this snapshot. Logged once here so a stale
+  // network or an unexpected adapter pick is obvious from startup output
+  // alone, without needing to trigger a pairing/share request to check.
+  if (process.env.LAN_IP) {
+    console.log(`LAN IP: ${process.env.LAN_IP} (manual override via LAN_IP in .env)`);
+  } else {
+    const detected = detectLanIp();
+    if (detected) {
+      console.log(`LAN IP: ${detected.ip} (auto-detected, adapter: "${detected.adapter}")`);
+    } else {
+      console.log(
+        'LAN IP: could not auto-detect one - phone pairing and network share links will fail until LAN_IP is set in .env.'
+      );
+    }
+  }
 });

@@ -1,18 +1,15 @@
+const { detectLanIp } = require('./lanIp');
+
 /**
  * Determines the PC's LAN-reachable IP address for a device physically
  * elsewhere on the network (a phone, another computer) to call directly.
- * There's no reliable way for a Node process to know its own LAN IP from
- * inside a request handler alone: a machine can have several network
- * interfaces (Wi-Fi, Ethernet, VPN, a Docker bridge...) and guessing
- * which one another device on the same network can actually reach is
- * exactly that - a guess.
  *
- * LAN_IP is the explicit, correct answer (see .env.example) and always
- * wins if set. Absent that, req.socket.localAddress is a best-effort
- * fallback - it only produces something useful if this request itself
- * happened to arrive via the LAN IP already, since a request to
- * localhost/127.0.0.1 makes the socket's local address equally useless
- * to another device.
+ * detectLanIp() (utils/lanIp.js, os.networkInterfaces()-based) is the
+ * primary answer now - it re-detects fresh on every call, so this stays
+ * correct across network changes with no manual editing. LAN_IP is kept
+ * as an explicit manual override for the rare case auto-detection picks
+ * the wrong interface (e.g. multiple real NICs) - set it in .env and it
+ * always wins over auto-detection.
  *
  * Shared by pairing.controller.js (building apiBase, the backend's own
  * address, for the phone to POST back to) and shares.controller.js
@@ -24,17 +21,12 @@
  * to fail loudly (a clear 500, not a silently broken localhost link)
  * rather than falling back to something that only works on this machine.
  */
-function resolveLanIp(req) {
+function resolveLanIp() {
   if (process.env.LAN_IP) {
     return process.env.LAN_IP;
   }
 
-  const socketAddress = req.socket.localAddress?.replace('::ffff:', '');
-  if (socketAddress && socketAddress !== '127.0.0.1' && socketAddress !== '::1') {
-    return socketAddress;
-  }
-
-  return null;
+  return detectLanIp()?.ip ?? null;
 }
 
 module.exports = { resolveLanIp };

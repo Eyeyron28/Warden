@@ -19,5 +19,20 @@ export default defineConfig({
       key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
       cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
     },
+    // Lets the frontend call a relative "/api" path (see services/api.js)
+    // instead of an absolute URL baked in at build time - Vite forwards
+    // it to the backend server-side, so it works identically whether the
+    // page itself was reached via localhost, a home Wi-Fi IP, or a phone
+    // hotspot IP, with nothing to edit when the network changes.
+    // `secure: false` because the backend's cert is the same self-signed
+    // mkcert one above, which Node's proxying http client wouldn't trust
+    // by default.
+    proxy: {
+      '/api': {
+        target: 'https://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 });

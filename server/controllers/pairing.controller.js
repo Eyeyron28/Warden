@@ -50,7 +50,7 @@ const DEVICE_TOKEN_BYTES = 32;
  */
 function resolveApiBase(req) {
   const port = process.env.PORT || 5000;
-  const lanIp = resolveLanIp(req);
+  const lanIp = resolveLanIp();
   return lanIp ? `${req.protocol}://${lanIp}:${port}` : null;
 }
 
