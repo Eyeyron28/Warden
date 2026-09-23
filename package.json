@@ -3,13 +3,14 @@
   "private": true,
   "version": "1.0.0",
   "description": "Warden - encrypted, locally-hosted personal document vault. This root package.json is a coordinating layer only (via `concurrently`) - it does not replace server/package.json or client/package.json. See README.md.",
-  "_predevComment": "npm runs 'predev' automatically before 'dev', with no separate step needed. A leftover Node process from a previous dev session (esp. on Windows, where a stopped npm run dev can leave node.exe behind - see README troubleshooting) has repeatedly held onto ports 5000/5173, causing either a hard EADDRINUSE crash on the backend or Vite silently bumping to 5174 (a port not in CORS_ORIGINS, so the frontend can't reach the API). Freeing both ports before every start makes 'npm run dev' reliable regardless of what happened last session.",
+  "_predevComment": "npm runs 'predev' automatically before 'dev', with no separate step needed. Two independent problems it fixes on every start: (1) scripts/ensure-cert.js auto-detects this PC's current LAN IP and regenerates certs/localhost+3.pem to cover it if it's missing (quiet no-op otherwise), so switching networks never again means a stale cert / false first-run-setup screen. (2) A leftover Node process from a previous dev session (esp. on Windows, where a stopped npm run dev can leave node.exe behind - see README troubleshooting) has repeatedly held onto ports 5000/5173, causing either a hard EADDRINUSE crash on the backend or Vite silently bumping to 5174 (a port not in CORS_ORIGINS, so the frontend can't reach the API) - npx kill-port frees both before every start regardless of what happened last session.",
   "scripts": {
-    "predev": "npx kill-port 5000 5173",
+    "predev": "node scripts/ensure-cert.js && npx kill-port 5000 5173",
     "dev": "concurrently -k -n server,client -c blue,magenta \"npm --prefix server run dev\" \"npm --prefix client run dev -- --host\""
   },
   "devDependencies": {
     "concurrently": "^10.0.5",
-    "kill-port": "^2.0.1"
+    "kill-port": "^2.0.1",
+    "node-forge": "^1.4.0"
   }
 }
