@@ -178,3 +178,87 @@
     border-radius: var(--radius-md);
   }
 }
+
+/* Desktop: landscape two-column layout instead of just a wider single
+   column, specifically so nothing ever needs the PAGE to scroll - a
+   fixed-ish card height (capped at 90dvh either way) with each column's
+   own content vertically centered inside it, and only the form itself
+   (the one part that can genuinely grow - password requirements checklist
+   plus every error message showing at once) scrolling internally if it's
+   ever taller than the card, never the whole page.
+   .panel's children (.brandRow, VaultDial's own root, .copy, .form) are
+   all direct siblings with no wrapper divs around the "columns" - adding
+   those would mean editing LockScreen.jsx, when this is meant to be a
+   pure CSS restructuring. Column placement below is done with explicit
+   grid-column/grid-row on each of those existing classes instead, plus
+   two structural selectors for the two children that DON'T carry a
+   LockScreen.module.css class of their own (VaultDial's root div is
+   styled by VaultDial.module.css, not this file): ".brandRow + div"
+   (VaultDial always immediately follows .brandRow when both render) and
+   ":only-child" (RecoveryKeyReveal, the sole child of .panel during the
+   setup-reveal state, when .brandRow/VaultDial are hidden entirely). */
+@media (min-width: 900px) {
+  .panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    column-gap: var(--space-8);
+    row-gap: var(--space-3);
+    width: 100%;
+    max-width: 900px;
+    height: min(90dvh, 620px);
+    max-height: 90dvh;
+    overflow: hidden;
+    padding: var(--space-8);
+  }
+
+  /* Left column: brand row above VaultDial, both centered - row1/row2
+     split the column's height, so as a pair they land centered on the
+     row boundary regardless of which state is showing. */
+  .brandRow {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: center;
+    align-self: end;
+  }
+
+  .brandRow + div {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: center;
+    align-self: start;
+  }
+
+  /* Right column: copy above the active form, same row split as the
+     left column so both columns center on the same horizontal line. */
+  .copy {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .form {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    /* Lets this shrink below its content's natural height instead of
+       forcing row 2 (and the whole panel) taller - grid items default to
+       min-height: auto, which would otherwise block the scroll below
+       from ever kicking in. */
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  /* Setup-reveal state: RecoveryKeyReveal is .panel's only child here
+     (.brandRow/VaultDial are hidden for this state already, in
+     LockScreen.jsx) - span both columns and center it in the card. */
+  .panel > *:only-child {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    align-self: center;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+}
