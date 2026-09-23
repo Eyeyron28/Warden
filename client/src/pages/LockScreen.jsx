@@ -5,6 +5,8 @@ import VaultDial from '../components/VaultDial.jsx';
 import PasswordField from '../components/PasswordField.jsx';
 import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
+import UsbRecoveryModal from '../components/UsbRecoveryModal.jsx';
+import PhoneRecoveryModal from '../components/PhoneRecoveryModal.jsx';
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -33,6 +35,13 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   const [dialStatus, setDialStatus] = useState('idle'); // idle | unlocking | unlocked | error
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Alongside the recovery-key flow above: two more ways to reset a
+  // forgotten master password (see UsbRecoveryModal/PhoneRecoveryModal).
+  // Each is a self-contained modal that calls onAuthenticated itself on
+  // success, same as every other unlock/recover path here.
+  const [usbRecoveryOpen, setUsbRecoveryOpen] = useState(false);
+  const [phoneRecoveryOpen, setPhoneRecoveryOpen] = useState(false);
 
   const timeoutRef = useRef(null);
 
@@ -156,6 +165,17 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     if (pendingSession) onAuthenticated(pendingSession.sessionToken);
   };
 
+  // Shared success handler for both new recovery modals - same settle
+  // delay/dial-unlocked flourish as handleUnlockSubmit/handleRecoverSubmit,
+  // just triggered from a modal instead of this component's own form.
+  const handleRecoveryModalSuccess = (sessionToken) => {
+    setUsbRecoveryOpen(false);
+    setPhoneRecoveryOpen(false);
+    setDialStatus('unlocked');
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
+  };
+
   const isChecking = statusLoading;
   const isSetupReveal = !isChecking && !initialized && setupPhase === 'reveal' && pendingSession;
   const isSetupForm = !isChecking && !initialized && setupPhase === 'form';
@@ -251,6 +271,17 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
               <button type="button" className={styles.linkButton} onClick={switchToRecover}>
                 Forgot your password? Use your recovery key
               </button>
+              <div className={styles.recoveryLinkRow}>
+                <button type="button" className={styles.linkButton} onClick={() => setUsbRecoveryOpen(true)}>
+                  Recover with USB
+                </button>
+                <span className={styles.recoveryLinkDivider} aria-hidden="true">
+                  ·
+                </span>
+                <button type="button" className={styles.linkButton} onClick={() => setPhoneRecoveryOpen(true)}>
+                  Recover with paired phone
+                </button>
+              </div>
             </form>
           </>
         )}
@@ -316,6 +347,20 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
           />
         )}
       </div>
+
+      {usbRecoveryOpen && (
+        <UsbRecoveryModal
+          onClose={() => setUsbRecoveryOpen(false)}
+          onRecovered={handleRecoveryModalSuccess}
+        />
+      )}
+
+      {phoneRecoveryOpen && (
+        <PhoneRecoveryModal
+          onClose={() => setPhoneRecoveryOpen(false)}
+          onRecovered={handleRecoveryModalSuccess}
+        />
+      )}
     </main>
   );
 }

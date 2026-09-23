@@ -64,6 +64,20 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
+    // SHA-256 of the DEK itself (utils/crypto.js fingerprintDEK), set once
+    // at setup and never changed since the DEK itself never changes. Lets
+    // the USB and paired-phone recovery flows confirm the key material
+    // they unwrapped from an external source (a backup file, a phone)
+    // actually belongs to THIS vault before writing anything - a correct
+    // passphrase/token only proves the submitted blob unwraps cleanly, not
+    // that the blob came from this installation at all. Not needed by the
+    // recovery-key flow, which is already anchored to this same User
+    // record's own wrappedDEKRecovery field and has no equivalent risk.
+    dekFingerprint: {
+      type: String,
+      required: true,
+    },
+
     // Count of consecutive failed unlock attempts since the last lockout
     // (or since the last successful unlock). Resets to 0 either time.
     failedAttempts: {

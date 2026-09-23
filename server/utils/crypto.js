@@ -216,6 +216,30 @@ function generateDEK() {
 }
 
 /**
+ * SHA-256 of the DEK itself, hex-encoded - stored on User as
+ * `dekFingerprint` (set once at setup, alongside generateDEK(), and never
+ * changed - the DEK itself never changes across this app's lifetime).
+ *
+ * Used exclusively by the USB and paired-phone recovery flows to confirm,
+ * BEFORE writing anything, that the key material they unwrapped from an
+ * external source (a USB backup file, a phone's re-wrapped copy) is
+ * actually THIS vault's real DEK - not a superficially-valid-looking one
+ * from a different Warden installation (e.g. an old USB backup or a
+ * phone paired with someone else's vault). A correct passphrase/token
+ * only proves the submitted blob unwraps cleanly; it says nothing about
+ * whether that blob belongs to this vault at all. This is a hash of the
+ * DEK, not the DEK-derived-from-anything-secret, so it's safe to store
+ * and compare in the open, the same way `passwordHash`/`recoveryKeyHash`
+ * are.
+ *
+ * @param {Buffer} dek
+ * @returns {string} hex-encoded SHA-256 digest
+ */
+function fingerprintDEK(dek) {
+  return crypto.createHash('sha256').update(dek).digest('hex');
+}
+
+/**
  * Encrypts (wraps) a key with another key, via AES-256-GCM - mechanically
  * identical to `encryptFile`, just operating on a raw key buffer instead
  * of file content. Used to store the DEK encrypted under a
@@ -336,6 +360,7 @@ module.exports = {
   encryptFile,
   decryptFile,
   generateDEK,
+  fingerprintDEK,
   wrapKey,
   unwrapKey,
   generateRecoveryKey,

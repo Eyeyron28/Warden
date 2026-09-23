@@ -12,10 +12,12 @@ export async function getBackupStatus() {
 /**
  * POST /api/backup/export
  * @param {string} targetPath
+ * @param {string} usbPassphrase - sets/refreshes this backup's USB
+ *   recovery passphrase (see POST /api/auth/recover-via-usb)
  * @returns {Promise<{ documentsBackedUp: number, backupPath: string, timestamp: string }>}
  */
-export async function exportBackup(targetPath) {
-  const { data } = await api.post('/backup/export', { targetPath });
+export async function exportBackup(targetPath, usbPassphrase) {
+  const { data } = await api.post('/backup/export', { targetPath, usbPassphrase });
   return data;
 }
 

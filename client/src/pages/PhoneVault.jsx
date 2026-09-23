@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, DeviceMobile, LockKey, Plus } from '@phosphor-icons/react';
+import { useSearchParams } from 'react-router-dom';
+import { ArrowRight, DeviceMobile, Lifebuoy, LockKey, Plus } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import UploadForm from '../components/UploadForm.jsx';
@@ -18,8 +19,13 @@ import {
   computeChecksum,
   base64ToBytes,
   bytesToBase64,
+  deriveKeyFromToken,
+  wrapDEK,
+  getUnwrappedDEK,
+  generateSaltHex,
 } from '../services/localCrypto.js';
 import { pullDocuments, pushDocuments } from '../services/syncService.js';
+import { submitPhoneRecovery } from '../services/phoneRecoveryService.js';
 import { extractErrorMessage } from '../services/api.js';
 import styles from './PhoneVault.module.css';
 
@@ -37,6 +43,13 @@ import styles from './PhoneVault.module.css';
  * and /push, authenticated with this device's deviceToken.
  */
 function PhoneVault() {
+  const [searchParams] = useSearchParams();
+  // Pre-fills the recovery-help form below if this page was opened by
+  // scanning the PC's recovery QR (PhoneRecoveryModal.jsx) - a directly-
+  // openable `/phone?recover=<token>` URL, same pattern as PairPage's
+  // `?apiBase=`. Still fully usable if typed in by hand instead.
+  const recoverTokenFromUrl = searchParams.get('recover') || '';
+
   const [phase, setPhase] = useState('checking'); // checking | no-device | locked | unlocked
   const [deviceAuth, setDeviceAuth] = useState(null);
 
@@ -50,6 +63,12 @@ function PhoneVault() {
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
+
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState(recoverTokenFromUrl);
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
 
   const [viewingId, setViewingId] = useState(null);
   const [viewError, setViewError] = useState('');
@@ -100,6 +119,14 @@ function PhoneVault() {
     if (phase === 'unlocked') loadDocuments();
   }, [phase, loadDocuments]);
 
+  // Arrived here via the PC's recovery QR (see recoverTokenFromUrl above)
+  // and just finished PIN-unlocking - open the recovery-help panel
+  // automatically instead of making the owner find it themselves, since
+  // that's clearly why they scanned the code in the first place.
+  useEffect(() => {
+    if (phase === 'unlocked' && recoverTokenFromUrl) setRecoveryOpen(true);
+  }, [phase, recoverTokenFromUrl]);
+
   const handleUnlock = async (event) => {
     event.preventDefault();
     if (unlocking || !pin) return;
@@ -124,7 +151,52 @@ function PhoneVault() {
     setSyncError('');
     setAddOpen(false);
     setAddError('');
+    setRecoveryOpen(false);
+    setRecoveryError('');
+    setRecoverySuccess(false);
     setPhase('locked');
+  };
+
+  /**
+   * "Help recover PC vault": this phone already holds the DEK unwrapped
+   * in memory (from the PIN unlock above) - wraps a COPY of it under a
+   * key derived from `recoveryToken` (the code read off the locked-out
+   * PC's screen) plus a fresh salt generated for this one request, and
+   * sends only that wrapped form to the PC via its existing deviceToken.
+   * The raw DEK itself never leaves this function, let alone this device.
+   */
+  const handleSubmitRecovery = async (event) => {
+    event.preventDefault();
+    if (recoverySubmitting || !recoveryToken.trim()) return;
+
+    const dek = getUnwrappedDEK();
+    if (!dek) {
+      setRecoveryError('This device is locked.');
+      return;
+    }
+
+    setRecoverySubmitting(true);
+    setRecoveryError('');
+    try {
+      const token = recoveryToken.trim();
+      const saltHex = generateSaltHex();
+      const kek = await deriveKeyFromToken(token, saltHex);
+      const wrapped = await wrapDEK(dek, kek);
+
+      await submitPhoneRecovery(deviceAuth.apiBase, deviceAuth.deviceToken, {
+        recoveryToken: token,
+        wrappedDEK: wrapped.wrappedKey,
+        wrappedDEKIv: wrapped.iv,
+        wrappedDEKAuthTag: wrapped.authTag,
+        wrappedDEKSalt: saltHex,
+      });
+
+      setRecoverySuccess(true);
+    } catch (err) {
+      setRecoveryError(extractErrorMessage(err, 'Could not reach the PC. Check the code and try again.'));
+    } finally {
+      setRecoverySubmitting(false);
+    }
   };
 
   /**
@@ -348,6 +420,18 @@ function PhoneVault() {
                 <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
                   {syncing ? 'Syncing...' : 'Sync now'}
                 </button>
+                <button
+                  type="button"
+                  className={styles.syncButton}
+                  onClick={() => {
+                    setRecoveryOpen((open) => !open);
+                    setRecoveryError('');
+                    setRecoverySuccess(false);
+                  }}
+                >
+                  <Lifebuoy size={16} weight="bold" />
+                  <span>Help recover PC vault</span>
+                </button>
               </div>
             </div>
 
@@ -362,6 +446,55 @@ function PhoneVault() {
                 progress={100}
                 error={addError}
               />
+            )}
+
+            {recoveryOpen && (
+              <div className={styles.formPanel}>
+                {recoverySuccess ? (
+                  <>
+                    <p className={styles.hint}>
+                      Sent. Go back to the locked-out PC and finish choosing a new master password
+                      there.
+                    </p>
+                    <button
+                      type="button"
+                      className={styles.submitButton}
+                      onClick={() => setRecoveryOpen(false)}
+                    >
+                      Done
+                    </button>
+                  </>
+                ) : (
+                  <form className={styles.form} onSubmit={handleSubmitRecovery} noValidate>
+                    <div className={styles.field}>
+                      <label htmlFor="recovery-token" className={styles.fieldLabel}>
+                        Code shown on the locked-out PC
+                      </label>
+                      <input
+                        id="recovery-token"
+                        type="text"
+                        className={styles.textInput}
+                        value={recoveryToken}
+                        onChange={(event) => setRecoveryToken(event.target.value)}
+                        placeholder="Paste or type the code"
+                        autoComplete="off"
+                        spellCheck={false}
+                        autoFocus={!recoverTokenFromUrl}
+                      />
+                      {recoveryError && <p className={styles.fieldError}>{recoveryError}</p>}
+                    </div>
+
+                    <button
+                      type="submit"
+                      className={styles.submitButton}
+                      disabled={recoverySubmitting || !recoveryToken.trim()}
+                    >
+                      <span>{recoverySubmitting ? 'Sending...' : 'Send to PC'}</span>
+                      <ArrowRight size={18} weight="bold" />
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
 
             {syncMessage && <p className={styles.syncMessage}>{syncMessage}</p>}

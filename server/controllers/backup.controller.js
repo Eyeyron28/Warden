@@ -4,6 +4,9 @@ const crypto = require('crypto');
 
 const Document = require('../models/Document');
 const BackupLog = require('../models/BackupLog');
+const { generateSalt, deriveEncryptionKey, wrapKey } = require('../utils/crypto');
+
+const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -102,7 +105,7 @@ function isValidBackupRecord(record) {
 
 /**
  * POST /api/backup/export
- * Body: { targetPath }
+ * Body: { targetPath, usbPassphrase }
  *
  * Copies every document's already-encrypted blob (plus its iv/authTag/
  * checksum) into targetPath/warden-backup, one JSON file per document,
@@ -111,12 +114,29 @@ function isValidBackupRecord(record) {
  * vault, which is the whole point of backing up ciphertext-at-rest: a
  * copied USB drive is useless without the master password, no separate
  * pairing or key exchange required.
+ *
+ * Also wraps a COPY of the vault's DEK under a key derived from
+ * `usbPassphrase` (same wrap-the-DEK pattern as the password/recovery-key/
+ * phone-PIN KEKs on User and PairedDevice) and writes it into the
+ * manifest as wrappedDEKUsb* - this is what lets POST
+ * /api/auth/recover-via-usb reset the master password later using only
+ * this backup folder and the passphrase, without the DEK ever touching
+ * disk unencrypted. The manifest's existing tamper-evidence checksum
+ * (below) covers these new fields automatically, since it hashes
+ * whatever manifestBody ends up containing.
  */
 const exportBackup = asyncHandler(async (req, res) => {
-  const { targetPath } = req.body;
+  const { targetPath, usbPassphrase } = req.body;
 
   if (!targetPath || typeof targetPath !== 'string') {
     throw badRequest('A targetPath is required.');
+  }
+  if (
+    !usbPassphrase ||
+    typeof usbPassphrase !== 'string' ||
+    usbPassphrase.length < MIN_USB_PASSPHRASE_LENGTH
+  ) {
+    throw badRequest(`A USB recovery passphrase of at least ${MIN_USB_PASSPHRASE_LENGTH} characters is required.`);
   }
 
   await assertWritableDirectory(targetPath);
@@ -164,15 +184,29 @@ const exportBackup = asyncHandler(async (req, res) => {
 
   const timestamp = new Date().toISOString();
 
+  // A COPY of the vault's DEK, wrapped under a key derived from
+  // usbPassphrase - never the raw DEK. req.session.encryptionKey is the
+  // live DEK, available here because this route is behind requireSession
+  // (routes/backup.routes.js), same as every other place in this app
+  // that reads it.
+  const usbSalt = generateSalt();
+  const usbKek = deriveEncryptionKey(usbPassphrase, usbSalt);
+  const wrappedUsb = wrapKey(req.session.encryptionKey, usbKek);
+
   // Tamper-evidence: hash the manifest's own content (everything except
   // the checksum field) and store the hash alongside it. Editing the
   // manifest afterward - by hand or by a corrupted copy - won't match a
-  // recomputed hash of the remaining fields, so tampering is detectable
-  // without needing to re-check every document file.
+  // recomputed hash of the remaining fields, so tampering (including of
+  // the wrapped DEK fields below) is detectable without needing to
+  // re-check every document file.
   const manifestBody = {
     timestamp,
     documentCount: documents.length,
     backupPath: backupDir,
+    wrappedDEKUsb: wrappedUsb.wrappedKey,
+    wrappedDEKUsbIv: wrappedUsb.iv,
+    wrappedDEKUsbAuthTag: wrappedUsb.authTag,
+    wrappedDEKUsbSalt: usbSalt,
   };
   const checksum = crypto.createHash('sha256').update(JSON.stringify(manifestBody)).digest('hex');
   const manifest = { ...manifestBody, checksum };

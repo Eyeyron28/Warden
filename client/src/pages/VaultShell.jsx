@@ -366,11 +366,11 @@ function VaultShell({ onLocked }) {
     setRestoreResult(null);
   };
 
-  const handleBackupExport = async (targetPath) => {
+  const handleBackupExport = async (targetPath, usbPassphrase) => {
     setBackupSubmitting(true);
     setBackupError('');
     try {
-      const result = await exportBackup(targetPath);
+      const result = await exportBackup(targetPath, usbPassphrase);
       setBackupResult(result);
       setBackupStatus({
         lastBackupAt: result.timestamp,
