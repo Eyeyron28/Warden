@@ -1,44 +1,41 @@
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .pill {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--color-border-strong);
+  padding: var(--space-3) var(--space-1);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   color: var(--color-text-muted);
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    background var(--duration-fast) var(--ease-standard);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 
 .pill:hover {
-  border-color: var(--color-accent);
   color: var(--color-text);
 }
 
 .pillActive {
   border-color: var(--color-accent);
-  background: var(--color-accent-wash);
   color: var(--color-text);
   font-weight: 600;
 }
 
 .count {
-  padding: 0 var(--space-1);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--color-bg-raised);
   color: var(--color-text-faint);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
 }
 
 .pillActive .count {

@@ -1,0 +1,93 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 240px;
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: transform var(--duration-base) var(--ease-standard),
+    width var(--duration-base) var(--ease-standard);
+}
+
+/* Narrow viewports: fixed overlay drawer, closed = off-screen. */
+.navClosed,
+.navOpen {
+  position: fixed;
+  top: var(--header-height);
+  bottom: 0;
+  left: 0;
+  z-index: 16;
+}
+
+.navClosed {
+  transform: translateX(-100%);
+}
+
+.navOpen {
+  transform: translateX(0);
+  box-shadow: var(--shadow-elevated);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.item:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.itemActive {
+  background: var(--color-accent-wash);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.item:disabled {
+  color: var(--color-text-faint);
+  cursor: default;
+}
+
+/* Wide desktop: persistent sidebar instead of an overlay drawer -
+   collapses to width 0 rather than sliding off, so it never covers
+   content it's meant to sit beside. */
+@media (min-width: 900px) {
+  .backdrop {
+    display: none;
+  }
+
+  .navClosed,
+  .navOpen {
+    position: sticky;
+    top: var(--header-height);
+    height: calc(100dvh - var(--header-height));
+    transform: none;
+    box-shadow: none;
+  }
+
+  .navClosed {
+    width: 0;
+    padding-inline: 0;
+    border-right: none;
+  }
+}

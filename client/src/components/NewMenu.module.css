@@ -1,0 +1,31 @@
+.newButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.newButton:hover {
+  background: var(--color-accent-dim);
+}
+
+.newButton:active {
+  transform: scale(0.97);
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

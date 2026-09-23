@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const Folder = require('../models/Folder');
 const { encryptFile, decryptFile } = require('../utils/crypto');
 
 // Routes are async, but Express doesn't forward rejected promises to
@@ -165,16 +166,21 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/documents/folders
- * Distinct folder names currently in use across all documents, plus
- * "root" even if nothing is explicitly filed there - every uncategorized
- * document already defaults to "root" via the schema, so the frontend
- * can always offer it as a destination even in a freshly-emptied vault.
- * "root" is sorted first since it's the default/catch-all rather than a
- * folder the owner named; everything else is alphabetical.
+ * Distinct folder names currently in use across all documents, PLUS any
+ * empty folders created via POST /api/documents/folders (the Folder
+ * collection - see models/Folder.js) that don't have a document in them
+ * yet, plus "root" even if nothing is explicitly filed there - every
+ * uncategorized document already defaults to "root" via the schema, so
+ * the frontend can always offer it as a destination even in a freshly-
+ * emptied vault. "root" is sorted first since it's the default/catch-all
+ * rather than a folder the owner named; everything else is alphabetical.
  */
 const listFolders = asyncHandler(async (req, res) => {
-  const folders = await Document.distinct('folder');
-  const folderSet = new Set(folders.filter(Boolean));
+  const [documentFolders, emptyFolders] = await Promise.all([
+    Document.distinct('folder'),
+    Folder.distinct('name'),
+  ]);
+  const folderSet = new Set([...documentFolders, ...emptyFolders].filter(Boolean));
   folderSet.add(FOLDER_ROOT);
 
   const sorted = [...folderSet].sort((a, b) => {
@@ -184,6 +190,44 @@ const listFolders = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json(sorted);
+});
+
+/**
+ * POST /api/documents/folders
+ * Body: { name }
+ * Creates an empty folder - "New folder" from the frontend's "+ New"
+ * menu. Nothing references this record directly; it exists purely so
+ * GET /api/documents/folders can list a folder that has zero documents
+ * in it yet (see models/Folder.js). Filing a document into this name
+ * later works exactly like filing one into any other folder string -
+ * Document.folder doesn't know or care whether a Folder record exists.
+ *
+ * Idempotent-ish: creating a folder that already has documents in it (or
+ * an empty Folder record with the same name) is treated as success
+ * rather than a conflict - the caller asked for a folder with this name
+ * to exist, and after this request, it does.
+ */
+const createFolder = asyncHandler(async (req, res) => {
+  const { name } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw badRequest('A folder name is required.');
+  }
+
+  const trimmed = name.trim();
+  if (trimmed === FOLDER_ROOT) {
+    throw badRequest('"root" is reserved for uncategorized documents.');
+  }
+
+  const alreadyHasDocuments = await Document.exists({ folder: trimmed });
+  if (!alreadyHasDocuments) {
+    // upsert rather than a plain create: a second "create this folder"
+    // call for a name that already exists as an empty Folder record
+    // should succeed quietly, not throw a duplicate-key error.
+    await Folder.updateOne({ name: trimmed }, { $setOnInsert: { name: trimmed } }, { upsert: true });
+  }
+
+  res.status(201).json({ name: trimmed });
 });
 
 /**
@@ -306,6 +350,7 @@ module.exports = {
   listDocuments,
   listExpiringDocuments,
   listFolders,
+  createFolder,
   updateDocument,
   viewDocument,
   deleteDocument,

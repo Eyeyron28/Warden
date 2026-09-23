@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  CheckSquare,
-  ClockCounterClockwise,
-  DeviceMobile,
-  FolderLock,
-  HardDrive,
-  Plus,
-  ShareNetwork,
-  ShieldCheck,
-  Trash,
-} from '@phosphor-icons/react';
+import { FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
+import SideNav from '../components/SideNav.jsx';
 import DocumentRow from '../components/DocumentRow.jsx';
+import DocumentCard from '../components/DocumentCard.jsx';
 import UploadForm from '../components/UploadForm.jsx';
+import NewMenu from '../components/NewMenu.jsx';
+import SyncMenu from '../components/SyncMenu.jsx';
+import NewFolderModal from '../components/NewFolderModal.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
 import RestorePanel from '../components/RestorePanel.jsx';
+import Modal from '../components/Modal.jsx';
 import PairDevicePanel from '../components/PairDevicePanel.jsx';
 import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
 import ShareModal from '../components/ShareModal.jsx';
@@ -40,6 +36,29 @@ import styles from './VaultShell.module.css';
 // page, so there's no point flashing an error banner for it.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
+// Same breakpoint LockScreen's desktop layout and the phone-detection
+// check use elsewhere in this app - collapsed by default below it,
+// open by default at or above it. Computed once via useState's lazy
+// initializer (same pattern as App.jsx's RootRoute phone check), so a
+// later window resize never overrides a choice the person made by
+// toggling the hamburger button themselves.
+const DESKTOP_NAV_BREAKPOINT = '(min-width: 900px)';
+function isDesktopWidth() {
+  return typeof window !== 'undefined' && window.matchMedia(DESKTOP_NAV_BREAKPOINT).matches;
+}
+
+/**
+ * Derives the folder a file from a webkitdirectory selection belongs in
+ * from its relative path (e.g. "Taxes/2024/receipt.pdf" -> "Taxes/2024").
+ * A file with no directory component in its relative path (shouldn't
+ * happen from a real folder picker, but worth a safe fallback) files
+ * into "root" like any other document with no folder set.
+ */
+function folderFromRelativePath(relativePath) {
+  const lastSlash = relativePath.lastIndexOf('/');
+  return lastSlash === -1 ? 'root' : relativePath.slice(0, lastSlash);
+}
+
 function VaultShell({ onLocked }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +68,8 @@ function VaultShell({ onLocked }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
+
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
 
   const [viewingId, setViewingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -64,6 +85,10 @@ function VaultShell({ onLocked }) {
 
   const [folders, setFolders] = useState([]);
   const [activeFolder, setActiveFolder] = useState(null); // null = "All"
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
+
+  const [navOpen, setNavOpen] = useState(isDesktopWidth);
 
   const [backupStatus, setBackupStatus] = useState(null);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -139,6 +164,44 @@ function VaultShell({ onLocked }) {
     } finally {
       setUploading(false);
     }
+  };
+
+  // "Upload folder" from the New menu - reuses the exact same
+  // POST /api/documents call as a single-file upload, once per file,
+  // with the folder derived from that file's own relative path. No new
+  // endpoint: an upload of N files is just N of the same request the
+  // single-file flow already makes.
+  const handleUploadFolder = async (fileList) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    setUploadOpen(false);
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadError('');
+
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const relativePath = file.webkitRelativePath || file.name;
+        const folder = folderFromRelativePath(relativePath);
+
+        await uploadDocument({ file, folder }, (filePercent) => {
+          const overall = Math.round(((index + filePercent / 100) / files.length) * 100);
+          setUploadProgress(overall);
+        });
+      }
+      await refresh();
+      refreshFolders();
+    } catch (err) {
+      setUploadError(extractErrorMessage(err, 'Folder upload failed.'));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFolderCreated = () => {
+    refreshFolders();
   };
 
   const handleView = async (id) => {
@@ -258,44 +321,37 @@ function VaultShell({ onLocked }) {
     refreshFolders();
   };
 
-  const openUploadPanel = () => {
+  const closeAllPanels = () => {
+    setUploadOpen(false);
     setBackupOpen(false);
     setRestoreOpen(false);
     setPairOpen(false);
     setDevicesOpen(false);
-    setUploadOpen((open) => !open);
+  };
+
+  const openUploadPanel = () => {
+    closeAllPanels();
+    setUploadOpen(true);
   };
 
   const openBackupPanel = () => {
-    setUploadOpen(false);
-    setRestoreOpen(false);
-    setPairOpen(false);
-    setDevicesOpen(false);
-    setBackupOpen((open) => !open);
+    closeAllPanels();
+    setBackupOpen(true);
   };
 
   const openRestorePanel = () => {
-    setUploadOpen(false);
-    setBackupOpen(false);
-    setPairOpen(false);
-    setDevicesOpen(false);
-    setRestoreOpen((open) => !open);
+    closeAllPanels();
+    setRestoreOpen(true);
   };
 
   const openPairPanel = () => {
-    setUploadOpen(false);
-    setBackupOpen(false);
-    setRestoreOpen(false);
-    setDevicesOpen(false);
-    setPairOpen((open) => !open);
+    closeAllPanels();
+    setPairOpen(true);
   };
 
   const openDevicesPanel = () => {
-    setUploadOpen(false);
-    setBackupOpen(false);
-    setRestoreOpen(false);
-    setPairOpen(false);
-    setDevicesOpen((open) => !open);
+    closeAllPanels();
+    setDevicesOpen(true);
   };
 
   const closeBackupPanel = () => {
@@ -352,12 +408,18 @@ function VaultShell({ onLocked }) {
   }, [documents]);
 
   // Filtering is purely client-side against the already-fetched list -
-  // no per-folder backend endpoint, `folders`/`activeFolder` only ever
-  // drive what's shown here.
+  // no per-folder or per-search backend endpoint, `folders`/`activeFolder`/
+  // `searchTerm` only ever drive what's shown here. Folder and search
+  // filters combine (AND), matching how Drive's own folder+search
+  // filtering behaves.
   const visibleDocuments = useMemo(() => {
-    if (activeFolder === null) return documents;
-    return documents.filter((doc) => (doc.folder || 'root') === activeFolder);
-  }, [documents, activeFolder]);
+    const trimmedSearch = searchTerm.trim().toLowerCase();
+    return documents.filter((doc) => {
+      if (activeFolder !== null && (doc.folder || 'root') !== activeFolder) return false;
+      if (trimmedSearch && !doc.filename.toLowerCase().includes(trimmedSearch)) return false;
+      return true;
+    });
+  }, [documents, activeFolder, searchTerm]);
 
   const backupStatusLine = backupStatus?.lastBackupAt
     ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
@@ -367,194 +429,262 @@ function VaultShell({ onLocked }) {
 
   return (
     <div className={styles.shell}>
-      <Header onLock={onLocked} />
+      <Header
+        onLock={onLocked}
+        onToggleNav={() => setNavOpen((open) => !open)}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        showSelectButton={!selectMode && documents.length > 0}
+        onEnterSelectMode={enterSelectMode}
+      />
 
-      <main className={styles.content}>
-        <div className={styles.contentInner}>
-          <div className={styles.toolbar}>
-            <div>
-              <h1 className={styles.heading}>Your documents</h1>
-              <p className={styles.count}>
-                {loading
-                  ? 'Loading...'
-                  : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
-              </p>
-            </div>
-            <div className={styles.toolbarActions}>
-              {!selectMode && documents.length > 0 && (
-                <button type="button" className={styles.secondaryActionButton} onClick={enterSelectMode}>
-                  <CheckSquare size={16} weight="bold" />
-                  <span>Select</span>
-                </button>
-              )}
-              <button type="button" className={styles.secondaryActionButton} onClick={openPairPanel}>
-                <DeviceMobile size={16} weight="bold" />
-                <span>Pair a device</span>
-              </button>
-              <button type="button" className={styles.secondaryActionButton} onClick={openDevicesPanel}>
-                <ShieldCheck size={16} weight="bold" />
-                <span>Paired devices</span>
-              </button>
-              <button type="button" className={styles.secondaryActionButton} onClick={openRestorePanel}>
-                <ClockCounterClockwise size={16} weight="bold" />
-                <span>Restore from backup</span>
-              </button>
-              <button type="button" className={styles.secondaryActionButton} onClick={openBackupPanel}>
-                <HardDrive size={16} weight="bold" />
-                <span>Back up to USB</span>
-              </button>
-              <button type="button" className={styles.addButton} onClick={openUploadPanel}>
-                <Plus size={16} weight="bold" />
-                <span>Add document</span>
-              </button>
-            </div>
-          </div>
+      <div className={styles.body}>
+        <SideNav
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          onOpenDocuments={() => {}}
+          onOpenPairedDevices={openDevicesPanel}
+          onOpenBackup={openBackupPanel}
+        />
 
-          {backupStatusLine && <p className={styles.backupStatusLine}>{backupStatusLine}</p>}
-
-          {uploadOpen && (
-            <UploadForm
-              onSubmit={handleUpload}
-              onCancel={() => {
-                setUploadOpen(false);
-                setUploadError('');
-              }}
-              uploading={uploading}
-              progress={uploadProgress}
-              error={uploadError}
-            />
-          )}
-
-          {backupOpen && (
-            <BackupPanel
-              onSubmit={handleBackupExport}
-              onCancel={closeBackupPanel}
-              submitting={backupSubmitting}
-              error={backupError}
-              result={backupResult}
-            />
-          )}
-
-          {restoreOpen && (
-            <RestorePanel
-              onSubmit={handleRestoreImport}
-              onCancel={closeRestorePanel}
-              submitting={restoreSubmitting}
-              error={restoreError}
-              result={restoreResult}
-            />
-          )}
-
-          {pairOpen && <PairDevicePanel onClose={() => setPairOpen(false)} />}
-
-          {devicesOpen && <PairedDevicesPanel onCancel={() => setDevicesOpen(false)} />}
-
-          {actionError && <p className={styles.banner}>{actionError}</p>}
-          {listError && <p className={styles.banner}>{listError}</p>}
-
-          {documents.length > 0 && (
-            <FolderFilter
-              folders={folders}
-              counts={folderCounts}
-              activeFolder={activeFolder}
-              onSelect={setActiveFolder}
-            />
-          )}
-
-          {!loading && documents.length === 0 && !listError && (
-            <div className={styles.emptyState}>
-              <FolderLock size={40} weight="light" className={styles.emptyIcon} />
-              <h2 className={styles.emptyTitle}>Your vault is empty</h2>
-              <p className={styles.emptyBody}>Add your first document to get started.</p>
-            </div>
-          )}
-
-          {documents.length > 0 && visibleDocuments.length === 0 && (
-            <div className={styles.emptyState}>
-              <FolderLock size={40} weight="light" className={styles.emptyIcon} />
-              <h2 className={styles.emptyTitle}>No documents in this folder</h2>
-              <p className={styles.emptyBody}>Try a different folder, or switch back to All.</p>
-            </div>
-          )}
-
-          {selectMode && (
-            <div className={styles.bulkBar}>
-              <span className={styles.bulkCount}>
-                {selectedIds.size} selected
-              </span>
-
-              <div className={styles.bulkActions}>
-                {!confirmingBulkDelete ? (
-                  <button
-                    type="button"
-                    className={styles.bulkDeleteButton}
-                    onClick={handleBulkDeleteClick}
-                    disabled={selectedIds.size === 0 || bulkDeleting}
-                  >
-                    <Trash size={16} weight="bold" />
-                    <span>Delete</span>
-                  </button>
-                ) : (
-                  <div className={styles.confirmRow}>
-                    <span className={styles.confirmLabel}>Delete {selectedIds.size}?</span>
-                    <button
-                      type="button"
-                      className={styles.confirmYes}
-                      onClick={handleBulkDeleteClick}
-                      disabled={bulkDeleting}
-                    >
-                      {bulkDeleting ? 'Deleting...' : 'Confirm'}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.confirmNo}
-                      onClick={() => setConfirmingBulkDelete(false)}
-                      disabled={bulkDeleting}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  className={styles.bulkShareButton}
-                  onClick={handleBulkShare}
-                  disabled={selectedIds.size !== 1}
-                  title={selectedIds.size === 1 ? undefined : 'Select one file to share'}
-                >
-                  <ShareNetwork size={16} weight="bold" />
-                  <span>Share</span>
-                </button>
-
-                <button type="button" className={styles.bulkDoneButton} onClick={exitSelectMode}>
-                  Done
-                </button>
+        <main className={styles.content}>
+          <div className={styles.contentInner}>
+            <div className={styles.toolbar}>
+              <div>
+                <h1 className={styles.heading}>Your documents</h1>
+                <p className={styles.count}>
+                  {loading
+                    ? 'Loading...'
+                    : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
+                </p>
+              </div>
+              <div className={styles.toolbarActions}>
+                <NewMenu
+                  onOpenNewFolder={() => setNewFolderOpen(true)}
+                  onOpenUploadForm={openUploadPanel}
+                  onFolderFilesSelected={handleUploadFolder}
+                />
+                <SyncMenu
+                  onOpenBackup={openBackupPanel}
+                  onOpenRestore={openRestorePanel}
+                  onOpenPair={openPairPanel}
+                />
               </div>
             </div>
-          )}
 
-          {visibleDocuments.length > 0 && (
-            <ul className={styles.list}>
-              {visibleDocuments.map((doc) => (
-                <DocumentRow
-                  key={doc.id}
-                  document={doc}
-                  onView={handleView}
-                  onDelete={handleDelete}
-                  onShare={setSharingDocument}
-                  onEdit={setEditingDocument}
-                  isViewing={viewingId === doc.id}
-                  isDeleting={deletingId === doc.id}
-                  selectMode={selectMode}
-                  selected={selectedIds.has(doc.id)}
-                  onToggleSelect={toggleSelected}
+            {backupStatusLine && <p className={styles.backupStatusLine}>{backupStatusLine}</p>}
+
+            {uploadOpen && (
+              <UploadForm
+                onSubmit={handleUpload}
+                onCancel={() => {
+                  setUploadOpen(false);
+                  setUploadError('');
+                }}
+                uploading={uploading}
+                progress={uploadProgress}
+                error={uploadError}
+              />
+            )}
+
+            {backupOpen && (
+              <BackupPanel
+                onSubmit={handleBackupExport}
+                onCancel={closeBackupPanel}
+                submitting={backupSubmitting}
+                error={backupError}
+                result={backupResult}
+              />
+            )}
+
+            {restoreOpen && (
+              <RestorePanel
+                onSubmit={handleRestoreImport}
+                onCancel={closeRestorePanel}
+                submitting={restoreSubmitting}
+                error={restoreError}
+                result={restoreResult}
+              />
+            )}
+
+            {pairOpen && (
+              <Modal title="Pair a device" onClose={() => setPairOpen(false)}>
+                <PairDevicePanel onClose={() => setPairOpen(false)} />
+              </Modal>
+            )}
+
+            {devicesOpen && <PairedDevicesPanel onCancel={() => setDevicesOpen(false)} />}
+
+            {actionError && <p className={styles.banner}>{actionError}</p>}
+            {listError && <p className={styles.banner}>{listError}</p>}
+            {/* "Upload folder" (NewMenu) doesn't open the UploadForm panel that
+                normally shows progress/errors inline - it uploads straight from
+                the menu, so this covers that path specifically. */}
+            {!uploadOpen && uploading && (
+              <div className={styles.folderUploadProgress}>
+                <p className={styles.folderUploadLabel}>Uploading folder, {uploadProgress}%</p>
+                <div
+                  className={styles.progressTrack}
+                  role="progressbar"
+                  aria-valuenow={uploadProgress}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div className={styles.progressFill} style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            )}
+            {!uploadOpen && !uploading && uploadError && <p className={styles.banner}>{uploadError}</p>}
+
+            {!loading && documents.length === 0 && !listError && (
+              <div className={styles.emptyState}>
+                <FolderLock size={40} weight="light" className={styles.emptyIcon} />
+                <h2 className={styles.emptyTitle}>Your vault is empty</h2>
+                <p className={styles.emptyBody}>Add your first document to get started.</p>
+              </div>
+            )}
+
+            {documents.length > 0 && (
+              <div className={styles.listHeaderRow}>
+                <FolderFilter
+                  folders={folders}
+                  counts={folderCounts}
+                  activeFolder={activeFolder}
+                  onSelect={setActiveFolder}
                 />
-              ))}
-            </ul>
-          )}
-        </div>
-      </main>
+
+                <div className={styles.viewToggle}>
+                  <button
+                    type="button"
+                    className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleActive : ''}`}
+                    onClick={() => setViewMode('list')}
+                    aria-label="List view"
+                    aria-pressed={viewMode === 'list'}
+                  >
+                    <Rows size={16} weight="bold" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.viewToggleButton} ${viewMode === 'grid' ? styles.viewToggleActive : ''}`}
+                    onClick={() => setViewMode('grid')}
+                    aria-label="Grid view"
+                    aria-pressed={viewMode === 'grid'}
+                  >
+                    <SquaresFour size={16} weight="bold" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {documents.length > 0 && visibleDocuments.length === 0 && (
+              <div className={styles.emptyState}>
+                <FolderLock size={40} weight="light" className={styles.emptyIcon} />
+                <h2 className={styles.emptyTitle}>No documents match</h2>
+                <p className={styles.emptyBody}>Try a different folder, or clear your search.</p>
+              </div>
+            )}
+
+            {selectMode && (
+              <div className={styles.bulkBar}>
+                <span className={styles.bulkCount}>{selectedIds.size} selected</span>
+
+                <div className={styles.bulkActions}>
+                  {!confirmingBulkDelete ? (
+                    <button
+                      type="button"
+                      className={styles.bulkDeleteButton}
+                      onClick={handleBulkDeleteClick}
+                      disabled={selectedIds.size === 0 || bulkDeleting}
+                    >
+                      <Trash size={16} weight="bold" />
+                      <span>Delete</span>
+                    </button>
+                  ) : (
+                    <div className={styles.confirmRow}>
+                      <span className={styles.confirmLabel}>Delete {selectedIds.size}?</span>
+                      <button
+                        type="button"
+                        className={styles.confirmYes}
+                        onClick={handleBulkDeleteClick}
+                        disabled={bulkDeleting}
+                      >
+                        {bulkDeleting ? 'Deleting...' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.confirmNo}
+                        onClick={() => setConfirmingBulkDelete(false)}
+                        disabled={bulkDeleting}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className={styles.bulkShareButton}
+                    onClick={handleBulkShare}
+                    disabled={selectedIds.size !== 1}
+                    title={selectedIds.size === 1 ? undefined : 'Select one file to share'}
+                  >
+                    <ShareNetwork size={16} weight="bold" />
+                    <span>Share</span>
+                  </button>
+
+                  <button type="button" className={styles.bulkDoneButton} onClick={exitSelectMode}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {visibleDocuments.length > 0 && viewMode === 'list' && (
+              <ul className={styles.list}>
+                {visibleDocuments.map((doc) => (
+                  <DocumentRow
+                    key={doc.id}
+                    document={doc}
+                    onView={handleView}
+                    onDelete={handleDelete}
+                    onShare={setSharingDocument}
+                    onEdit={setEditingDocument}
+                    isViewing={viewingId === doc.id}
+                    isDeleting={deletingId === doc.id}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(doc.id)}
+                    onToggleSelect={toggleSelected}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {visibleDocuments.length > 0 && viewMode === 'grid' && (
+              <ul className={styles.grid}>
+                {visibleDocuments.map((doc) => (
+                  <DocumentCard
+                    key={doc.id}
+                    document={doc}
+                    onView={handleView}
+                    onDelete={handleDelete}
+                    onShare={setSharingDocument}
+                    onEdit={setEditingDocument}
+                    isViewing={viewingId === doc.id}
+                    isDeleting={deletingId === doc.id}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(doc.id)}
+                    onToggleSelect={toggleSelected}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {newFolderOpen && (
+        <NewFolderModal onClose={() => setNewFolderOpen(false)} onCreated={handleFolderCreated} />
+      )}
 
       {sharingDocument && (
         <ShareModal

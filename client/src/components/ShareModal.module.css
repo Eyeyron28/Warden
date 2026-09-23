@@ -74,6 +74,13 @@
   margin: 0;
 }
 
+.demoNote {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  margin: 0;
+}
+
 .error {
   min-height: 1.1em;
   font-size: var(--fs-xs);

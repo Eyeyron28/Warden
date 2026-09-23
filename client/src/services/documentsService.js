@@ -31,6 +31,18 @@ export async function listFolders() {
 }
 
 /**
+ * POST /api/documents/folders
+ * Creates an empty folder (Drive-style "New folder") so it shows up in
+ * the folder tabs/filters before any document has been filed into it.
+ * @param {string} name
+ * @returns {Promise<{ name: string }>}
+ */
+export async function createFolder(name) {
+  const { data } = await api.post('/documents/folders', { name });
+  return data;
+}
+
+/**
  * PATCH /api/documents/:id
  * Metadata-only edit - filename, folder, and/or expiryDate. Callers
  * should only include the fields that actually changed; the backend

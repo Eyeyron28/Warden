@@ -236,6 +236,7 @@ function ShareModal({ documentId, filename, onClose }) {
           <button type="button" className={styles.generateButton} onClick={handleGenerate} disabled={!canGenerate}>
             {creating ? 'Generating...' : 'Generate share link'}
           </button>
+          <p className={styles.demoNote}>Share links are intended for demo/presentation purposes.</p>
         </div>
       ) : (
         <div className={styles.resultSection}>
