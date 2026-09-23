@@ -22,6 +22,35 @@
     <meta name="mobile-web-app-capable" content="yes" />
 
     <title>Warden - Document Vault</title>
+
+    <!-- Blocking (not type="module", not deferred) so this runs before
+         anything paints - src/utils/theme.js's getInitialTheme() mirrors
+         this exact same logic and reads the attribute this sets back,
+         rather than re-deciding, so the two can never disagree. Doing
+         this here instead of in React avoids a flash of the wrong theme
+         between first paint and React's first render. -->
+    <script>
+      (function () {
+        // Hardcoded here (and again in applyTheme, src/utils/theme.js)
+        // rather than read from a CSS variable, since a <meta> tag's
+        // content attribute can't reference one - kept equal to
+        // --color-bg/--color-bg (light) in tokens.css by hand. This is
+        // the mobile browser-chrome tint color, not page content, so it
+        // was easy to miss when the dark palette first shipped.
+        var THEME_COLORS = { dark: '#130C11', light: '#F6F2F4' };
+        try {
+          var stored = localStorage.getItem('warden-theme');
+          var theme =
+            stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', THEME_COLORS[theme]);
+        } catch (e) {
+          // localStorage can throw in some privacy modes - the app still
+          // renders with its default (dark) theme in that case.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

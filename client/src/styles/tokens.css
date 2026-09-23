@@ -71,7 +71,40 @@
   --max-content-width: 1200px;
 }
 
-@media (prefers-color-scheme: light) {
-  /* Warden is a security console: it commits to one dark, high-contrast
-     identity by design rather than adapting to system light mode. */
+/* ---- Light theme ----
+   Applied via [data-theme="light"] on :root (set by ThemeToggle /
+   utils/theme.js, not a @media query - the person's explicit choice, or
+   the system preference only as a one-time default when nothing's been
+   chosen yet, persisted in localStorage from then on). Every neutral
+   keeps the same ~317-322deg aubergine hue as the dark palette, just
+   re-balanced for a light background; --color-accent and --color-danger
+   are both re-darkened rather than simply inverted, since across this
+   app they're used both as plain foreground text/icon color (needs to
+   read against a near-white background now) AND as a button background
+   with --color-bg/--color-text as the "on-top" text color (needs to
+   stay high-contrast against near-white/near-black text) - keeping them
+   dark/saturated satisfies both at once, the same way the dark theme's
+   light, pastel accent satisfied both against a near-black background. */
+:root[data-theme='light'] {
+  --color-bg: #f6f2f4;
+  --color-bg-raised: #efe7eb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f4eef1;
+  --color-border: #e3dbe0;
+  --color-border-strong: #cbbdc6;
+
+  --color-text: #21181f;
+  --color-text-muted: #6b5b64;
+  --color-text-faint: #93818b;
+
+  /* Same 313deg hue as the dark theme's --color-accent, darkened from
+     L60% to L36% so near-white text (--color-bg) reads on an accent-
+     colored button background, and the accent itself reads as
+     foreground text/icons/focus rings against the near-white surfaces
+     above - see the block comment above this selector. */
+  --color-accent: #9c2b82;
+  --color-accent-dim: #84226c;
+  --color-accent-wash: rgba(156, 43, 130, 0.1);
+  --color-danger: #c22d38;
+  --color-danger-wash: rgba(194, 45, 56, 0.08);
 }

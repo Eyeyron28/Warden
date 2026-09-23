@@ -1,6 +1,7 @@
 import { CheckSquare, List, LockKey, MagnifyingGlass } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
+import ThemeToggle from './ThemeToggle.jsx';
 import styles from './Header.module.css';
 
 function Header({
@@ -22,6 +23,8 @@ function Header({
         >
           <List size={20} weight="bold" />
         </button>
+
+        <ThemeToggle />
 
         <div className={styles.brand} title="Local instance - no cloud sync">
           <img src={wardenLogo} alt="Warden" className={styles.mark} />
