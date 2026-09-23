@@ -3,6 +3,7 @@ const express = require('express');
 const requireSession = require('../middleware/requireSession');
 const {
   createShare,
+  createBulkShare,
   listShares,
   revokeShare,
   revokeShareById,
@@ -28,6 +29,7 @@ documentSharesRoutes.get('/:id/shares', listShares);
 // on this owner-only router.)
 const shareTokenRoutes = express.Router();
 shareTokenRoutes.use(requireSession);
+shareTokenRoutes.post('/', createBulkShare);
 // Registered before the shorter /:token/revoke pattern is irrelevant here
 // (different segment counts, so Express can't confuse the two), but kept
 // grouped together since they're the two ways to revoke the same thing.

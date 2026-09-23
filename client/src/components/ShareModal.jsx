@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { Check, Copy, Trash } from '@phosphor-icons/react';
 
 import Modal from './Modal.jsx';
-import { createShare, listShares, revokeShareById } from '../services/sharesService.js';
+import { createShare, createBulkShare, listShares, revokeShareById } from '../services/sharesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
@@ -39,7 +39,16 @@ function describeExpiry(expiresAtIso) {
   return `Expires in ${days} day${days === 1 ? '' : 's'}`;
 }
 
-function ShareModal({ documentId, filename, onClose }) {
+/**
+ * `documentIds` is the set this link will cover - one id (a single card's
+ * Share button, unchanged behavior) or many (a folder selection resolved to
+ * its nested documents plus loose files, all under ONE link). The
+ * per-document "Active shares" list only exists for the single case; a
+ * multi-file link is revoked right from its result view.
+ */
+function ShareModal({ documentIds, title, onClose }) {
+  const isSingle = documentIds.length === 1;
+  const documentId = documentIds[0];
   const [durationHours, setDurationHours] = useState(DURATION_PRESETS[1].hours);
   const [isCustomExpiry, setIsCustomExpiry] = useState(false);
   const [customExpiry, setCustomExpiry] = useState('');
@@ -50,12 +59,16 @@ function ShareModal({ documentId, filename, onClose }) {
   const [copied, setCopied] = useState(false);
 
   const [shares, setShares] = useState([]);
-  const [sharesLoading, setSharesLoading] = useState(true);
+  const [sharesLoading, setSharesLoading] = useState(isSingle);
   const [sharesError, setSharesError] = useState('');
   const [confirmingRevokeId, setConfirmingRevokeId] = useState(null);
   const [revokingId, setRevokingId] = useState(null);
 
+  const [bulkRevoked, setBulkRevoked] = useState(false);
+  const [confirmingBulkRevoke, setConfirmingBulkRevoke] = useState(false);
+
   const refreshShares = useCallback(async () => {
+    if (!isSingle) return;
     setSharesLoading(true);
     setSharesError('');
     try {
@@ -66,7 +79,7 @@ function ShareModal({ documentId, filename, onClose }) {
     } finally {
       setSharesLoading(false);
     }
-  }, [documentId]);
+  }, [documentId, isSingle]);
 
   useEffect(() => {
     refreshShares();
@@ -119,7 +132,9 @@ function ShareModal({ documentId, filename, onClose }) {
     setCreateError('');
     try {
       const hours = isCustomExpiry ? (customExpiryMs - Date.now()) / (60 * 60 * 1000) : durationHours;
-      const result = await createShare(documentId, hours);
+      const result = isSingle
+        ? await createShare(documentId, hours)
+        : await createBulkShare(documentIds, hours);
       // result.shareUrl is now built server-side from the PC's actual
       // LAN-reachable address (same resolveLanIp helper pairing uses),
       // not window.location.origin - the owner's own tab is often on
@@ -133,11 +148,31 @@ function ShareModal({ documentId, filename, onClose }) {
 
       setCreatedShare({ ...result, localShareUrl: localUrl.toString() });
       setCopied(false);
+      setBulkRevoked(false);
+      setConfirmingBulkRevoke(false);
       refreshShares();
     } catch (err) {
       setCreateError(extractErrorMessage(err, 'Could not generate a share link.'));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleBulkRevoke = async () => {
+    if (!confirmingBulkRevoke) {
+      setConfirmingBulkRevoke(true);
+      return;
+    }
+    setRevokingId(createdShare.id);
+    setCreateError('');
+    try {
+      await revokeShareById(createdShare.id);
+      setBulkRevoked(true);
+    } catch (err) {
+      setCreateError(extractErrorMessage(err, 'Could not revoke this link.'));
+    } finally {
+      setRevokingId(null);
+      setConfirmingBulkRevoke(false);
     }
   };
 
@@ -184,7 +219,7 @@ function ShareModal({ documentId, filename, onClose }) {
   };
 
   return (
-    <Modal title={`Share "${filename}"`} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       {!createdShare ? (
         <div className={styles.generateSection}>
           <div className={styles.field}>
@@ -285,12 +320,37 @@ function ShareModal({ documentId, filename, onClose }) {
             </span>
           </div>
 
+          {!isSingle && (
+            <div className={styles.confirmRow}>
+              {bulkRevoked ? (
+                <span className={styles.confirmLabel}>
+                  Link revoked - all {createdShare.entryCount} files are now inaccessible.
+                </span>
+              ) : (
+                <>
+                  <span className={styles.hint}>
+                    This one link covers {createdShare.entryCount} files.
+                  </span>
+                  <button
+                    type="button"
+                    className={confirmingBulkRevoke ? styles.confirmYes : styles.secondaryButton}
+                    onClick={handleBulkRevoke}
+                    disabled={revokingId === createdShare.id}
+                  >
+                    {confirmingBulkRevoke ? 'Confirm revoke' : 'Revoke link'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <button type="button" className={styles.secondaryButton} onClick={handleGenerateAnother}>
             Generate another link
           </button>
         </div>
       )}
 
+      {isSingle && (
       <div className={styles.activeShares}>
         <span className={styles.label}>Active shares</span>
 
@@ -346,6 +406,7 @@ function ShareModal({ documentId, filename, onClose }) {
           </ul>
         )}
       </div>
+      )}
     </Modal>
   );
 }

@@ -231,6 +231,31 @@ const createFolder = asyncHandler(async (req, res) => {
 });
 
 /**
+ * DELETE /api/documents/folders?path=<folder path>
+ * Removes the empty-folder records (models/Folder.js) for this folder and
+ * everything nested under it, so a folder deleted from the UI stops showing
+ * up as an empty tile. Deliberately does NOT touch documents - the client
+ * deletes those through the ordinary per-document delete first; this only
+ * cleans up the folder markers. Idempotent.
+ */
+const deleteFolder = asyncHandler(async (req, res) => {
+  const { path: folderPath } = req.query;
+
+  if (!folderPath || typeof folderPath !== 'string' || !folderPath.trim()) {
+    throw badRequest('A folder path is required.');
+  }
+  const trimmed = folderPath.trim();
+  if (trimmed === FOLDER_ROOT) {
+    throw badRequest('"root" cannot be deleted.');
+  }
+
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await Folder.deleteMany({ $or: [{ name: trimmed }, { name: { $regex: `^${escaped}/` } }] });
+
+  res.status(204).send();
+});
+
+/**
  * PATCH /api/documents/:id
  * Body: any subset of { filename, folder, expiryDate }
  *
@@ -351,6 +376,7 @@ module.exports = {
   listExpiringDocuments,
   listFolders,
   createFolder,
+  deleteFolder,
   updateDocument,
   viewDocument,
   deleteDocument,

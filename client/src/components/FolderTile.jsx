@@ -10,9 +10,19 @@ import styles from './FolderTile.module.css';
  * underneath it, including in its own subfolders, matching how Drive's
  * folder tiles count contents.
  */
-function FolderTile({ name, itemCount, onOpen }) {
+function FolderTile({ name, itemCount, onOpen, selectMode, selected, onToggleSelect }) {
   return (
-    <li>
+    <li className={styles.item}>
+      {selectMode && (
+        <input
+          type="checkbox"
+          className={styles.selectCheckbox}
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select folder ${name}`}
+        />
+      )}
+
       <button
         type="button"
         className={styles.tile}

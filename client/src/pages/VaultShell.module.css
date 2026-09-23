@@ -334,6 +334,13 @@
 }
 
 .modalActions {
+  gap: var(--space-3);
   display: flex;
   justify-content: flex-end;
+}
+
+.confirmText {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--color-text);
 }

@@ -126,3 +126,13 @@ export function openBlob(blob, filename) {
 export async function deleteDocument(id) {
   await api.delete(`/documents/${id}`);
 }
+
+/**
+ * DELETE /api/documents/folders?path=...
+ * Removes the empty-folder markers for a folder and everything nested under
+ * it. Does NOT delete documents - delete those first with deleteDocument.
+ * @param {string} path
+ */
+export async function deleteFolder(path) {
+  await api.delete('/documents/folders', { params: { path } });
+}

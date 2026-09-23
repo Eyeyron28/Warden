@@ -37,3 +37,17 @@ export async function listShares(documentId) {
 export async function revokeShareById(shareId) {
   await api.post(`/shares/id/${shareId}/revoke`);
 }
+
+/**
+ * POST /api/shares
+ * Owner-only. ONE link covering many documents (e.g. a folder's nested
+ * contents plus loose files) - same expiry semantics and revoke behavior
+ * as a single-document link, which is just the length-1 case.
+ * @param {string[]} documentIds
+ * @param {number} durationHours
+ * @returns {Promise<{ id: string, token: string, expiresAt: string, shareUrl: string, entryCount: number }>}
+ */
+export async function createBulkShare(documentIds, durationHours) {
+  const { data } = await api.post('/shares', { documentIds, durationHours });
+  return data;
+}

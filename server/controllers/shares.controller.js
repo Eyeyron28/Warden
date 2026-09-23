@@ -38,26 +38,37 @@ function assertValidId(id, label = 'document') {
 
 const SHARE_TOKEN_BYTES = 32;
 
+const MAX_SHARE_ENTRIES = 500;
+
 /**
- * POST /api/documents/:id/share
- * Body: { durationHours }
+ * The one place a share link is issued - both POST /api/documents/:id/share
+ * (a single document) and POST /api/shares (a set, e.g. a whole folder's
+ * contents) call this, so a single-file share is just an entries array of
+ * length 1 rather than a parallel code path.
+ *
  * Owner-only (requireSession, mounted in routes/shares.routes.js): creates
- * a new share token for this document, valid for durationHours from now.
- * The public-facing "view a shared document" endpoint that actually
- * consumes this token is a separate, unauthenticated pass with its own
- * trust boundary - this one only ever runs for the unlocked vault owner.
+ * a new share token covering `documentIds`, valid for durationHours from
+ * now. The public-facing endpoints that consume it live in
+ * controllers/sharedView.controller.js with their own trust boundary.
  */
-const createShare = asyncHandler(async (req, res) => {
-  assertValidId(req.params.id);
-
-  const document = await Document.findById(req.params.id);
-  if (!document) {
-    throw documentNotFound();
-  }
-
+async function issueShare(req, res, documentIds) {
   const hours = Number(req.body.durationHours);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw badRequest('durationHours must be a positive number of hours.');
+  }
+
+  const uniqueIds = [...new Set(documentIds.map(String))];
+  if (uniqueIds.length === 0) {
+    throw badRequest('At least one document is required.');
+  }
+  if (uniqueIds.length > MAX_SHARE_ENTRIES) {
+    throw badRequest(`A share link can include at most ${MAX_SHARE_ENTRIES} documents.`);
+  }
+  uniqueIds.forEach((id) => assertValidId(id));
+
+  const documents = await Document.find({ _id: { $in: uniqueIds } }).select('filename mimeType');
+  if (documents.length !== uniqueIds.length) {
+    throw documentNotFound();
   }
 
   // Same fail-loudly-if-undetermined guarantee as POST /api/pair/init:
@@ -78,15 +89,21 @@ const createShare = asyncHandler(async (req, res) => {
 
   // Wrap a COPY of the vault's DEK (available here via req.session -
   // requireSession already unwrapped it for this owner's unlocked
-  // session) under a key derived from this specific token, so
-  // GET /api/shared/:token can unwrap it later using only the token from
-  // the URL - no session, no password, no recovery key involved at all.
+  // session) under a key derived from this specific token, so the public
+  // /api/shared/:token routes can unwrap it later using only the token
+  // from the URL - no session, no password, no recovery key involved at
+  // all. Every document is encrypted under this same DEK, so one wrap per
+  // link covers every entry.
   const shareSalt = generateSalt();
   const shareKek = deriveEncryptionKey(token, shareSalt);
   const wrappedShare = wrapKey(req.session.encryptionKey, shareKek);
 
   const shareToken = await ShareToken.create({
-    documentId: document._id,
+    entries: documents.map((doc) => ({
+      documentId: doc._id,
+      filename: doc.filename,
+      mimeType: doc.mimeType,
+    })),
     token,
     expiresAt,
     wrappedDEKShare: wrappedShare.wrappedKey,
@@ -107,10 +124,35 @@ const createShare = asyncHandler(async (req, res) => {
   const shareUrl = `${req.protocol}://${lanIp}:${FRONTEND_PORT}/shared/${shareToken.token}`;
 
   res.status(201).json({
+    id: shareToken._id,
     token: shareToken.token,
     expiresAt: shareToken.expiresAt,
     shareUrl,
+    entryCount: documents.length,
   });
+}
+
+/**
+ * POST /api/documents/:id/share
+ * Body: { durationHours }
+ */
+const createShare = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+  await issueShare(req, res, [req.params.id]);
+});
+
+/**
+ * POST /api/shares
+ * Body: { documentIds: string[], durationHours }
+ * One link covering many documents (the client resolves a folder selection
+ * to its nested documents before calling this).
+ */
+const createBulkShare = asyncHandler(async (req, res) => {
+  const { documentIds } = req.body;
+  if (!Array.isArray(documentIds)) {
+    throw badRequest('documentIds must be an array.');
+  }
+  await issueShare(req, res, documentIds);
 });
 
 /**
@@ -128,7 +170,9 @@ const listShares = asyncHandler(async (req, res) => {
   }
 
   const shares = await ShareToken.find({
-    documentId: document._id,
+    // Covers links that include this document among several, plus legacy
+    // single-document links that predate `entries`.
+    $or: [{ 'entries.documentId': document._id }, { documentId: document._id }],
     revoked: false,
     expiresAt: { $gt: new Date() },
   }).sort({ createdAt: -1 });
@@ -138,6 +182,7 @@ const listShares = asyncHandler(async (req, res) => {
       id: share._id,
       expiresAt: share.expiresAt,
       createdAt: share.createdAt,
+      entryCount: share.getDocumentIds().length,
     }))
   );
 });
@@ -171,6 +216,7 @@ const revokeShareById = asyncHandler(async (req, res) => {
 
 module.exports = {
   createShare,
+  createBulkShare,
   listShares,
   revokeShare,
   revokeShareById,

@@ -9,6 +9,7 @@ const {
   listExpiringDocuments,
   listFolders,
   createFolder,
+  deleteFolder,
   updateDocument,
   viewDocument,
   deleteDocument,
@@ -47,6 +48,7 @@ router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
 router.get('/folders', listFolders);
 router.post('/folders', createFolder);
+router.delete('/folders', deleteFolder);
 router.get('/:id/view', viewDocument);
 router.patch('/:id', updateDocument);
 router.delete('/:id', deleteDocument);

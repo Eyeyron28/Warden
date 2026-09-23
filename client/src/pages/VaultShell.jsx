@@ -23,6 +23,7 @@ import {
   fetchDocumentBlob,
   openBlob,
   deleteDocument,
+  deleteFolder,
   listFolders,
 } from '../services/documentsService.js';
 import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
@@ -75,12 +76,16 @@ function VaultShell({ onLocked }) {
   const [deletingId, setDeletingId] = useState(null);
   const [actionError, setActionError] = useState('');
 
-  const [sharingDocument, setSharingDocument] = useState(null);
   const [editingDocument, setEditingDocument] = useState(null);
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  // Folder tiles selected in Select mode, by full path (e.g. "PC/Projects").
+  const [selectedFolders, setSelectedFolders] = useState(new Set());
+  // Set when a bulk delete needs the owner's explicit confirmation: the
+  // resolved plan (see resolveSelection) that the dialog describes.
+  const [bulkDeletePlan, setBulkDeletePlan] = useState(null);
+  const [sharingSelection, setSharingSelection] = useState(null); // { documentIds, title }
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [folders, setFolders] = useState([]);
@@ -270,12 +275,14 @@ function VaultShell({ onLocked }) {
   const enterSelectMode = () => {
     setSelectMode(true);
     setSelectedIds(new Set());
+    setSelectedFolders(new Set());
   };
 
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelectedIds(new Set());
-    setConfirmingBulkDelete(false);
+    setSelectedFolders(new Set());
+    setBulkDeletePlan(null);
   };
 
   const toggleSelected = (id) => {
@@ -290,20 +297,75 @@ function VaultShell({ onLocked }) {
     });
   };
 
-  const handleBulkDeleteClick = () => {
-    if (selectedIds.size === 0) return;
-    if (confirmingBulkDelete) {
-      setConfirmingBulkDelete(false);
-      handleBulkDelete();
-    } else {
-      setConfirmingBulkDelete(true);
-    }
+  const toggleFolderSelected = (path) => {
+    setSelectedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
   };
 
-  const handleBulkDelete = async () => {
+  // Resolves the current selection down to a flat, de-duplicated list of
+  // document ids: every loose selected document, plus every document nested
+  // anywhere under each selected folder (subfolders included). A loose
+  // document that also lives inside a selected folder is counted once.
+  // `nestedCount` is how many documents the selected folders contribute on
+  // their own, for the confirmation wording.
+  const resolveSelection = () => {
+    const folderPaths = [...selectedFolders];
+    const nestedIds = new Set();
+    for (const doc of documents) {
+      const path = normalizeFolderPath(doc.folder);
+      if (folderPaths.some((folder) => path === folder || path.startsWith(`${folder}/`))) {
+        nestedIds.add(doc.id);
+      }
+    }
+    const allIds = new Set([...selectedIds, ...nestedIds]);
+    const looseOnly = [...selectedIds].filter((id) => !nestedIds.has(id));
+    return {
+      folderPaths,
+      documentIds: [...allIds],
+      looseCount: looseOnly.length,
+      nestedCount: nestedIds.size,
+    };
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedIds.size + selectedFolders.size === 0) return;
+    const plan = resolveSelection();
+    // Nothing to destroy except empty folder markers: no dialog needed.
+    if (plan.documentIds.length === 0) {
+      runBulkDelete(plan);
+      return;
+    }
+    setBulkDeletePlan(plan);
+  };
+
+  const describeDeletePlan = (plan) => {
+    const parts = [];
+    if (plan.looseCount > 0) {
+      parts.push(`${plan.looseCount} file${plan.looseCount === 1 ? '' : 's'}`);
+    }
+    if (plan.folderPaths.length > 0) {
+      const folders = `${plan.folderPaths.length} folder${plan.folderPaths.length === 1 ? '' : 's'}`;
+      parts.push(
+        plan.nestedCount > 0
+          ? `${folders} containing ${plan.nestedCount} document${plan.nestedCount === 1 ? '' : 's'}`
+          : `${folders} (empty)`
+      );
+    }
+    return `Delete ${parts.join(' and ')}? This can't be undone.`;
+  };
+
+  const runBulkDelete = async (plan) => {
+    setBulkDeletePlan(null);
     setActionError('');
     setBulkDeleting(true);
-    const ids = Array.from(selectedIds);
+    const ids = plan.documentIds;
     // allSettled rather than all: one failing delete shouldn't leave the
     // others un-applied just because Promise.all rejected on the first
     // failure - whichever succeeded should still disappear from the list.
@@ -311,13 +373,28 @@ function VaultShell({ onLocked }) {
     const deletedIds = new Set(ids.filter((_, index) => results[index].status === 'fulfilled'));
     const failedCount = ids.length - deletedIds.size;
 
+    // A folder is only removed if everything under it actually got deleted;
+    // otherwise its marker stays so the leftovers remain reachable.
+    const remainingPaths = documents
+      .filter((doc) => !deletedIds.has(doc.id))
+      .map((doc) => normalizeFolderPath(doc.folder));
+    for (const folderPath of plan.folderPaths) {
+      const hasLeftovers = remainingPaths.some(
+        (path) => path === folderPath || path.startsWith(`${folderPath}/`)
+      );
+      if (!hasLeftovers) {
+        // eslint-disable-next-line no-await-in-loop
+        await deleteFolder(folderPath).catch(() => {});
+      }
+    }
+
     if (deletedIds.size > 0) {
       setDocuments((prev) => prev.filter((doc) => !deletedIds.has(doc.id)));
-      refreshFolders();
     }
+    refreshFolders();
     if (failedCount > 0) {
       setActionError(
-        `Could not delete ${failedCount} of ${ids.length} selected document${ids.length === 1 ? '' : 's'}.`
+        `Could not delete ${failedCount} of ${ids.length} document${ids.length === 1 ? '' : 's'}.`
       );
     }
 
@@ -326,10 +403,19 @@ function VaultShell({ onLocked }) {
   };
 
   const handleBulkShare = () => {
-    if (selectedIds.size !== 1) return;
-    const [onlyId] = selectedIds;
-    const doc = documents.find((item) => item.id === onlyId);
-    if (doc) setSharingDocument(doc);
+    const plan = resolveSelection();
+    if (plan.documentIds.length === 0) return;
+    // A lone loose document (no folder involved) opens the same single-file
+    // share it always did; anything else is one link over the whole set.
+    if (plan.documentIds.length === 1 && selectedFolders.size === 0) {
+      const doc = documents.find((item) => item.id === plan.documentIds[0]);
+      if (doc) setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` });
+      return;
+    }
+    setSharingSelection({
+      documentIds: plan.documentIds,
+      title: `Share ${plan.documentIds.length} files`,
+    });
   };
 
   const handleEditSaved = (updatedDocument) => {
@@ -588,6 +674,11 @@ function VaultShell({ onLocked }) {
                     name={name}
                     itemCount={subfolderItemCounts.get(name) ?? 0}
                     onOpen={() => setCurrentPath(joinPath([...splitPath(currentPath), name]))}
+                    selectMode={selectMode}
+                    selected={selectedFolders.has(joinPath([...splitPath(currentPath), name]))}
+                    onToggleSelect={() =>
+                      toggleFolderSelected(joinPath([...splitPath(currentPath), name]))
+                    }
                   />
                 ))}
               </ul>
@@ -607,47 +698,26 @@ function VaultShell({ onLocked }) {
 
             {selectMode && (
               <div className={styles.bulkBar}>
-                <span className={styles.bulkCount}>{selectedIds.size} selected</span>
+                <span className={styles.bulkCount}>
+                  {selectedIds.size + selectedFolders.size} selected
+                </span>
 
                 <div className={styles.bulkActions}>
-                  {!confirmingBulkDelete ? (
-                    <button
-                      type="button"
-                      className={styles.bulkDeleteButton}
-                      onClick={handleBulkDeleteClick}
-                      disabled={selectedIds.size === 0 || bulkDeleting}
-                    >
-                      <Trash size={16} weight="bold" />
-                      <span>Delete</span>
-                    </button>
-                  ) : (
-                    <div className={styles.confirmRow}>
-                      <span className={styles.confirmLabel}>Delete {selectedIds.size}?</span>
-                      <button
-                        type="button"
-                        className={styles.confirmYes}
-                        onClick={handleBulkDeleteClick}
-                        disabled={bulkDeleting}
-                      >
-                        {bulkDeleting ? 'Deleting...' : 'Confirm'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.confirmNo}
-                        onClick={() => setConfirmingBulkDelete(false)}
-                        disabled={bulkDeleting}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    className={styles.bulkDeleteButton}
+                    onClick={handleBulkDeleteClick}
+                    disabled={selectedIds.size + selectedFolders.size === 0 || bulkDeleting}
+                  >
+                    <Trash size={16} weight="bold" />
+                    <span>{bulkDeleting ? 'Deleting...' : 'Delete'}</span>
+                  </button>
 
                   <button
                     type="button"
                     className={styles.bulkShareButton}
                     onClick={handleBulkShare}
-                    disabled={selectedIds.size !== 1}
-                    title={selectedIds.size === 1 ? undefined : 'Select one file to share'}
+                    disabled={selectedIds.size + selectedFolders.size === 0 || bulkDeleting}
                   >
                     <ShareNetwork size={16} weight="bold" />
                     <span>Share</span>
@@ -668,7 +738,7 @@ function VaultShell({ onLocked }) {
                     document={doc}
                     onView={handleView}
                     onDelete={handleDelete}
-                    onShare={setSharingDocument}
+                    onShare={(doc) => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
                     onEdit={setEditingDocument}
                     isViewing={viewingId === doc.id}
                     isDeleting={deletingId === doc.id}
@@ -688,7 +758,7 @@ function VaultShell({ onLocked }) {
                     document={doc}
                     onView={handleView}
                     onDelete={handleDelete}
-                    onShare={setSharingDocument}
+                    onShare={(doc) => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
                     onEdit={setEditingDocument}
                     isViewing={viewingId === doc.id}
                     isDeleting={deletingId === doc.id}
@@ -821,12 +891,31 @@ function VaultShell({ onLocked }) {
         />
       )}
 
-      {sharingDocument && (
+      {sharingSelection && (
         <ShareModal
-          documentId={sharingDocument.id}
-          filename={sharingDocument.filename}
-          onClose={() => setSharingDocument(null)}
+          key={sharingSelection.documentIds.join(',')}
+          documentIds={sharingSelection.documentIds}
+          title={sharingSelection.title}
+          onClose={() => setSharingSelection(null)}
         />
+      )}
+
+      {bulkDeletePlan && (
+        <Modal title="Delete selection?" onClose={() => setBulkDeletePlan(null)}>
+          <p className={styles.confirmText}>{describeDeletePlan(bulkDeletePlan)}</p>
+          <div className={styles.modalActions}>
+            <button type="button" className={styles.confirmNo} onClick={() => setBulkDeletePlan(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles.confirmYes}
+              onClick={() => runBulkDelete(bulkDeletePlan)}
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
       )}
 
       {editingDocument && (
