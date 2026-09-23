@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const User = require('../models/User');
+const Document = require('../models/Document');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
   generateSalt,
@@ -11,6 +12,7 @@ const {
   fingerprintDEK,
   wrapKey,
   unwrapKey,
+  decryptFile,
   generateRecoveryKey,
   hashRecoveryKey,
   verifyRecoveryKey,
@@ -29,6 +31,43 @@ const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 // React Router route served by Vite, not this Express app, so the QR
 // below has to point there, never at this API's own port.
 const FRONTEND_PORT = 5173;
+
+/**
+ * Sets user.dekFingerprint from `dek` if it's unset (does not save - the
+ * caller's own save persists it). Only ever call this with a DEK that was
+ * unwrapped from this User record's own wraps (password or recovery key),
+ * never with externally-supplied key material.
+ */
+function backfillDekFingerprint(user, dek) {
+  if (!user.dekFingerprint) {
+    user.dekFingerprint = fingerprintDEK(dek);
+  }
+}
+
+/**
+ * Confirms externally-supplied key material (USB backup / paired phone)
+ * is THIS vault's DEK before anything is written. With a stored
+ * fingerprint, compare against it. For a vault that predates the
+ * fingerprint, prove membership instead by decrypting an existing
+ * document with it (AES-GCM authenticates the key, so a foreign DEK
+ * fails); only a vault with no documents at all has nothing to check
+ * against, and there a foreign DEK can't corrupt any data. Backfilling the
+ * fingerprint itself happens in finalizeRecovery once this passes.
+ */
+async function verifyDekBelongsToVault(user, dek) {
+  if (user.dekFingerprint) {
+    if (fingerprintDEK(dek) !== user.dekFingerprint) throw dekMismatchError();
+    return;
+  }
+
+  const sample = await Document.findOne();
+  if (!sample) return;
+  try {
+    decryptFile(sample.encryptedBlob.toString('base64'), dek, sample.iv, sample.authTag);
+  } catch {
+    throw dekMismatchError();
+  }
+}
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -222,10 +261,6 @@ const unlock = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  user.failedAttempts = 0;
-  user.lockedUntil = undefined;
-  await user.save();
-
   const passwordKek = deriveEncryptionKey(password, user.salt);
   const dek = unwrapKey(
     user.wrappedDEKPassword,
@@ -233,6 +268,11 @@ const unlock = asyncHandler(async (req, res) => {
     user.wrappedDEKPasswordIv,
     user.wrappedDEKPasswordAuthTag
   );
+
+  user.failedAttempts = 0;
+  user.lockedUntil = undefined;
+  backfillDekFingerprint(user, dek);
+  await user.save();
 
   const sessionToken = createSession(dek);
 
@@ -333,6 +373,8 @@ async function finalizeRecovery(user, dek, newPassword) {
   user.wrappedDEKPasswordAuthTag = rewrapped.authTag;
   user.failedAttempts = 0;
   user.lockedUntil = undefined;
+  // The DEK was verified by the caller, so this is safe to backfill from.
+  backfillDekFingerprint(user, dek);
   await user.save();
 
   return createSession(dek);
@@ -399,9 +441,7 @@ const recoverViaUsb = asyncHandler(async (req, res) => {
     throw wrongUsbPassphraseError();
   }
 
-  if (fingerprintDEK(dek) !== user.dekFingerprint) {
-    throw dekMismatchError();
-  }
+  await verifyDekBelongsToVault(user, dek);
 
   const sessionToken = await finalizeRecovery(user, dek, newPassword);
 
@@ -569,9 +609,7 @@ const recoverViaPhoneComplete = asyncHandler(async (req, res) => {
     throw invalidRecoveryRequestToken();
   }
 
-  if (fingerprintDEK(dek) !== user.dekFingerprint) {
-    throw dekMismatchError();
-  }
+  await verifyDekBelongsToVault(user, dek);
 
   const sessionToken = await finalizeRecovery(user, dek, newPassword);
 

@@ -73,9 +73,15 @@ const userSchema = new mongoose.Schema(
     // that the blob came from this installation at all. Not needed by the
     // recovery-key flow, which is already anchored to this same User
     // record's own wrappedDEKRecovery field and has no equivalent risk.
+    //
+    // Deliberately NOT schema-required: vaults created before this field
+    // existed have no value, and a required rule would fail every save of
+    // that User (including plain unlock). It's backfilled lazily instead -
+    // see backfillDekFingerprint / verifyDekBelongsToVault in
+    // controllers/auth.controller.js.
     dekFingerprint: {
       type: String,
-      required: true,
+      required: false,
     },
 
     // Count of consecutive failed unlock attempts since the last lockout
