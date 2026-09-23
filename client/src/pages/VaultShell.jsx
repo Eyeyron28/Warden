@@ -16,7 +16,8 @@ import PairDevicePanel from '../components/PairDevicePanel.jsx';
 import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import EditDocumentModal from '../components/EditDocumentModal.jsx';
-import FolderFilter from '../components/FolderFilter.jsx';
+import FolderBreadcrumb from '../components/FolderBreadcrumb.jsx';
+import FolderTile from '../components/FolderTile.jsx';
 import {
   listDocuments,
   uploadDocument,
@@ -29,6 +30,15 @@ import { getBackupStatus, exportBackup, importBackup } from '../services/backupS
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { sortByExpiryUrgency } from '../utils/documentSort.js';
+import {
+  normalizeFolderPath,
+  splitPath,
+  joinPath,
+  getImmediateChildren,
+  relativeDirFromPath,
+  combineFolderPath,
+  pathStillExists,
+} from '../utils/folderPath.js';
 import styles from './VaultShell.module.css';
 
 // A 401 mid-request means the session just expired - the axios interceptor
@@ -45,18 +55,6 @@ const isSessionExpired = (err) => err?.response?.status === 401;
 const DESKTOP_NAV_BREAKPOINT = '(min-width: 900px)';
 function isDesktopWidth() {
   return typeof window !== 'undefined' && window.matchMedia(DESKTOP_NAV_BREAKPOINT).matches;
-}
-
-/**
- * Derives the folder a file from a webkitdirectory selection belongs in
- * from its relative path (e.g. "Taxes/2024/receipt.pdf" -> "Taxes/2024").
- * A file with no directory component in its relative path (shouldn't
- * happen from a real folder picker, but worth a safe fallback) files
- * into "root" like any other document with no folder set.
- */
-function folderFromRelativePath(relativePath) {
-  const lastSlash = relativePath.lastIndexOf('/');
-  return lastSlash === -1 ? 'root' : relativePath.slice(0, lastSlash);
 }
 
 function VaultShell({ onLocked }) {
@@ -84,7 +82,11 @@ function VaultShell({ onLocked }) {
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [folders, setFolders] = useState([]);
-  const [activeFolder, setActiveFolder] = useState(null); // null = "All"
+  // Drive-style navigable path, e.g. "" (top level) or "PC/Projects" -
+  // replaces the old flat activeFolder tag/tab. See utils/folderPath.js
+  // for how this is derived into a tree purely from splitting document
+  // and folder-record path strings, with no separate Folder-tree model.
+  const [currentPath, setCurrentPath] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'grid'
 
@@ -123,13 +125,9 @@ function VaultShell({ onLocked }) {
     try {
       const data = await listFolders();
       setFolders(data);
-      // If the folder currently being filtered on no longer exists (its
-      // last document was moved or deleted elsewhere), fall back to "All"
-      // rather than silently showing an empty list with no way out.
-      setActiveFolder((current) => (current && !data.includes(current) ? null : current));
     } catch {
-      // Folder list is a filtering convenience, not critical path - a
-      // failed fetch just leaves the existing filter options stale.
+      // Folder list is a navigation convenience, not critical path - a
+      // failed fetch just leaves the existing tree stale.
     }
   }, []);
 
@@ -150,12 +148,30 @@ function VaultShell({ onLocked }) {
     refreshFolders();
   }, [refresh, refreshBackupStatus, refreshFolders]);
 
-  const handleUpload = async ({ file, folder, expiryDate }) => {
+  // If the folder currently being viewed no longer resolves to anything
+  // (its last document was moved/deleted elsewhere, and it had no Folder
+  // record of its own), bounce back to the top level rather than silently
+  // showing an empty view with no way out. Skipped while still loading -
+  // both lists start empty before the first fetch resolves, and
+  // currentPath is always "" until the user actually navigates.
+  useEffect(() => {
+    if (loading) return;
+    const documentFolders = documents.map((doc) => normalizeFolderPath(doc.folder));
+    const folderNames = folders.map((name) => normalizeFolderPath(name));
+    if (!pathStillExists(currentPath, documentFolders, folderNames)) {
+      setCurrentPath('');
+    }
+  }, [loading, documents, folders, currentPath]);
+
+  // Uploads always land in currentPath - wherever VaultShell is currently
+  // showing - matching Drive's own upload behavior, rather than a folder
+  // typed by hand in the upload form.
+  const handleUpload = async ({ file, expiryDate }) => {
     setUploading(true);
     setUploadProgress(0);
     setUploadError('');
     try {
-      await uploadDocument({ file, folder, expiryDate }, setUploadProgress);
+      await uploadDocument({ file, folder: currentPath || undefined, expiryDate }, setUploadProgress);
       setUploadOpen(false);
       await refresh();
       refreshFolders();
@@ -167,8 +183,10 @@ function VaultShell({ onLocked }) {
   };
 
   // "Upload folder" from the New menu - reuses the exact same
-  // POST /api/documents call as a single-file upload, once per file,
-  // with the folder derived from that file's own relative path. No new
+  // POST /api/documents call as a single-file upload, once per file, with
+  // the folder derived from that file's own relative path prefixed with
+  // currentPath (so the selected folder is filed inside wherever the
+  // upload was started from, not always at the top level). No new
   // endpoint: an upload of N files is just N of the same request the
   // single-file flow already makes.
   const handleUploadFolder = async (fileList) => {
@@ -184,7 +202,8 @@ function VaultShell({ onLocked }) {
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         const relativePath = file.webkitRelativePath || file.name;
-        const folder = folderFromRelativePath(relativePath);
+        const relativeDir = relativeDirFromPath(relativePath);
+        const folder = combineFolderPath(currentPath, relativeDir);
 
         await uploadDocument({ file, folder }, (filePercent) => {
           const overall = Math.round(((index + filePercent / 100) / files.length) * 100);
@@ -398,28 +417,65 @@ function VaultShell({ onLocked }) {
     }
   };
 
-  const folderCounts = useMemo(() => {
-    const counts = { total: documents.length };
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+
+  // Filtering is purely client-side against the already-fetched list - no
+  // per-folder or per-search backend endpoint. Search deliberately
+  // overrides folder scoping rather than combining with it (AND) - typing
+  // in the search box searches every document regardless of currentPath,
+  // matching how Drive's own search results view works.
+  const visibleDocuments = useMemo(() => {
+    if (isSearching) {
+      return documents.filter((doc) => doc.filename.toLowerCase().includes(normalizedSearch));
+    }
+    return documents.filter((doc) => normalizeFolderPath(doc.folder) === currentPath);
+  }, [documents, currentPath, isSearching, normalizedSearch]);
+
+  // Immediate subfolders of currentPath, derived purely by splitting every
+  // known folder path string (both documents' folders and empty Folder
+  // records) - see utils/folderPath.js. Hidden entirely while searching,
+  // matching Drive's flat search-results view.
+  const subfolderNames = useMemo(() => {
+    if (isSearching) return [];
+    const allPaths = new Set();
     for (const doc of documents) {
-      const folder = doc.folder || 'root';
-      counts[folder] = (counts[folder] || 0) + 1;
+      const path = normalizeFolderPath(doc.folder);
+      if (path) allPaths.add(path);
+    }
+    for (const name of folders) {
+      const path = normalizeFolderPath(name);
+      if (path) allPaths.add(path);
+    }
+    return getImmediateChildren(allPaths, currentPath);
+  }, [documents, folders, currentPath, isSearching]);
+
+  // Item count shown on each folder tile - every document nested anywhere
+  // underneath that folder, including in its own subfolders.
+  const subfolderItemCounts = useMemo(() => {
+    const counts = new Map();
+    for (const name of subfolderNames) {
+      const subfolderPath = joinPath([...splitPath(currentPath), name]);
+      const prefix = `${subfolderPath}/`;
+      const count = documents.filter((doc) => {
+        const path = normalizeFolderPath(doc.folder);
+        return path === subfolderPath || path.startsWith(prefix);
+      }).length;
+      counts.set(name, count);
     }
     return counts;
-  }, [documents]);
+  }, [documents, subfolderNames, currentPath]);
 
-  // Filtering is purely client-side against the already-fetched list -
-  // no per-folder or per-search backend endpoint, `folders`/`activeFolder`/
-  // `searchTerm` only ever drive what's shown here. Folder and search
-  // filters combine (AND), matching how Drive's own folder+search
-  // filtering behaves.
-  const visibleDocuments = useMemo(() => {
-    const trimmedSearch = searchTerm.trim().toLowerCase();
-    return documents.filter((doc) => {
-      if (activeFolder !== null && (doc.folder || 'root') !== activeFolder) return false;
-      if (trimmedSearch && !doc.filename.toLowerCase().includes(trimmedSearch)) return false;
-      return true;
-    });
-  }, [documents, activeFolder, searchTerm]);
+  // True only when there's genuinely nothing anywhere in the vault, not
+  // just nothing at the current path - an empty subfolder still has a
+  // breadcrumb to navigate back out with, so it gets its own "empty
+  // folder" message further down instead of hiding the nav entirely.
+  // GET /api/documents/folders always includes "root" even in a brand-new
+  // vault (see documents.controller.js), so a plain folders.length check
+  // would never see the vault as empty - normalize first and ignore that
+  // implicit top-level entry.
+  const vaultIsEmpty =
+    documents.length === 0 && !folders.some((name) => normalizeFolderPath(name));
 
   const backupStatusLine = backupStatus?.lastBackupAt
     ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
@@ -442,7 +498,7 @@ function VaultShell({ onLocked }) {
         <SideNav
           open={navOpen}
           onClose={() => setNavOpen(false)}
-          onOpenDocuments={() => {}}
+          onOpenDocuments={() => setCurrentPath('')}
           onOpenPairedDevices={openDevicesPanel}
           onOpenBackup={openBackupPanel}
         />
@@ -484,6 +540,7 @@ function VaultShell({ onLocked }) {
                 uploading={uploading}
                 progress={uploadProgress}
                 error={uploadError}
+                destinationLabel={currentPath || 'Documents'}
               />
             )}
 
@@ -536,7 +593,7 @@ function VaultShell({ onLocked }) {
             )}
             {!uploadOpen && !uploading && uploadError && <p className={styles.banner}>{uploadError}</p>}
 
-            {!loading && documents.length === 0 && !listError && (
+            {!loading && vaultIsEmpty && !listError && (
               <div className={styles.emptyState}>
                 <FolderLock size={40} weight="light" className={styles.emptyIcon} />
                 <h2 className={styles.emptyTitle}>Your vault is empty</h2>
@@ -544,14 +601,15 @@ function VaultShell({ onLocked }) {
               </div>
             )}
 
-            {documents.length > 0 && (
+            {!vaultIsEmpty && (
               <div className={styles.listHeaderRow}>
-                <FolderFilter
-                  folders={folders}
-                  counts={folderCounts}
-                  activeFolder={activeFolder}
-                  onSelect={setActiveFolder}
-                />
+                {isSearching ? (
+                  <p className={styles.searchResultsLabel}>
+                    Search results for &quot;{searchTerm.trim()}&quot;
+                  </p>
+                ) : (
+                  <FolderBreadcrumb path={currentPath} onNavigate={setCurrentPath} />
+                )}
 
                 <div className={styles.viewToggle}>
                   <button
@@ -576,11 +634,28 @@ function VaultShell({ onLocked }) {
               </div>
             )}
 
-            {documents.length > 0 && visibleDocuments.length === 0 && (
+            {!vaultIsEmpty && !isSearching && subfolderNames.length > 0 && (
+              <ul className={styles.folderGrid}>
+                {subfolderNames.map((name) => (
+                  <FolderTile
+                    key={name}
+                    name={name}
+                    itemCount={subfolderItemCounts.get(name) ?? 0}
+                    onOpen={() => setCurrentPath(joinPath([...splitPath(currentPath), name]))}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {!vaultIsEmpty && subfolderNames.length === 0 && visibleDocuments.length === 0 && (
               <div className={styles.emptyState}>
                 <FolderLock size={40} weight="light" className={styles.emptyIcon} />
                 <h2 className={styles.emptyTitle}>No documents match</h2>
-                <p className={styles.emptyBody}>Try a different folder, or clear your search.</p>
+                <p className={styles.emptyBody}>
+                  {isSearching
+                    ? 'Try a different search.'
+                    : 'This folder is empty. Add a document or create a subfolder here.'}
+                </p>
               </div>
             )}
 
@@ -683,7 +758,11 @@ function VaultShell({ onLocked }) {
       </div>
 
       {newFolderOpen && (
-        <NewFolderModal onClose={() => setNewFolderOpen(false)} onCreated={handleFolderCreated} />
+        <NewFolderModal
+          onClose={() => setNewFolderOpen(false)}
+          onCreated={handleFolderCreated}
+          currentPath={currentPath}
+        />
       )}
 
       {sharingDocument && (

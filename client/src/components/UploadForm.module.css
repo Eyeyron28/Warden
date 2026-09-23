@@ -36,10 +36,10 @@
   color: var(--color-text);
 }
 
-.fieldsRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
+.destination {
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
 }
 
 .field {
@@ -138,10 +138,6 @@
 }
 
 @media (max-width: 560px) {
-  .fieldsRow {
-    grid-template-columns: 1fr;
-  }
-
   .buttonRow {
     flex-direction: column-reverse;
   }

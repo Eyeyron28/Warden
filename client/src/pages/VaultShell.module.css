@@ -150,6 +150,21 @@
   gap: var(--space-4);
 }
 
+.folderGrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.searchResultsLabel {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-2);
+}
+
 .emptyState {
   display: flex;
   flex-direction: column;

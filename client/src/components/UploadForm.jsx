@@ -4,16 +4,22 @@ import { UploadSimple, X } from '@phosphor-icons/react';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import styles from './UploadForm.module.css';
 
-function UploadForm({ onSubmit, onCancel, uploading, progress, error }) {
+/**
+ * `destinationLabel` is display-only (e.g. "Documents" or "PC/Projects") -
+ * which folder the file lands in is driven entirely by wherever VaultShell
+ * is currently showing (currentPath), not a field on this form anymore,
+ * matching Drive's own upload behavior: a file always uploads into
+ * wherever you're currently looking, not a folder typed by hand.
+ */
+function UploadForm({ onSubmit, onCancel, uploading, progress, error, destinationLabel }) {
   const [file, setFile] = useState(null);
-  const [folder, setFolder] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const fileInputRef = useRef(null);
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!file || uploading) return;
-    onSubmit({ file, folder: folder.trim(), expiryDate });
+    onSubmit({ file, expiryDate });
   };
 
   return (
@@ -37,35 +43,21 @@ function UploadForm({ onSubmit, onCancel, uploading, progress, error }) {
         />
       </div>
 
-      <div className={styles.fieldsRow}>
-        <div className={styles.field}>
-          <label htmlFor="upload-folder" className={styles.label}>
-            Folder
-          </label>
-          <input
-            id="upload-folder"
-            type="text"
-            className={styles.textInput}
-            value={folder}
-            onChange={(event) => setFolder(event.target.value)}
-            placeholder="root"
-            disabled={uploading}
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="upload-expiry" className={styles.label}>
-            Expiry date (optional)
-          </label>
-          <input
-            id="upload-expiry"
-            type="date"
-            className={styles.textInput}
-            value={expiryDate}
-            onChange={(event) => setExpiryDate(event.target.value)}
-            min={getTodayDateInputValue()}
-            disabled={uploading}
-          />
-        </div>
+      {destinationLabel && <p className={styles.destination}>Uploading to: {destinationLabel}</p>}
+
+      <div className={styles.field}>
+        <label htmlFor="upload-expiry" className={styles.label}>
+          Expiry date (optional)
+        </label>
+        <input
+          id="upload-expiry"
+          type="date"
+          className={styles.textInput}
+          value={expiryDate}
+          onChange={(event) => setExpiryDate(event.target.value)}
+          min={getTodayDateInputValue()}
+          disabled={uploading}
+        />
       </div>
 
       {uploading && (
