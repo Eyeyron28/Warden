@@ -42,6 +42,8 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   // success, same as every other unlock/recover path here.
   const [usbRecoveryOpen, setUsbRecoveryOpen] = useState(false);
   const [phoneRecoveryOpen, setPhoneRecoveryOpen] = useState(false);
+  // "Forgot your password?" expands inline into the three recovery choices.
+  const [recoveryChoicesOpen, setRecoveryChoicesOpen] = useState(false);
 
   const timeoutRef = useRef(null);
 
@@ -57,6 +59,7 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   const switchToRecover = () => {
     setError('');
     setPassphrase('');
+    setRecoveryChoicesOpen(false);
     setUnlockMode('recover');
   };
 
@@ -268,20 +271,35 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
                 <ArrowRight size={18} weight="bold" />
               </button>
 
-              <button type="button" className={styles.linkButton} onClick={switchToRecover}>
-                Forgot your password? Use your recovery key
+              <button
+                type="button"
+                className={styles.linkButton}
+                onClick={() => setRecoveryChoicesOpen((open) => !open)}
+                aria-expanded={recoveryChoicesOpen}
+              >
+                Forgot your password?
               </button>
-              <div className={styles.recoveryLinkRow}>
-                <button type="button" className={styles.linkButton} onClick={() => setUsbRecoveryOpen(true)}>
-                  Recover with USB
-                </button>
-                <span className={styles.recoveryLinkDivider} aria-hidden="true">
-                  ·
-                </span>
-                <button type="button" className={styles.linkButton} onClick={() => setPhoneRecoveryOpen(true)}>
-                  Recover with paired phone
-                </button>
-              </div>
+              {recoveryChoicesOpen && (
+                <div className={styles.recoveryChoices}>
+                  <button type="button" className={styles.recoveryChoice} onClick={switchToRecover}>
+                    Recovery passkey
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.recoveryChoice}
+                    onClick={() => setUsbRecoveryOpen(true)}
+                  >
+                    Recover with USB
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.recoveryChoice}
+                    onClick={() => setPhoneRecoveryOpen(true)}
+                  >
+                    Recover with paired phone
+                  </button>
+                </div>
+              )}
             </form>
           </>
         )}
