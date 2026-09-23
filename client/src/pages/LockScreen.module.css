@@ -221,19 +221,80 @@
    ":only-child" (RecoveryKeyReveal, the sole child of .panel during the
    setup-reveal state, when .brandRow/VaultDial are hidden entirely). */
 @media (min-width: 900px) {
+  /* Fluid instead of a fixed 900x620 card: the panel is exactly the old
+     900x620 at the 900px breakpoint and grows proportionally with the
+     viewport from there (width ~ +0.29px per px of viewport, height kept
+     at the same aspect ratio), capping just past --max-content-width so
+     ultrawide screens don't stretch it into a banner. Padding and the
+     column gutter share one clamp() over the same --space-* scale so
+     they open up with the card instead of staying fixed around it. Height
+     is still bounded by 90dvh, so the no-page-scroll guarantee holds. */
   .panel {
+    --panel-pad: clamp(var(--space-8), 3vw + 2.2rem, calc(var(--space-8) * 1.5));
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 1fr;
+    /* Both rows size to their content and the pair is centered in the card
+       (align-content), so a taller card doesn't leave a dead band under the
+       content. When content is taller than the card, the form row - a
+       scroll container - gives up the difference, same as the old 1fr row. */
+    grid-template-rows: auto auto;
+    align-content: center;
     align-items: center;
-    column-gap: var(--space-8);
-    row-gap: var(--space-3);
+    column-gap: var(--panel-pad);
+    row-gap: clamp(var(--space-3), 1vw, var(--space-5));
     width: 100%;
-    max-width: 900px;
-    height: min(90dvh, 620px);
+    max-width: clamp(900px, 29.4vw + 635px, calc(var(--max-content-width) + 80px));
+    height: min(90dvh, clamp(620px, 20.3vw + 438px, 880px));
     max-height: 90dvh;
     overflow: hidden;
-    padding: var(--space-8);
+    /* Horizontal padding follows the width; vertical padding is also capped
+       by viewport height (7dvh, floor --space-6) so a wide-but-short screen
+       doesn't spend the height the form needs on empty padding. */
+    padding: max(var(--space-6), min(var(--panel-pad), 7dvh)) var(--panel-pad);
+  }
+
+  /* Brand row scales modestly with the panel. */
+  .mark {
+    width: clamp(34px, 1.6vw + 16px, 48px);
+    height: clamp(34px, 1.6vw + 16px, 48px);
+  }
+
+  .wordmark {
+    font-size: clamp(var(--fs-lg), 0.6vw + 0.6rem, 1.75rem);
+  }
+
+  /* Ambient fill for the space around the card so wide screens read as
+     intentional rather than blank: a soft accent glow centered behind the
+     panel, plus a faint, enlarged echo of the dial's concentric rings
+     fading out toward the edges. Both sit behind the (opaque) panel at
+     z-index 0 and use only the existing low-alpha tokens, so text - which
+     lives on the panel's own solid surface - never sits on them. */
+  .screen::before,
+  .screen::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .screen::before {
+    background: radial-gradient(
+      ellipse 80% 90% at 50% 50%,
+      var(--color-accent-wash),
+      transparent 78%
+    );
+  }
+
+  .screen::after {
+    background: repeating-radial-gradient(
+      circle at 50% 50%,
+      transparent 0 calc(var(--space-8) * 1.5 - 1px),
+      color-mix(in srgb, var(--color-border-strong) 85%, transparent)
+        calc(var(--space-8) * 1.5 - 1px) calc(var(--space-8) * 1.5)
+    );
+    mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 75%);
+    opacity: 0.6;
   }
 
   /* Left column: brand row above VaultDial, both centered - row1/row2

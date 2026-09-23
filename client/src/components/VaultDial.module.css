@@ -1,9 +1,24 @@
 .dial {
+  --dial-size: clamp(140px, 30vw, 200px);
   position: relative;
-  width: clamp(140px, 30vw, 200px);
-  height: clamp(140px, 30vw, 200px);
+  width: var(--dial-size);
+  height: var(--dial-size);
   display: grid;
   place-items: center;
+}
+
+/* Desktop landscape layout (LockScreen's two-column breakpoint): the dial
+   grows modestly with the panel it sits in - 200px at 900px wide, ~280px
+   at 1920px, capped at 300px - and the icon in its center scales with it. */
+@media (min-width: 900px) {
+  .dial {
+    --dial-size: clamp(200px, 7.8vw + 130px, 300px);
+  }
+
+  .icon {
+    width: calc(var(--dial-size) * 0.13);
+    height: calc(var(--dial-size) * 0.13);
+  }
 }
 
 .svg {
