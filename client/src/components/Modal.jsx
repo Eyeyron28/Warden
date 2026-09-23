@@ -5,10 +5,9 @@ import styles from './Modal.module.css';
 
 /**
  * Generic overlay dialog: backdrop, Esc-to-close, click-outside-to-close.
- * Backup/restore/upload use inline panels within the page flow instead of
- * this, since those are page-level toolbar actions; this is for
- * per-row/per-item actions (like sharing a single document) where an
- * overlay reads better than pushing the whole list down.
+ * Used for every page-level action (upload, backup, restore, pairing,
+ * paired devices) and per-item ones (sharing) so nothing ever pushes the
+ * document list down or renders inline in the page body.
  */
 function Modal({ title, onClose, children }) {
   useEffect(() => {

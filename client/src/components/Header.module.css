@@ -107,26 +107,6 @@
   flex-shrink: 0;
 }
 
-.selectButton {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  flex-shrink: 0;
-  transition: border-color var(--duration-fast) var(--ease-standard),
-    background var(--duration-fast) var(--ease-standard);
-}
-
-.selectButton:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-wash);
-}
-
 .lockButton {
   display: flex;
   align-items: center;
@@ -166,12 +146,10 @@
     max-width: none;
   }
 
-  .selectButton span,
   .lockButton span {
     display: none;
   }
 
-  .selectButton,
   .lockButton {
     padding: var(--space-2);
   }

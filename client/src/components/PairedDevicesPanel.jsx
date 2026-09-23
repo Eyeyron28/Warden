@@ -14,7 +14,7 @@ import styles from './PairedDevicesPanel.module.css';
  * a revoked device's deviceToken (still sitting in its own IndexedDB)
  * stops working immediately, not just on its next pairing attempt.
  */
-function PairedDevicesPanel({ onCancel }) {
+function PairedDevicesPanel() {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,13 +64,6 @@ function PairedDevicesPanel({ onCancel }) {
 
   return (
     <div className={styles.panel}>
-      <div className={styles.header}>
-        <span className={styles.label}>Paired devices</span>
-        <button type="button" className={styles.cancelButton} onClick={onCancel}>
-          Close
-        </button>
-      </div>
-
       {loading && <p className={styles.hint}>Loading...</p>}
 
       {!loading && error && (

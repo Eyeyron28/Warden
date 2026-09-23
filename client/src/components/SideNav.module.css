@@ -63,9 +63,51 @@
   font-weight: 600;
 }
 
-.item:disabled {
+.item {
+  width: 100%;
+}
+
+.itemLabel {
+  flex: 1;
+  text-align: left;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.caret {
   color: var(--color-text-faint);
-  cursor: default;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.caretOpen {
+  transform: rotate(180deg);
+}
+
+.children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: calc(var(--space-3) + 18px + var(--space-3));
+}
+
+.childItem {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  text-align: left;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.childItem:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
 }
 
 /* Wide desktop: persistent sidebar instead of an overlay drawer -

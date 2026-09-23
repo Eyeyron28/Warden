@@ -4,10 +4,8 @@ import styles from './DropdownMenu.module.css';
 
 /**
  * Shared trigger+panel dropdown shell - click-outside and Escape both
- * close it. Used by NewMenu and SyncMenu, which are otherwise identical
- * in behavior and differ only in what they render as the trigger and
- * the option list, hence the render-prop shape rather than two separate
- * copies of this open/close wiring.
+ * close it. Trigger and option list are render props so callers control
+ * what they look like while sharing this open/close wiring.
  */
 function DropdownMenu({ trigger, children, align = 'left' }) {
   const [open, setOpen] = useState(false);

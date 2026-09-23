@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
+import { CheckSquare, FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
 import SideNav from '../components/SideNav.jsx';
@@ -7,7 +7,6 @@ import DocumentRow from '../components/DocumentRow.jsx';
 import DocumentCard from '../components/DocumentCard.jsx';
 import UploadForm from '../components/UploadForm.jsx';
 import NewMenu from '../components/NewMenu.jsx';
-import SyncMenu from '../components/SyncMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
 import RestorePanel from '../components/RestorePanel.jsx';
@@ -68,6 +67,9 @@ function VaultShell({ onLocked }) {
   const [uploadError, setUploadError] = useState('');
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  // "Upload folder" picks files natively, then reports progress/result in a modal.
+  const [folderUploadOpen, setFolderUploadOpen] = useState(false);
+  const [folderUploadCount, setFolderUploadCount] = useState(0);
 
   const [viewingId, setViewingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -194,6 +196,8 @@ function VaultShell({ onLocked }) {
     if (files.length === 0) return;
 
     setUploadOpen(false);
+    setFolderUploadOpen(true);
+    setFolderUploadCount(0);
     setUploading(true);
     setUploadProgress(0);
     setUploadError('');
@@ -210,6 +214,7 @@ function VaultShell({ onLocked }) {
           setUploadProgress(overall);
         });
       }
+      setFolderUploadCount(files.length);
       await refresh();
       refreshFolders();
     } catch (err) {
@@ -490,8 +495,6 @@ function VaultShell({ onLocked }) {
         onToggleNav={() => setNavOpen((open) => !open)}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
-        showSelectButton={!selectMode && documents.length > 0}
-        onEnterSelectMode={enterSelectMode}
       />
 
       <div className={styles.body}>
@@ -499,8 +502,10 @@ function VaultShell({ onLocked }) {
           open={navOpen}
           onClose={() => setNavOpen(false)}
           onOpenDocuments={() => setCurrentPath('')}
-          onOpenPairedDevices={openDevicesPanel}
           onOpenBackup={openBackupPanel}
+          onOpenRestore={openRestorePanel}
+          onOpenPair={openPairPanel}
+          onOpenDevices={openDevicesPanel}
         />
 
         <main className={styles.content}>
@@ -515,83 +520,24 @@ function VaultShell({ onLocked }) {
                 </p>
               </div>
               <div className={styles.toolbarActions}>
+                {!selectMode && documents.length > 0 && (
+                  <button type="button" className={styles.selectButton} onClick={enterSelectMode}>
+                    <CheckSquare size={16} weight="bold" />
+                    <span>Select</span>
+                  </button>
+                )}
                 <NewMenu
                   onOpenNewFolder={() => setNewFolderOpen(true)}
                   onOpenUploadForm={openUploadPanel}
                   onFolderFilesSelected={handleUploadFolder}
-                />
-                <SyncMenu
-                  onOpenBackup={openBackupPanel}
-                  onOpenRestore={openRestorePanel}
-                  onOpenPair={openPairPanel}
                 />
               </div>
             </div>
 
             {backupStatusLine && <p className={styles.backupStatusLine}>{backupStatusLine}</p>}
 
-            {uploadOpen && (
-              <UploadForm
-                onSubmit={handleUpload}
-                onCancel={() => {
-                  setUploadOpen(false);
-                  setUploadError('');
-                }}
-                uploading={uploading}
-                progress={uploadProgress}
-                error={uploadError}
-                destinationLabel={currentPath || 'Documents'}
-              />
-            )}
-
-            {backupOpen && (
-              <BackupPanel
-                onSubmit={handleBackupExport}
-                onCancel={closeBackupPanel}
-                submitting={backupSubmitting}
-                error={backupError}
-                result={backupResult}
-              />
-            )}
-
-            {restoreOpen && (
-              <RestorePanel
-                onSubmit={handleRestoreImport}
-                onCancel={closeRestorePanel}
-                submitting={restoreSubmitting}
-                error={restoreError}
-                result={restoreResult}
-              />
-            )}
-
-            {pairOpen && (
-              <Modal title="Pair a device" onClose={() => setPairOpen(false)}>
-                <PairDevicePanel onClose={() => setPairOpen(false)} />
-              </Modal>
-            )}
-
-            {devicesOpen && <PairedDevicesPanel onCancel={() => setDevicesOpen(false)} />}
-
             {actionError && <p className={styles.banner}>{actionError}</p>}
             {listError && <p className={styles.banner}>{listError}</p>}
-            {/* "Upload folder" (NewMenu) doesn't open the UploadForm panel that
-                normally shows progress/errors inline - it uploads straight from
-                the menu, so this covers that path specifically. */}
-            {!uploadOpen && uploading && (
-              <div className={styles.folderUploadProgress}>
-                <p className={styles.folderUploadLabel}>Uploading folder, {uploadProgress}%</p>
-                <div
-                  className={styles.progressTrack}
-                  role="progressbar"
-                  aria-valuenow={uploadProgress}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                >
-                  <div className={styles.progressFill} style={{ width: `${uploadProgress}%` }} />
-                </div>
-              </div>
-            )}
-            {!uploadOpen && !uploading && uploadError && <p className={styles.banner}>{uploadError}</p>}
 
             {!loading && vaultIsEmpty && !listError && (
               <div className={styles.emptyState}>
@@ -756,6 +702,116 @@ function VaultShell({ onLocked }) {
           </div>
         </main>
       </div>
+
+      {uploadOpen && (
+        <Modal
+          title="Upload file"
+          onClose={() => {
+            if (uploading) return;
+            setUploadOpen(false);
+            setUploadError('');
+          }}
+        >
+          <UploadForm
+            onSubmit={handleUpload}
+            onCancel={() => {
+              setUploadOpen(false);
+              setUploadError('');
+            }}
+            uploading={uploading}
+            progress={uploadProgress}
+            error={uploadError}
+            destinationLabel={currentPath || 'Documents'}
+          />
+        </Modal>
+      )}
+
+      {folderUploadOpen && (
+        <Modal
+          title="Upload folder"
+          onClose={() => {
+            if (uploading) return;
+            setFolderUploadOpen(false);
+            setUploadError('');
+          }}
+        >
+          {uploading ? (
+            <>
+              <p className={styles.folderUploadLabel}>Uploading folder, {uploadProgress}%</p>
+              <div
+                className={styles.progressTrack}
+                role="progressbar"
+                aria-valuenow={uploadProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div className={styles.progressFill} style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </>
+          ) : (
+            <>
+              {uploadError ? (
+                <p className={styles.banner} role="alert">
+                  {uploadError}
+                </p>
+              ) : (
+                <p className={styles.folderUploadLabel}>
+                  Uploaded {folderUploadCount} file{folderUploadCount === 1 ? '' : 's'} to{' '}
+                  {currentPath || 'Documents'}.
+                </p>
+              )}
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.bulkDoneButton}
+                  onClick={() => {
+                    setFolderUploadOpen(false);
+                    setUploadError('');
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {backupOpen && (
+        <Modal title="Backup to USB" onClose={closeBackupPanel}>
+          <BackupPanel
+            onSubmit={handleBackupExport}
+            onCancel={closeBackupPanel}
+            submitting={backupSubmitting}
+            error={backupError}
+            result={backupResult}
+          />
+        </Modal>
+      )}
+
+      {restoreOpen && (
+        <Modal title="Restore from backup" onClose={closeRestorePanel}>
+          <RestorePanel
+            onSubmit={handleRestoreImport}
+            onCancel={closeRestorePanel}
+            submitting={restoreSubmitting}
+            error={restoreError}
+            result={restoreResult}
+          />
+        </Modal>
+      )}
+
+      {pairOpen && (
+        <Modal title="Pair a device" onClose={() => setPairOpen(false)}>
+          <PairDevicePanel onClose={() => setPairOpen(false)} />
+        </Modal>
+      )}
+
+      {devicesOpen && (
+        <Modal title="Paired devices" onClose={() => setDevicesOpen(false)}>
+          <PairedDevicesPanel />
+        </Modal>
+      )}
 
       {newFolderOpen && (
         <NewFolderModal
