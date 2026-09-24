@@ -5,6 +5,7 @@ const path = require('path');
 const https = require('https');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 
 const connectDB = require('./config/db');
 const corsOptions = require('./config/cors');
@@ -25,6 +26,13 @@ const app = express();
 
 connectDB();
 
+// Standard security headers (X-Content-Type-Options, X-Frame-Options,
+// removing X-Powered-By, CSP, etc), on defaults. First in the chain so even
+// requests CORS goes on to reject carry them. Helmet only sets response
+// headers - it doesn't touch the CORS handshake below. No origin or IP is
+// configured here: nothing needs one, and this PC's LAN address changes
+// between networks (see utils/lanIp.js).
+app.use(helmet());
 app.use(cors(corsOptions));
 // Express's default JSON body limit (100kb) is far too small for
 // POST /api/sync/push: it receives an entire encrypted document as base64
