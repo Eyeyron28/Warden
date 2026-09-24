@@ -99,7 +99,12 @@ function isValidBackupRecord(record) {
   return (
     record &&
     typeof record === 'object' &&
-    REQUIRED_BACKUP_RECORD_FIELDS.every((field) => typeof record[field] === 'string' && record[field].length > 0)
+    REQUIRED_BACKUP_RECORD_FIELDS.every(
+      // encryptedBlob may legitimately be an empty string: a 0-byte file
+      // encrypts to an empty ciphertext (its integrity proof is authTag).
+      (field) =>
+        typeof record[field] === 'string' && (field === 'encryptedBlob' || record[field].length > 0)
+    )
   );
 }
 

@@ -141,7 +141,8 @@ const pushDocuments = asyncHandler(async (req, res) => {
       mimeType,
     } = item || {};
 
-    if (!filename || !encryptedBlob || !iv || !authTag || !checksum) {
+    // encryptedBlob may be '' (a 0-byte file encrypts to an empty ciphertext).
+    if (!filename || typeof encryptedBlob !== 'string' || !iv || !authTag || !checksum) {
       throw badRequest(
         'Each document requires filename, encryptedBlob, iv, authTag, and checksum.'
       );

@@ -20,7 +20,8 @@ const documentSchema = new mongoose.Schema(
     // encrypt/upload flow is implemented.
     encryptedBlob: {
       type: Buffer,
-      required: true,
+      // Presence enforced by the pre('validate') hook at the bottom of this
+      // file, which (unlike `required: true`) accepts an empty Buffer.
     },
     // Initialization vector used for this file's AES encryption.
     iv: {
@@ -74,5 +75,19 @@ const documentSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Presence check for encryptedBlob, done here instead of `required: true`
+// on the path: Mongoose's built-in required check for Buffers also rejects a
+// zero-length Buffer, but AES-GCM of an empty file legitimately produces an
+// empty ciphertext (integrity lives in authTag). Without this, any 0-byte
+// file - an __init__.py or .gitkeep inside an uploaded folder - failed with
+// "encryptedBlob is required" and aborted the whole folder upload. A blob
+// must still be PRESENT (a real Buffer); it just may be empty.
+documentSchema.pre('validate', function requireEncryptedBlob(next) {
+  if (!Buffer.isBuffer(this.encryptedBlob)) {
+    this.invalidate('encryptedBlob', 'Path `encryptedBlob` is required.', this.encryptedBlob);
+  }
+  next();
+});
 
 module.exports = mongoose.model('Document', documentSchema);
