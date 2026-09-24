@@ -6,6 +6,7 @@ const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
 const corsOptions = require('./config/cors');
@@ -50,6 +51,15 @@ app.use(cors(corsOptions));
 // document metadata edits, share/pairing/device actions) is tiny by
 // comparison and a 30mb ceiling on them is generous, not risky.
 app.use(express.json({ limit: '30mb' }));
+// NoSQL operator-injection guard: strips keys starting with "$" (or containing
+// ".") from req.body, req.query and req.params before any route sees them, so
+// {"$ne": null} in place of a string can never reach a Mongoose filter. It
+// has to sit after express.json (it sanitizes the PARSED body) and before the
+// routes. Multipart fields are parsed later, by multer inside the document
+// upload route, so that handler type-checks its own fields. Every handler
+// that takes user input also checks its expected type explicitly - see the
+// typeof checks in the controllers - as a second layer behind this one.
+app.use(mongoSanitize());
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ success: true, status: 'ok' });

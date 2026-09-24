@@ -57,7 +57,9 @@ const pullDocuments = asyncHandler(async (req, res) => {
   // documents) are never valid Mongo ObjectIds - filtering them out here
   // avoids a Mongoose cast error rather than requiring the phone to sort
   // its own ids into "real" vs "local-only" before asking.
-  const knownIds = (knownDocumentIds || []).filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const knownIds = (knownDocumentIds || []).filter(
+    (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)
+  );
 
   const [newDocuments, index, documentFolders, emptyFolders] = await Promise.all([
     Document.find({ _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
@@ -142,7 +144,16 @@ const pushDocuments = asyncHandler(async (req, res) => {
     } = item || {};
 
     // encryptedBlob may be '' (a 0-byte file encrypts to an empty ciphertext).
-    if (!filename || typeof encryptedBlob !== 'string' || !iv || !authTag || !checksum) {
+    // Every field is type-checked as a string before it reaches Mongoose.
+    const stringFields = [filename, encryptedBlob, iv, authTag, checksum];
+    const optionalStrings = [localId, folder, expiryDate, mimeType];
+    if (
+      !stringFields.every((value) => typeof value === 'string') ||
+      !optionalStrings.every((value) => value === undefined || value === null || typeof value === 'string')
+    ) {
+      throw badRequest('Each document field must be a string.');
+    }
+    if (!filename || !iv || !authTag || !checksum) {
       throw badRequest(
         'Each document requires filename, encryptedBlob, iv, authTag, and checksum.'
       );

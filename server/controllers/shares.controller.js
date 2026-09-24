@@ -52,12 +52,19 @@ const MAX_SHARE_ENTRIES = 500;
  * controllers/sharedView.controller.js with their own trust boundary.
  */
 async function issueShare(req, res, documentIds) {
-  const hours = Number(req.body.durationHours);
+  const rawHours = req.body.durationHours;
+  if (typeof rawHours !== 'number' && typeof rawHours !== 'string') {
+    throw badRequest('durationHours must be a positive number of hours.');
+  }
+  const hours = Number(rawHours);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw badRequest('durationHours must be a positive number of hours.');
   }
 
-  const uniqueIds = [...new Set(documentIds.map(String))];
+  if (!documentIds.every((id) => typeof id === 'string')) {
+    throw badRequest('Invalid document id.');
+  }
+  const uniqueIds = [...new Set(documentIds)];
   if (uniqueIds.length === 0) {
     throw badRequest('At least one document is required.');
   }

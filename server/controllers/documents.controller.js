@@ -101,6 +101,15 @@ const createDocument = asyncHandler(async (req, res) => {
   const { buffer, originalname, mimetype } = req.file;
   const { folder, expiryDate } = req.body;
 
+  // Multipart fields are parsed by multer, which (via bracket syntax like
+  // folder[$ne]=x) can hand back objects instead of strings.
+  if (folder !== undefined && typeof folder !== 'string') {
+    throw badRequest('folder must be a string.');
+  }
+  if (expiryDate !== undefined && typeof expiryDate !== 'string') {
+    throw badRequest('expiryDate must be a string.');
+  }
+
   // SHA-256 of the ORIGINAL plaintext. Distinct from the AES-GCM authTag
   // produced below: the authTag proves the ciphertext wasn't tampered
   // with in storage, this checksum proves the decrypted content still
@@ -298,6 +307,9 @@ const updateDocument = asyncHandler(async (req, res) => {
     if (expiryDate === null) {
       document.expiryDate = null;
     } else {
+      if (typeof expiryDate !== 'string') {
+        throw badRequest('expiryDate must be a valid date, or null to clear it.');
+      }
       const parsed = new Date(expiryDate);
       if (Number.isNaN(parsed.getTime())) {
         throw badRequest('expiryDate must be a valid date, or null to clear it.');
