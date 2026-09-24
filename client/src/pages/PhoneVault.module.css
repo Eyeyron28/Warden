@@ -214,7 +214,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .addButton {
@@ -335,4 +335,54 @@
 .viewButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.folderGrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.rowActions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.deleteButton {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  transition: color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.deleteButton:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.confirmLabel {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.confirmYes {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-danger);
+  color: var(--color-bg);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.confirmYes:disabled {
+  opacity: 0.6;
 }

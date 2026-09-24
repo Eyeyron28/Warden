@@ -13,7 +13,7 @@ import styles from './NewMenu.module.css';
  * webkitdirectory> here, since there's no existing UI for picking a
  * whole folder at once.
  */
-function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected }) {
+function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, allowFolderUpload = true }) {
   const folderInputRef = useRef(null);
 
   const handleFolderInputChange = (event) => {
@@ -59,34 +59,38 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected }) {
               <UploadSimple size={18} weight="light" className={dropdownStyles.optionIcon} />
               <span>Upload file</span>
             </button>
-            <button
-              type="button"
-              className={dropdownStyles.option}
-              onClick={() => {
-                close();
-                folderInputRef.current?.click();
-              }}
-            >
-              <UploadSimple size={18} weight="light" className={dropdownStyles.optionIcon} />
-              <span>Upload folder</span>
-            </button>
+            {allowFolderUpload && (
+              <button
+                type="button"
+                className={dropdownStyles.option}
+                onClick={() => {
+                  close();
+                  folderInputRef.current?.click();
+                }}
+              >
+                <UploadSimple size={18} weight="light" className={dropdownStyles.optionIcon} />
+                <span>Upload folder</span>
+              </button>
+            )}
           </>
         )}
       </DropdownMenu>
 
-      <input
-        ref={folderInputRef}
-        type="file"
-        className={styles.hiddenInput}
-        onChange={handleFolderInputChange}
-        // webkitdirectory/mozdirectory are non-standard but universally
-        // supported in Chromium/Firefox for "pick a whole folder" - React
-        // passes unrecognized lowercase attributes straight through to
-        // the DOM, so this works with no extra plumbing.
-        webkitdirectory=""
-        mozdirectory=""
-        multiple
-      />
+      {allowFolderUpload && (
+        <input
+          ref={folderInputRef}
+          type="file"
+          className={styles.hiddenInput}
+          onChange={handleFolderInputChange}
+          // webkitdirectory/mozdirectory are non-standard but universally
+          // supported in Chromium/Firefox for "pick a whole folder" - React
+          // passes unrecognized lowercase attributes straight through to
+          // the DOM, so this works with no extra plumbing.
+          webkitdirectory=""
+          mozdirectory=""
+          multiple
+        />
+      )}
     </>
   );
 }

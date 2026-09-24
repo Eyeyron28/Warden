@@ -16,7 +16,7 @@ import styles from './NewFolderModal.module.css';
  * silently create nested folders instead of one, so that's rejected
  * outright rather than silently reinterpreted.
  */
-function NewFolderModal({ onClose, onCreated, currentPath }) {
+function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = createFolder }) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +36,7 @@ function NewFolderModal({ onClose, onCreated, currentPath }) {
     setSubmitting(true);
     setError('');
     try {
-      await createFolder(fullPath);
+      await createFolderFn(fullPath);
       onCreated(fullPath);
       onClose();
     } catch (err) {

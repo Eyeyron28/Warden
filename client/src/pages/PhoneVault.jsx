@@ -1,15 +1,23 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowRight, DeviceMobile, Lifebuoy, LockKey, Plus } from '@phosphor-icons/react';
+import { ArrowRight, DeviceMobile, Lifebuoy, LockKey, Trash } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import UploadForm from '../components/UploadForm.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import NewMenu from '../components/NewMenu.jsx';
+import NewFolderModal from '../components/NewFolderModal.jsx';
+import FolderBreadcrumb from '../components/FolderBreadcrumb.jsx';
+import FolderTile from '../components/FolderTile.jsx';
 import {
   getAllDeviceAuth,
   getAllLocalDocuments,
   saveDocumentLocally,
+  deleteLocalDocument,
   remapLocalDocumentId,
+  getAllLocalFolders,
+  saveLocalFolder,
+  deleteLocalFolder,
 } from '../services/localVault.js';
 import {
   unlockLocalVault,
@@ -24,7 +32,14 @@ import {
   getUnwrappedDEK,
   generateSaltHex,
 } from '../services/localCrypto.js';
-import { pullDocuments, pushDocuments } from '../services/syncService.js';
+import { pullDocuments, pushDocuments, deleteDocumentOnPC } from '../services/syncService.js';
+import {
+  normalizeFolderPath,
+  splitPath,
+  joinPath,
+  getImmediateChildren,
+  pathStillExists,
+} from '../utils/folderPath.js';
 import { submitPhoneRecovery } from '../services/phoneRecoveryService.js';
 import { extractErrorMessage } from '../services/api.js';
 import styles from './PhoneVault.module.css';
@@ -58,7 +73,14 @@ function PhoneVault() {
   const [unlocking, setUnlocking] = useState(false);
 
   const [documents, setDocuments] = useState([]);
+  const [localFolders, setLocalFolders] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
+
+  // Same slash-delimited path model as the PC's VaultShell ("" = top level).
+  const [currentPath, setCurrentPath] = useState('');
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -107,9 +129,10 @@ function PhoneVault() {
   const loadDocuments = useCallback(async () => {
     setDocsLoading(true);
     try {
-      const docs = await getAllLocalDocuments();
+      const [docs, folderRecords] = await Promise.all([getAllLocalDocuments(), getAllLocalFolders()]);
       docs.sort((a, b) => new Date(b.cachedAt) - new Date(a.cachedAt));
       setDocuments(docs);
+      setLocalFolders(folderRecords);
     } finally {
       setDocsLoading(false);
     }
@@ -147,6 +170,10 @@ function PhoneVault() {
   const handleLock = () => {
     lockLocalVault();
     setDocuments([]);
+    setLocalFolders([]);
+    setCurrentPath('');
+    setNewFolderOpen(false);
+    setConfirmingDeleteId(null);
     setSyncMessage('');
     setSyncError('');
     setAddOpen(false);
@@ -211,7 +238,7 @@ function PhoneVault() {
    * from local documents, so a phone-added file becomes push-eligible
    * with no changes needed there.
    */
-  const handleAddDocument = async ({ file, folder, expiryDate }) => {
+  const handleAddDocument = async ({ file, expiryDate }) => {
     setAdding(true);
     setAddError('');
     try {
@@ -222,7 +249,7 @@ function PhoneVault() {
       await saveDocumentLocally({
         id: crypto.randomUUID(),
         filename: file.name,
-        folder: folder || 'root',
+        folder: currentPath || 'root',
         expiryDate: expiryDate || null,
         encryptedBlob: ciphertext,
         iv,
@@ -267,6 +294,34 @@ function PhoneVault() {
     }
   };
 
+  /**
+   * Deletes from the phone: same permanent delete and confirm step as the PC.
+   * A document that was never synced exists only here, so it's just dropped
+   * locally; otherwise the PC's DELETE /api/documents/:id is called first
+   * (deviceToken auth) and the local copy only goes once that succeeded - a
+   * 404 counts as success since it means the PC already deleted it.
+   */
+  const handleDelete = async (doc) => {
+    setConfirmingDeleteId(null);
+    setViewError('');
+    setDeletingId(doc.id);
+    try {
+      if (doc.syncStatus !== 'pending') {
+        try {
+          await deleteDocumentOnPC(deviceAuth.apiBase, deviceAuth.deviceToken, doc.id);
+        } catch (err) {
+          if (err?.response?.status !== 404) throw err;
+        }
+      }
+      await deleteLocalDocument(doc.id);
+      await loadDocuments();
+    } catch (err) {
+      setViewError(extractErrorMessage(err, 'Could not delete this document. Is the PC reachable?'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     setSyncError('');
@@ -275,7 +330,11 @@ function PhoneVault() {
       const localDocs = await getAllLocalDocuments();
       const knownDocumentIds = localDocs.map((doc) => doc.id);
 
-      const pulled = await pullDocuments(deviceAuth.apiBase, deviceAuth.deviceToken, knownDocumentIds);
+      const { documents: pulled, index, folders: serverFolders } = await pullDocuments(
+        deviceAuth.apiBase,
+        deviceAuth.deviceToken,
+        knownDocumentIds
+      );
       for (const doc of pulled) {
         // eslint-disable-next-line no-await-in-loop -- small batches, sequential IndexedDB writes are fine here
         await saveDocumentLocally({
@@ -292,10 +351,56 @@ function PhoneVault() {
         });
       }
 
+      // Reconcile what the phone already had against the PC's full index:
+      // a synced document missing from it was deleted on the PC, and one
+      // whose filename/folder/expiry differ was edited there. Documents
+      // still 'pending' exist only on this phone and are never pruned.
+      const serverIndex = new Map(index.map((entry) => [String(entry.id), entry]));
+      let removedCount = 0;
+      for (const doc of localDocs) {
+        if (doc.syncStatus !== 'synced') continue;
+        const remote = serverIndex.get(String(doc.id));
+        if (!remote) {
+          // eslint-disable-next-line no-await-in-loop
+          await deleteLocalDocument(doc.id);
+          removedCount += 1;
+        } else if (
+          remote.filename !== doc.filename ||
+          remote.folder !== doc.folder ||
+          (remote.expiryDate || null) !== (doc.expiryDate || null)
+        ) {
+          // eslint-disable-next-line no-await-in-loop
+          await saveDocumentLocally({
+            ...doc,
+            filename: remote.filename,
+            folder: remote.folder,
+            expiryDate: remote.expiryDate,
+          });
+        }
+      }
+
+      // Same for empty-folder records: mirror the PC's list, keep pending ones.
+      const localFolderRecords = await getAllLocalFolders();
+      const serverFolderSet = new Set(serverFolders);
+      for (const record of localFolderRecords) {
+        if (record.syncStatus === 'synced' && !serverFolderSet.has(record.name)) {
+          // eslint-disable-next-line no-await-in-loop
+          await deleteLocalFolder(record.name);
+        }
+      }
+      const localFolderNames = new Set(localFolderRecords.map((record) => record.name));
+      for (const name of serverFolders) {
+        if (!localFolderNames.has(name)) {
+          // eslint-disable-next-line no-await-in-loop
+          await saveLocalFolder({ name, syncStatus: 'synced' });
+        }
+      }
+
       const pending = localDocs.filter((doc) => doc.syncStatus === 'pending');
+      const pendingFolders = localFolderRecords.filter((record) => record.syncStatus === 'pending');
       let pushedCount = 0;
 
-      if (pending.length > 0) {
+      if (pending.length > 0 || pendingFolders.length > 0) {
         const newDocuments = pending.map((doc) => ({
           localId: doc.id,
           filename: doc.filename,
@@ -308,7 +413,12 @@ function PhoneVault() {
           mimeType: doc.mimeType,
         }));
 
-        const result = await pushDocuments(deviceAuth.apiBase, deviceAuth.deviceToken, newDocuments);
+        const result = await pushDocuments(
+          deviceAuth.apiBase,
+          deviceAuth.deviceToken,
+          newDocuments,
+          pendingFolders.map((record) => record.name)
+        );
         for (const { localId, id } of result.idMap) {
           const original = pending.find((doc) => doc.id === localId);
           if (original && id) {
@@ -316,17 +426,68 @@ function PhoneVault() {
             await remapLocalDocumentId(localId, { ...original, id, syncStatus: 'synced' });
           }
         }
+        for (const record of pendingFolders) {
+          // eslint-disable-next-line no-await-in-loop
+          await saveLocalFolder({ name: record.name, syncStatus: 'synced' });
+        }
         pushedCount = result.idMap.length;
       }
 
       await loadDocuments();
-      setSyncMessage(`Synced: pulled ${pulled.length}, pushed ${pushedCount}.`);
+      setSyncMessage(
+        `Synced: pulled ${pulled.length}, pushed ${pushedCount}, removed ${removedCount}.`
+      );
     } catch (err) {
       setSyncError(extractErrorMessage(err, 'Sync failed.'));
     } finally {
       setSyncing(false);
     }
   };
+
+  // Folder tree for the current path - derived from document folder strings
+  // plus the empty-folder records, exactly like VaultShell (utils/folderPath.js).
+  const subfolderNames = useMemo(() => {
+    const allPaths = new Set();
+    for (const doc of documents) {
+      const path = normalizeFolderPath(doc.folder);
+      if (path) allPaths.add(path);
+    }
+    for (const record of localFolders) {
+      const path = normalizeFolderPath(record.name);
+      if (path) allPaths.add(path);
+    }
+    return getImmediateChildren(allPaths, currentPath);
+  }, [documents, localFolders, currentPath]);
+
+  const subfolderItemCounts = useMemo(() => {
+    const counts = new Map();
+    for (const name of subfolderNames) {
+      const subfolderPath = joinPath([...splitPath(currentPath), name]);
+      const prefix = `${subfolderPath}/`;
+      counts.set(
+        name,
+        documents.filter((doc) => {
+          const path = normalizeFolderPath(doc.folder);
+          return path === subfolderPath || path.startsWith(prefix);
+        }).length
+      );
+    }
+    return counts;
+  }, [documents, subfolderNames, currentPath]);
+
+  const visibleDocuments = useMemo(
+    () => documents.filter((doc) => normalizeFolderPath(doc.folder) === currentPath),
+    [documents, currentPath]
+  );
+
+  // Bounce to the top level if the folder being viewed vanished (its last
+  // document was deleted/synced away and it had no folder record).
+  useEffect(() => {
+    if (phase !== 'unlocked' || docsLoading) return;
+    const docFolders = documents.map((doc) => normalizeFolderPath(doc.folder));
+    const folderNames = localFolders.map((record) => normalizeFolderPath(record.name));
+    if (!pathStillExists(currentPath, docFolders, folderNames)) setCurrentPath('');
+  }, [phase, docsLoading, documents, localFolders, currentPath]);
 
   return (
     <div className={styles.page}>
@@ -406,17 +567,14 @@ function PhoneVault() {
                 </p>
               </div>
               <div className={styles.vaultHeaderActions}>
-                <button
-                  type="button"
-                  className={styles.addButton}
-                  onClick={() => {
-                    setAddOpen((open) => !open);
+                <NewMenu
+                  allowFolderUpload={false}
+                  onOpenNewFolder={() => setNewFolderOpen(true)}
+                  onOpenUploadForm={() => {
+                    setAddOpen(true);
                     setAddError('');
                   }}
-                >
-                  <Plus size={16} weight="bold" />
-                  <span>Add document</span>
-                </button>
+                />
                 <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
                   {syncing ? 'Syncing...' : 'Sync now'}
                 </button>
@@ -445,6 +603,7 @@ function PhoneVault() {
                 uploading={adding}
                 progress={100}
                 error={addError}
+                destinationLabel={currentPath || 'Documents'}
               />
             )}
 
@@ -501,13 +660,32 @@ function PhoneVault() {
             {syncError && <p className={styles.fieldError}>{syncError}</p>}
             {viewError && <p className={styles.fieldError}>{viewError}</p>}
 
-            {!docsLoading && documents.length === 0 && (
-              <p className={styles.hint}>Nothing stored locally yet - try syncing, or add a document.</p>
+            <FolderBreadcrumb path={currentPath} onNavigate={setCurrentPath} />
+
+            {subfolderNames.length > 0 && (
+              <ul className={styles.folderGrid}>
+                {subfolderNames.map((name) => (
+                  <FolderTile
+                    key={name}
+                    name={name}
+                    itemCount={subfolderItemCounts.get(name) ?? 0}
+                    onOpen={() => setCurrentPath(joinPath([...splitPath(currentPath), name]))}
+                  />
+                ))}
+              </ul>
             )}
 
-            {documents.length > 0 && (
+            {!docsLoading && visibleDocuments.length === 0 && subfolderNames.length === 0 && (
+              <p className={styles.hint}>
+                {documents.length === 0 && !currentPath
+                  ? 'Nothing stored locally yet - try syncing, or add a document.'
+                  : 'This folder is empty.'}
+              </p>
+            )}
+
+            {visibleDocuments.length > 0 && (
               <ul className={styles.list}>
-                {documents.map((doc) => (
+                {visibleDocuments.map((doc) => (
                   <li key={doc.id} className={styles.row}>
                     <div className={styles.meta}>
                       <span className={styles.filenameRow}>
@@ -518,14 +696,48 @@ function PhoneVault() {
                       </span>
                       <span className={styles.sub}>{doc.folder || 'root'}</span>
                     </div>
-                    <button
-                      type="button"
-                      className={styles.viewButton}
-                      onClick={() => handleView(doc)}
-                      disabled={viewingId === doc.id}
-                    >
-                      {viewingId === doc.id ? 'Opening...' : 'View'}
-                    </button>
+                    <div className={styles.rowActions}>
+                      {confirmingDeleteId === doc.id ? (
+                        <>
+                          <span className={styles.confirmLabel}>Delete?</span>
+                          <button
+                            type="button"
+                            className={styles.confirmYes}
+                            onClick={() => handleDelete(doc)}
+                            disabled={deletingId === doc.id}
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.viewButton}
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.viewButton}
+                            onClick={() => handleView(doc)}
+                            disabled={viewingId === doc.id}
+                          >
+                            {viewingId === doc.id ? 'Opening...' : 'View'}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.deleteButton}
+                            onClick={() => setConfirmingDeleteId(doc.id)}
+                            disabled={deletingId === doc.id}
+                            aria-label={`Delete ${doc.filename}`}
+                          >
+                            <Trash size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -533,6 +745,15 @@ function PhoneVault() {
           </div>
         )}
       </main>
+
+      {newFolderOpen && (
+        <NewFolderModal
+          currentPath={currentPath}
+          onClose={() => setNewFolderOpen(false)}
+          onCreated={() => loadDocuments()}
+          createFolderFn={(fullPath) => saveLocalFolder({ name: fullPath, syncStatus: 'pending' })}
+        />
+      )}
     </div>
   );
 }

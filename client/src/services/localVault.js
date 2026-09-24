@@ -18,9 +18,10 @@ import { openDB } from 'idb';
  */
 
 const DB_NAME = 'warden-local';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DOCUMENTS_STORE = 'documents';
 const DEVICE_AUTH_STORE = 'deviceAuth';
+const FOLDERS_STORE = 'folders';
 
 function getDB() {
   return openDB(DB_NAME, DB_VERSION, {
@@ -31,8 +32,31 @@ function getDB() {
       if (!db.objectStoreNames.contains(DEVICE_AUTH_STORE)) {
         db.createObjectStore(DEVICE_AUTH_STORE, { keyPath: 'deviceId' });
       }
+      // Folder paths the phone knows about beyond what its documents imply
+      // (i.e. empty folders): { name, syncStatus: 'synced' | 'pending' }.
+      if (!db.objectStoreNames.contains(FOLDERS_STORE)) {
+        db.createObjectStore(FOLDERS_STORE, { keyPath: 'name' });
+      }
     },
   });
+}
+
+/** @returns {Promise<Array<{ name: string, syncStatus: string }>>} */
+export async function getAllLocalFolders() {
+  const db = await getDB();
+  return db.getAll(FOLDERS_STORE);
+}
+
+/** @param {{ name: string, syncStatus: string }} folder */
+export async function saveLocalFolder(folder) {
+  const db = await getDB();
+  await db.put(FOLDERS_STORE, folder);
+}
+
+/** @param {string} name */
+export async function deleteLocalFolder(name) {
+  const db = await getDB();
+  await db.delete(FOLDERS_STORE, name);
 }
 
 /**

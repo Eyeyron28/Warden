@@ -3,6 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 
 const requireSession = require('../middleware/requireSession');
+const requireSessionOrDeviceAuth = require('../middleware/requireSessionOrDeviceAuth');
 const {
   createDocument,
   listDocuments,
@@ -40,6 +41,13 @@ function handleUpload(req, res, next) {
   });
 }
 
+// Per-document delete is the one route a paired phone may also call (with
+// its deviceToken) - it has to be registered before the blanket
+// requireSession below, and after the more specific DELETE /folders so
+// "folders" isn't captured as an :id.
+router.delete('/folders', requireSession, deleteFolder);
+router.delete('/:id', requireSessionOrDeviceAuth, deleteDocument);
+
 // Every route below requires an unlocked vault session.
 router.use(requireSession);
 
@@ -48,9 +56,7 @@ router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
 router.get('/folders', listFolders);
 router.post('/folders', createFolder);
-router.delete('/folders', deleteFolder);
 router.get('/:id/view', viewDocument);
 router.patch('/:id', updateDocument);
-router.delete('/:id', deleteDocument);
 
 module.exports = router;

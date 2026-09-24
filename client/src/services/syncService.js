@@ -15,7 +15,14 @@ import axios from 'axios';
  * @param {string} apiBase
  * @param {string} deviceToken
  * @param {string[]} knownDocumentIds - ids this phone already has locally
- * @returns {Promise<Array<object>>} full data for documents new to the phone
+ * @returns {Promise<{
+ *   documents: Array<object>,
+ *   index: Array<{ id: string, filename: string, folder: string, expiryDate: string|null }>,
+ *   folders: string[],
+ * }>} `documents`: full data for documents new to the phone. `index`:
+ *   metadata for EVERY document currently on the PC - anything the phone
+ *   holds that's missing from it was deleted PC-side. `folders`: every
+ *   folder path on the PC (excluding "root").
  */
 export async function pullDocuments(apiBase, deviceToken, knownDocumentIds) {
   const { data } = await axios.post(
@@ -27,16 +34,27 @@ export async function pullDocuments(apiBase, deviceToken, knownDocumentIds) {
 }
 
 /**
+ * DELETE {apiBase}/api/documents/:id - the same endpoint the PC uses,
+ * authorized here by deviceToken instead of a session token.
+ */
+export async function deleteDocumentOnPC(apiBase, deviceToken, id) {
+  await axios.delete(`${apiBase}/api/documents/${id}`, {
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+}
+
+/**
  * POST {apiBase}/api/sync/push
  * @param {string} apiBase
  * @param {string} deviceToken
  * @param {Array<object>} newDocuments - already encrypted by the phone
+ * @param {string[]} [newFolders] - empty folder paths created on the phone
  * @returns {Promise<{ idMap: Array<{ localId: string|null, id: string }> }>}
  */
-export async function pushDocuments(apiBase, deviceToken, newDocuments) {
+export async function pushDocuments(apiBase, deviceToken, newDocuments, newFolders = []) {
   const { data } = await axios.post(
     `${apiBase}/api/sync/push`,
-    { newDocuments },
+    { newDocuments, newFolders },
     { headers: { Authorization: `Bearer ${deviceToken}` } }
   );
   return data;

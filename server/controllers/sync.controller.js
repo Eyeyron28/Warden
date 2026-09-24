@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const Folder = require('../models/Folder');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -58,8 +59,31 @@ const pullDocuments = asyncHandler(async (req, res) => {
   // its own ids into "real" vs "local-only" before asking.
   const knownIds = (knownDocumentIds || []).filter((id) => mongoose.Types.ObjectId.isValid(id));
 
-  const documents = await Document.find({ _id: { $nin: knownIds } }).sort({ createdAt: -1 });
-  res.status(200).json(documents.map(toSyncPayload));
+  const [newDocuments, index, documentFolders, emptyFolders] = await Promise.all([
+    Document.find({ _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
+    // Metadata-only listing of EVERY document on the PC - this is what lets
+    // the phone notice PC-side deletes (an id it holds that's missing here)
+    // and renames/moves (same id, different filename/folder/expiry), which
+    // the "new to you" list above can never express.
+    Document.find({}, 'filename folder expiryDate'),
+    Document.distinct('folder'),
+    Folder.distinct('name'),
+  ]);
+
+  const folders = [...new Set([...documentFolders, ...emptyFolders].filter(Boolean))].filter(
+    (name) => name !== 'root'
+  );
+
+  res.status(200).json({
+    documents: newDocuments.map(toSyncPayload),
+    index: index.map((doc) => ({
+      id: doc._id,
+      filename: doc.filename,
+      folder: doc.folder,
+      expiryDate: doc.expiryDate,
+    })),
+    folders,
+  });
 });
 
 /**
@@ -81,9 +105,25 @@ const pullDocuments = asyncHandler(async (req, res) => {
  * orphaned local-only copy alongside the now-real one.
  */
 const pushDocuments = asyncHandler(async (req, res) => {
-  const { newDocuments } = req.body;
-  if (!Array.isArray(newDocuments) || newDocuments.length === 0) {
-    throw badRequest('newDocuments must be a non-empty array.');
+  const { newDocuments = [], newFolders = [] } = req.body;
+  if (!Array.isArray(newDocuments) || !Array.isArray(newFolders)) {
+    throw badRequest('newDocuments and newFolders must be arrays.');
+  }
+  if (newDocuments.length === 0 && newFolders.length === 0) {
+    throw badRequest('Nothing to push.');
+  }
+
+  // Empty folders created on the phone - same idempotent upsert as
+  // documents.controller's createFolder (no marker needed if documents
+  // already live at that exact path).
+  for (const name of newFolders) {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    if (!trimmed || trimmed === 'root') continue;
+    // eslint-disable-next-line no-await-in-loop -- small batches
+    if (!(await Document.exists({ folder: trimmed }))) {
+      // eslint-disable-next-line no-await-in-loop
+      await Folder.updateOne({ name: trimmed }, { $setOnInsert: { name: trimmed } }, { upsert: true });
+    }
   }
 
   const idMap = [];
