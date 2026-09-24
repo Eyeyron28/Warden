@@ -41,11 +41,11 @@ function handleUpload(req, res, next) {
   });
 }
 
-// Per-document delete is the one route a paired phone may also call (with
-// its deviceToken) - it has to be registered before the blanket
+// Per-document delete and folder-marker cleanup are the routes a paired
+// phone may also call (with its deviceToken) - it has to be registered before the blanket
 // requireSession below, and after the more specific DELETE /folders so
 // "folders" isn't captured as an :id.
-router.delete('/folders', requireSession, deleteFolder);
+router.delete('/folders', requireSessionOrDeviceAuth, deleteFolder);
 router.delete('/:id', requireSessionOrDeviceAuth, deleteDocument);
 
 // Every route below requires an unlocked vault session.

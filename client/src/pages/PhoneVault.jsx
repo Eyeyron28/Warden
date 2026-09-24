@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowRight, DeviceMobile, Lifebuoy, LockKey, Trash } from '@phosphor-icons/react';
+import { ArrowRight, CheckSquare, DeviceMobile, Lifebuoy, LockKey, Trash } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import UploadForm from '../components/UploadForm.jsx';
@@ -9,6 +9,7 @@ import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import FolderBreadcrumb from '../components/FolderBreadcrumb.jsx';
 import FolderTile from '../components/FolderTile.jsx';
+import Modal from '../components/Modal.jsx';
 import {
   getAllDeviceAuth,
   getAllLocalDocuments,
@@ -32,7 +33,7 @@ import {
   getUnwrappedDEK,
   generateSaltHex,
 } from '../services/localCrypto.js';
-import { pullDocuments, pushDocuments, deleteDocumentOnPC } from '../services/syncService.js';
+import { pullDocuments, pushDocuments, deleteDocumentOnPC, deleteFolderOnPC } from '../services/syncService.js';
 import {
   normalizeFolderPath,
   splitPath,
@@ -81,6 +82,14 @@ function PhoneVault() {
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Select mode (same model as the PC's VaultShell): loose documents by id,
+  // folder tiles by full path; bulkPlan is the pending delete confirmation.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectedFolders, setSelectedFolders] = useState(new Set());
+  const [bulkPlan, setBulkPlan] = useState(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -174,6 +183,7 @@ function PhoneVault() {
     setCurrentPath('');
     setNewFolderOpen(false);
     setConfirmingDeleteId(null);
+    exitSelectMode();
     setSyncMessage('');
     setSyncError('');
     setAddOpen(false);
@@ -320,6 +330,116 @@ function PhoneVault() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setSelectedFolders(new Set());
+    setBulkPlan(null);
+  };
+
+  const toggleInSet = (setter, value) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+
+  // Resolves the selection to a de-duplicated document list: loose picks plus
+  // everything nested under any selected folder (same rule as the PC).
+  const resolveSelection = () => {
+    const folderPaths = [...selectedFolders];
+    const nested = new Set();
+    for (const doc of documents) {
+      const path = normalizeFolderPath(doc.folder);
+      if (folderPaths.some((folder) => path === folder || path.startsWith(`${folder}/`))) {
+        nested.add(doc.id);
+      }
+    }
+    const looseCount = [...selectedIds].filter((id) => !nested.has(id)).length;
+    return {
+      folderPaths,
+      docs: documents.filter((doc) => selectedIds.has(doc.id) || nested.has(doc.id)),
+      looseCount,
+      nestedCount: nested.size,
+    };
+  };
+
+  const describePlan = (plan) => {
+    const parts = [];
+    if (plan.looseCount > 0) {
+      parts.push(`${plan.looseCount} file${plan.looseCount === 1 ? '' : 's'}`);
+    }
+    if (plan.folderPaths.length > 0) {
+      const folders = `${plan.folderPaths.length} folder${plan.folderPaths.length === 1 ? '' : 's'}`;
+      parts.push(
+        plan.nestedCount > 0
+          ? `${folders} containing ${plan.nestedCount} document${plan.nestedCount === 1 ? '' : 's'}`
+          : `${folders} (empty)`
+      );
+    }
+    return `Delete ${parts.join(' and ')}? This can't be undone.`;
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedIds.size + selectedFolders.size === 0) return;
+    const plan = resolveSelection();
+    if (plan.docs.length === 0) runBulkDelete(plan);
+    else setBulkPlan(plan);
+  };
+
+  // Same per-document rules as handleDelete (never-synced = local only, PC
+  // 404 = already gone); allSettled so one failure doesn't strand the rest.
+  // A folder (and its markers on both sides) only goes if nothing under it
+  // survived.
+  const runBulkDelete = async (plan) => {
+    setBulkPlan(null);
+    setViewError('');
+    setBulkDeleting(true);
+    const results = await Promise.allSettled(
+      plan.docs.map(async (doc) => {
+        if (doc.syncStatus !== 'pending') {
+          try {
+            await deleteDocumentOnPC(deviceAuth.apiBase, deviceAuth.deviceToken, doc.id);
+          } catch (err) {
+            if (err?.response?.status !== 404) throw err;
+          }
+        }
+        await deleteLocalDocument(doc.id);
+      })
+    );
+    const failed = plan.docs.filter((_, index) => results[index].status === 'rejected');
+    const failedIds = new Set(failed.map((doc) => doc.id));
+    const planIds = new Set(plan.docs.map((doc) => doc.id));
+
+    const leftoverPaths = documents
+      .filter((doc) => !planIds.has(doc.id) || failedIds.has(doc.id))
+      .map((doc) => normalizeFolderPath(doc.folder));
+    for (const folderPath of plan.folderPaths) {
+      const hasLeftovers = leftoverPaths.some(
+        (path) => path === folderPath || path.startsWith(`${folderPath}/`)
+      );
+      if (hasLeftovers) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await deleteFolderOnPC(deviceAuth.apiBase, deviceAuth.deviceToken, folderPath).catch(() => {});
+      for (const record of localFolders) {
+        if (record.name === folderPath || record.name.startsWith(`${folderPath}/`)) {
+          // eslint-disable-next-line no-await-in-loop
+          await deleteLocalFolder(record.name);
+        }
+      }
+    }
+
+    await loadDocuments();
+    if (failed.length > 0) {
+      setViewError(
+        `Could not delete ${failed.length} of ${plan.docs.length} document${plan.docs.length === 1 ? '' : 's'}. Is the PC reachable?`
+      );
+    }
+    setBulkDeleting(false);
+    exitSelectMode();
   };
 
   const handleSync = async () => {
@@ -575,6 +695,20 @@ function PhoneVault() {
                     setAddError('');
                   }}
                 />
+                {!selectMode && documents.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.addButton}
+                    onClick={() => {
+                      setSelectMode(true);
+                      setSelectedIds(new Set());
+                      setSelectedFolders(new Set());
+                    }}
+                  >
+                    <CheckSquare size={16} weight="bold" />
+                    <span>Select</span>
+                  </button>
+                )}
                 <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
                   {syncing ? 'Syncing...' : 'Sync now'}
                 </button>
@@ -670,6 +804,11 @@ function PhoneVault() {
                     name={name}
                     itemCount={subfolderItemCounts.get(name) ?? 0}
                     onOpen={() => setCurrentPath(joinPath([...splitPath(currentPath), name]))}
+                    selectMode={selectMode}
+                    selected={selectedFolders.has(joinPath([...splitPath(currentPath), name]))}
+                    onToggleSelect={() =>
+                      toggleInSet(setSelectedFolders, joinPath([...splitPath(currentPath), name]))
+                    }
                   />
                 ))}
               </ul>
@@ -687,6 +826,15 @@ function PhoneVault() {
               <ul className={styles.list}>
                 {visibleDocuments.map((doc) => (
                   <li key={doc.id} className={styles.row}>
+                    {selectMode && (
+                      <input
+                        type="checkbox"
+                        className={styles.selectCheckbox}
+                        checked={selectedIds.has(doc.id)}
+                        onChange={() => toggleInSet(setSelectedIds, doc.id)}
+                        aria-label={`Select ${doc.filename}`}
+                      />
+                    )}
                     <div className={styles.meta}>
                       <span className={styles.filenameRow}>
                         <span className={styles.filename}>{doc.filename}</span>
@@ -697,7 +845,7 @@ function PhoneVault() {
                       <span className={styles.sub}>{doc.folder || 'root'}</span>
                     </div>
                     <div className={styles.rowActions}>
-                      {confirmingDeleteId === doc.id ? (
+                      {selectMode ? null : confirmingDeleteId === doc.id ? (
                         <>
                           <span className={styles.confirmLabel}>Delete?</span>
                           <button
@@ -742,9 +890,44 @@ function PhoneVault() {
                 ))}
               </ul>
             )}
+
+            {selectMode && (
+              <div className={styles.bulkBar}>
+                <span className={styles.bulkCount}>
+                  {selectedIds.size + selectedFolders.size} selected
+                </span>
+                <div className={styles.bulkActions}>
+                  <button
+                    type="button"
+                    className={styles.confirmYes}
+                    onClick={handleBulkDeleteClick}
+                    disabled={selectedIds.size + selectedFolders.size === 0 || bulkDeleting}
+                  >
+                    {bulkDeleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                  <button type="button" className={styles.viewButton} onClick={exitSelectMode}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      {bulkPlan && (
+        <Modal title="Delete selection?" onClose={() => setBulkPlan(null)}>
+          <p className={styles.confirmText}>{describePlan(bulkPlan)}</p>
+          <div className={styles.confirmButtons}>
+            <button type="button" className={styles.viewButton} onClick={() => setBulkPlan(null)}>
+              Cancel
+            </button>
+            <button type="button" className={styles.confirmYes} onClick={() => runBulkDelete(bulkPlan)}>
+              Delete
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {newFolderOpen && (
         <NewFolderModal

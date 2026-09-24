@@ -44,6 +44,17 @@ export async function deleteDocumentOnPC(apiBase, deviceToken, id) {
 }
 
 /**
+ * DELETE {apiBase}/api/documents/folders?path= - removes the PC's empty-
+ * folder markers under `path` (documents themselves are deleted separately).
+ */
+export async function deleteFolderOnPC(apiBase, deviceToken, path) {
+  await axios.delete(`${apiBase}/api/documents/folders`, {
+    params: { path },
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+}
+
+/**
  * POST {apiBase}/api/sync/push
  * @param {string} apiBase
  * @param {string} deviceToken
