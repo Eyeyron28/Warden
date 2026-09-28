@@ -11,9 +11,12 @@ import styles from './RestorePanel.module.css';
  * warn about here, just a disk read + DB write worth a deliberate second
  * click.
  */
-function RestorePanel({ onSubmit, onCancel, submitting, error, result }) {
+function RestorePanel({ onSubmit, onCancel, submitting, error, result, requirePassword = false }) {
   const [sourcePath, setSourcePath] = useState('');
+  const [password, setPassword] = useState('');
   const [confirming, setConfirming] = useState(false);
+
+  const isFormValid = sourcePath.trim().length > 0 && (!requirePassword || password.length > 0);
 
   const handlePathChange = (event) => {
     setSourcePath(event.target.value);
@@ -22,13 +25,13 @@ function RestorePanel({ onSubmit, onCancel, submitting, error, result }) {
 
   const handleArmConfirm = (event) => {
     event.preventDefault();
-    if (!sourcePath.trim() || submitting) return;
+    if (!isFormValid || submitting) return;
     setConfirming(true);
   };
 
   const handleConfirm = () => {
     setConfirming(false);
-    onSubmit(sourcePath.trim());
+    onSubmit(sourcePath.trim(), requirePassword ? password : undefined);
   };
 
   if (result) {
@@ -84,6 +87,32 @@ function RestorePanel({ onSubmit, onCancel, submitting, error, result }) {
         </p>
       </div>
 
+      {requirePassword && (
+        <div className={styles.field}>
+          <label htmlFor="restore-password" className={styles.label}>
+            This backup's master password
+          </label>
+          <input
+            id="restore-password"
+            type="password"
+            className={styles.textInput}
+            value={password}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setConfirming(false);
+            }}
+            placeholder="Enter the password used when this backup was made"
+            disabled={submitting}
+            autoComplete="off"
+          />
+          <p className={styles.helper}>
+            There's no vault set up on this install yet, so this restores the original vault's key
+            material along with its documents - the password that created this backup proves it's
+            yours.
+          </p>
+        </div>
+      )}
+
       <div className={styles.warningNote}>
         <Warning size={16} weight="bold" className={styles.warningIcon} />
         <p>
@@ -101,7 +130,7 @@ function RestorePanel({ onSubmit, onCancel, submitting, error, result }) {
           <button type="button" className={styles.cancelButton} onClick={onCancel} disabled={submitting}>
             Cancel
           </button>
-          <button type="submit" className={styles.submitButton} disabled={!sourcePath.trim() || submitting}>
+          <button type="submit" className={styles.submitButton} disabled={!isFormValid || submitting}>
             Restore
           </button>
         </div>

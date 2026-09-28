@@ -7,8 +7,11 @@ import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
 import UsbRecoveryModal from '../components/UsbRecoveryModal.jsx';
 import PhoneRecoveryModal from '../components/PhoneRecoveryModal.jsx';
+import Modal from '../components/Modal.jsx';
+import RestorePanel from '../components/RestorePanel.jsx';
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
+import { importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import styles from './LockScreen.module.css';
@@ -44,6 +47,14 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
   const [phoneRecoveryOpen, setPhoneRecoveryOpen] = useState(false);
   // "Forgot your password?" expands inline into the three recovery choices.
   const [recoveryChoicesOpen, setRecoveryChoicesOpen] = useState(false);
+
+  // Fresh-install restore: only reachable pre-setup (no vault exists yet),
+  // so it needs the backup's own master password rather than a session -
+  // see RestorePanel's requirePassword prop and backup.controller.js
+  // importBackup's fresh-install branch.
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
 
   const timeoutRef = useRef(null);
 
@@ -164,6 +175,27 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     }
   };
 
+  // Same success shape as setup/recover: the backend created a brand-new
+  // User record from the manifest's key material and hands back a session
+  // token straight away, so this drops the caller into the vault exactly
+  // like every other authenticated path here, with no separate "restore
+  // complete" screen first (matching handleRecoveryModalSuccess below).
+  const handleFreshInstallRestore = async (sourcePath, backupPassword) => {
+    setRestoreSubmitting(true);
+    setRestoreError('');
+    try {
+      const { sessionToken } = await importBackup(sourcePath, backupPassword);
+      setRestoreOpen(false);
+      setDialStatus('unlocked');
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
+    } catch (err) {
+      setRestoreError(extractErrorMessage(err, 'Restore failed.'));
+    } finally {
+      setRestoreSubmitting(false);
+    }
+  };
+
   const handleRecoveryConfirm = () => {
     if (pendingSession) onAuthenticated(pendingSession.sessionToken);
   };
@@ -242,6 +274,17 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
               >
                 <span>{submitting ? 'Creating vault' : 'Create vault'}</span>
                 <ArrowRight size={18} weight="bold" />
+              </button>
+
+              <button
+                type="button"
+                className={styles.linkButton}
+                onClick={() => {
+                  setRestoreError('');
+                  setRestoreOpen(true);
+                }}
+              >
+                Restore from a backup instead
               </button>
             </form>
           </>
@@ -378,6 +421,18 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
           onClose={() => setPhoneRecoveryOpen(false)}
           onRecovered={handleRecoveryModalSuccess}
         />
+      )}
+
+      {restoreOpen && (
+        <Modal title="Restore from backup" onClose={() => setRestoreOpen(false)}>
+          <RestorePanel
+            requirePassword
+            onSubmit={handleFreshInstallRestore}
+            onCancel={() => setRestoreOpen(false)}
+            submitting={restoreSubmitting}
+            error={restoreError}
+          />
+        </Modal>
       )}
     </main>
   );
