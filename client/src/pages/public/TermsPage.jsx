@@ -70,8 +70,11 @@ export const SECTIONS = [
     title: 'Share links',
     content: (
       <p>
-        When you create a share link, anyone who has the link can open the shared files until it expires or you
-        revoke it. Share links only to people you trust, and revoke them when they are no longer needed.
+        A share link contains a key after the # symbol. Anyone who has the full link can open the shared files
+        until it expires or you revoke it, so share links only with people you trust and revoke them when they are
+        no longer needed. A share is a snapshot: deleting or editing the original file does not change or remove
+        existing shared copies; revoke the share to remove them. Links last at most 30 days, and each account can
+        hold a limited number of shares and amount of shared data.
       </p>
     ),
   },

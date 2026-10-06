@@ -40,7 +40,7 @@ const COMPARISON = [
   {
     question: 'If the database leaks',
     drive: 'Depends on how the provider guards its keys.',
-    warden: 'Ciphertext and locked keys, useless without your password or recovery key. The exception is a share link you left active; see below.',
+    warden: 'Ciphertext and locked keys, useless without your password or recovery key.',
   },
   {
     question: 'If you forget your password',
@@ -122,8 +122,8 @@ const FAQ_ITEMS = [
     answer: (
       <p>
         A compromised server while you&apos;re signed in, losing both your password and recovery key (the vault
-        can&apos;t be recovered), a compromised or shared device, weak or reused passwords, and share links you leave
-        active. The full list is in{' '}
+        can&apos;t be recovered), a compromised or shared device, weak or reused passwords, and anyone who has a
+        full share link. The full list is in{' '}
         <Link to="/#limits" className={site.textLink}>
           About
         </Link>

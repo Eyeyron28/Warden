@@ -6,8 +6,37 @@ import react from '@vitejs/plugin-react';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// The public share viewer (/shared/...) opens untrusted content, so it gets its
+// own response headers (vercel.json is the source of truth in production).
+// `vite preview` serves the production build with those exact headers, so the
+// CSP can be checked against the real bundle; the dev server only gets
+// Referrer-Policy, because its HMR needs inline scripts and a websocket that
+// the production CSP rightly forbids.
+function shareViewerHeaders() {
+  const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
+  const rule = (config.headers || []).find((entry) => entry.source === '/shared/(.*)');
+  const headers = rule ? rule.headers : [];
+  const apply = (only) => (req, res, next) => {
+    if (req.url && req.url.startsWith('/shared/')) {
+      for (const { key, value } of headers) {
+        if (!only || only.includes(key)) res.setHeader(key, value);
+      }
+    }
+    next();
+  };
+  return {
+    name: 'share-viewer-headers',
+    configureServer(server) {
+      server.middlewares.use(apply(['Referrer-Policy']));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(apply(null));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), shareViewerHeaders()],
   server: {
     port: 5173,
     // Required, not optional: crypto.subtle's "secure context" check

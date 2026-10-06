@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 // Short-lived and single-use, same spirit as PairingToken - a live,
 // in-person action between two devices the owner already controls (their
 // locked-out PC and their already-paired phone), so it gets a 5-minute
-// window rather than the hours/days a ShareToken gets.
+// window rather than the days a share link gets.
 //
 // Two-phase, unlike PairingToken's single `used` flag: `fulfilled` flips
 // true once the phone has POSTed its re-wrapped DEK (POST

@@ -1,8 +1,8 @@
 // What Warden does not protect against. One list, shown on the About
 // section and in the Privacy page (and therefore in the signup dialog), so
 // the copy can't drift between them. Every line has to match the code:
-// see server/utils/sessionStore.js, controllers/shares.controller.js and
-// services/localVault.js.
+// see server/utils/sessionStore.js, controllers/shares.controller.js
+// (share links) and services/localVault.js.
 export const LIMITS = [
   {
     title: 'A compromised server while you are signed in',
@@ -25,12 +25,12 @@ export const LIMITS = [
       'Your password is what locks the vault key. Failed log-ins are limited to 3 attempts, then a 5-minute lockout, but that does not slow someone trying guesses against a stolen copy of the database. Use a long, unique password.',
   },
   {
-    title: 'Share links you leave active',
+    title: 'Share links',
     body:
-      "Anyone holding a share link can open what it shares until it expires or you revoke it. The link's secret is stored in the database beside a copy of your vault key that it unlocks, so while a link is active a leaked database could open more than the shared files. Revoke links you no longer need.",
+      "A share link contains a key after the # symbol. Anyone who has the full link can open the shared files until it expires or you revoke it. The server stores only encrypted copies of the shared files and never stores the link's key. A share is a snapshot: deleting or editing the original file does not change or remove existing shared copies; revoke the share to remove them.",
   },
   {
-    title: 'File names and details',
-    body: 'File and folder names, file types, sizes and dates are stored as plain text. Only file contents and previews are encrypted.',
+    title: 'File names and sizes',
+    body: 'File and folder names, file types and dates are stored as plain text. Encrypted data is the same size as the file, so file sizes are visible to anyone with access to the database. Only file contents and previews are encrypted (and, inside a share, the names too).',
   },
 ];

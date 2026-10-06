@@ -21,9 +21,11 @@ export function getTodayDateInputValue() {
 
 /**
  * "YYYY-MM-DDTHH:mm" for right now, suitable for an
- * <input type="datetime-local">'s min attribute.
+ * <input type="datetime-local">'s min attribute. `offsetMs` shifts it forward
+ * (e.g. for a max attribute).
  */
-export function getNowDateTimeInputValue() {
-  const now = new Date();
-  return `${getTodayDateInputValue()}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+export function getNowDateTimeInputValue(offsetMs = 0) {
+  const moment = new Date(Date.now() + offsetMs);
+  const day = `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}`;
+  return `${day}T${pad(moment.getHours())}:${pad(moment.getMinutes())}`;
 }

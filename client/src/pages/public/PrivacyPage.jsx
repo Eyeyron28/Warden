@@ -37,6 +37,11 @@ export const SECTIONS = [
             and upload dates. These are stored as plain text so the vault can list and sort them.
           </li>
           <li>
+            <strong>Shared copies</strong>: when you create a share link, encrypted copies of the files you chose
+            and an encrypted list of their names. We do not store the link&apos;s key, so we cannot open them. They
+            are deleted when the link expires (at most 30 days) or you revoke it.
+          </li>
+          <li>
             <strong>Paired devices</strong>: the name you give a paired phone and when it was paired. The phone
             itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
           </li>
@@ -57,7 +62,8 @@ export const SECTIONS = [
         <p>
           Your files are stored encrypted with a key unique to your vault. That key is itself only ever stored in
           locked form, so the stored data on its own cannot be read by us or by anyone who obtains a copy of the
-          database. The one exception is a share link you have left active, described below.
+          database. A share link is separate: it carries its own key after the # symbol, and the server stores
+          only encrypted copies of the shared files, never that key.
         </p>
         <p>
           This is not end-to-end encryption. Files travel to and from the server over HTTPS, and while you are

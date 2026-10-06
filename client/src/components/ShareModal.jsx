@@ -3,7 +3,13 @@ import QRCode from 'qrcode';
 import { Check, Copy, Trash } from '@phosphor-icons/react';
 
 import Modal from './Modal.jsx';
-import { createShare, createBulkShare, listShares, revokeShareById } from '../services/sharesService.js';
+import {
+  createShare,
+  createBulkShare,
+  listShares,
+  fetchShareUsage,
+  revokeShareById,
+} from '../services/sharesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
@@ -15,6 +21,14 @@ const DURATION_PRESETS = [
   { label: '3 days', hours: 72 },
   { label: '7 days', hours: 168 },
 ];
+const DEFAULT_PRESET = DURATION_PRESETS[3]; // 7 days
+const MAX_EXPIRY_DAYS = 30; // the server's cap too
+
+const MB = 1024 * 1024;
+function formatMb(bytes) {
+  const value = bytes / MB;
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)}MB`;
+}
 
 /**
  * Plain-language countdown from an ISO expiresAt, used both for a
@@ -49,7 +63,7 @@ function describeExpiry(expiresAtIso) {
 function ShareModal({ documentIds, title, onClose }) {
   const isSingle = documentIds.length === 1;
   const documentId = documentIds[0];
-  const [durationHours, setDurationHours] = useState(DURATION_PRESETS[1].hours);
+  const [durationHours, setDurationHours] = useState(DEFAULT_PRESET.hours);
   const [isCustomExpiry, setIsCustomExpiry] = useState(false);
   const [customExpiry, setCustomExpiry] = useState('');
   const [creating, setCreating] = useState(false);
@@ -66,6 +80,21 @@ function ShareModal({ documentIds, title, onClose }) {
 
   const [bulkRevoked, setBulkRevoked] = useState(false);
   const [confirmingBulkRevoke, setConfirmingBulkRevoke] = useState(false);
+  const [usage, setUsage] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchShareUsage()
+      .then((data) => {
+        if (!cancelled) setUsage(data);
+      })
+      .catch(() => {
+        // The line is informational; the server enforces the limits anyway.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshShares = useCallback(async () => {
     if (!isSingle) return;
@@ -113,7 +142,10 @@ function ShareModal({ documentIds, title, onClose }) {
   // change needed, and fractional hours (e.g. 10 minutes = 1/6 hour) work
   // fine since the controller only requires a positive finite number.
   const customExpiryMs = isCustomExpiry && customExpiry ? new Date(customExpiry).getTime() : null;
-  const isCustomExpiryValid = Number.isFinite(customExpiryMs) && customExpiryMs > Date.now();
+  const isCustomExpiryValid =
+    Number.isFinite(customExpiryMs) &&
+    customExpiryMs > Date.now() &&
+    customExpiryMs <= Date.now() + MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
   const canGenerate = !creating && (!isCustomExpiry || isCustomExpiryValid);
 
   const handlePresetClick = (hours) => {
@@ -135,18 +167,18 @@ function ShareModal({ documentIds, title, onClose }) {
       const result = isSingle
         ? await createShare(documentId, hours)
         : await createBulkShare(documentIds, hours);
-      // result.shareUrl is now built server-side from the PC's actual
-      // LAN-reachable address (same resolveLanIp helper pairing uses),
-      // not window.location.origin - the owner's own tab is often on
-      // "localhost", which means nothing to whoever they send this link
-      // to. The localhost variant below is deliberately derived from
-      // that same URL (same token, just a different hostname) purely as
-      // a same-machine convenience for the owner: localhost is always a
-      // secure context with no cert warnings, unlike the LAN IP.
+      // result.shareUrl is built server-side from PUBLIC_APP_URL (or, in
+      // development only, the PC's LAN address), never from this tab's own
+      // address. Its #fragment is the share's key: it appears here, once,
+      // and nowhere on the server. The localhost variant below is only a
+      // same-machine convenience for the dev LAN-IP case, where localhost
+      // is a secure context with no certificate warning.
       const localUrl = new URL(result.shareUrl);
+      const devLanLink = /^\d+\.\d+\.\d+\.\d+$/.test(localUrl.hostname);
       localUrl.hostname = 'localhost';
 
-      setCreatedShare({ ...result, localShareUrl: localUrl.toString() });
+      setCreatedShare({ ...result, localShareUrl: devLanLink ? localUrl.toString() : null });
+      if (result.usage) setUsage(result.usage);
       setCopied(false);
       setBulkRevoked(false);
       setConfirmingBulkRevoke(false);
@@ -166,7 +198,8 @@ function ShareModal({ documentIds, title, onClose }) {
     setRevokingId(createdShare.id);
     setCreateError('');
     try {
-      await revokeShareById(createdShare.id);
+      const revoked = await revokeShareById(createdShare.id);
+      if (revoked?.usage) setUsage(revoked.usage);
       setBulkRevoked(true);
     } catch (err) {
       setCreateError(extractErrorMessage(err, 'Could not revoke this link.'));
@@ -209,7 +242,8 @@ function ShareModal({ documentIds, title, onClose }) {
     setRevokingId(shareId);
     setSharesError('');
     try {
-      await revokeShareById(shareId);
+      const revoked = await revokeShareById(shareId);
+      if (revoked?.usage) setUsage(revoked.usage);
       setShares((prev) => prev.filter((share) => share.id !== shareId));
     } catch (err) {
       setSharesError(extractErrorMessage(err, 'Could not revoke this share.'));
@@ -254,11 +288,14 @@ function ShareModal({ documentIds, title, onClose }) {
                   value={customExpiry}
                   onChange={(event) => setCustomExpiry(event.target.value)}
                   min={getNowDateTimeInputValue()}
+                  max={getNowDateTimeInputValue(MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000)}
                   disabled={creating}
                   aria-label="Custom expiry date and time"
                 />
                 {customExpiry && !isCustomExpiryValid && (
-                  <p className={styles.fieldError}>Pick a date and time in the future.</p>
+                  <p className={styles.fieldError}>
+                    Pick a date and time in the future, within {MAX_EXPIRY_DAYS} days.
+                  </p>
                 )}
               </div>
             )}
@@ -271,12 +308,24 @@ function ShareModal({ documentIds, title, onClose }) {
           <button type="button" className={styles.generateButton} onClick={handleGenerate} disabled={!canGenerate}>
             {creating ? 'Generating...' : 'Generate share link'}
           </button>
-          <p className={styles.demoNote}>Share links are intended for demo/presentation purposes.</p>
+          {usage && (
+            <p className={styles.hint} data-testid="share-usage">
+              Shared storage: {formatMb(usage.usedBytes)} of {formatMb(usage.limitBytes)} used,{' '}
+              {formatMb(usage.remainingBytes)} left. One share holds up to {formatMb(usage.perShareLimitBytes)};
+              you can have {usage.maxActiveShares} active shares ({usage.activeShares} now).
+            </p>
+          )}
+          <p className={styles.demoNote}>
+            A share link contains a key after the # symbol. Anyone who has the full link can open the shared
+            files until it expires or you revoke it. The server stores only encrypted copies of the shared files
+            and never stores the link&apos;s key. A share is a snapshot: deleting or editing the original file
+            does not change or remove existing shared copies; revoke the share to remove them.
+          </p>
         </div>
       ) : (
         <div className={styles.resultSection}>
           <div className={styles.field}>
-            <span className={styles.label}>Network link</span>
+            <span className={styles.label}>Share link</span>
             <div className={styles.linkRow}>
               <input
                 type="text"
@@ -291,9 +340,9 @@ function ShareModal({ documentIds, title, onClose }) {
               </button>
             </div>
             <p className={styles.hint}>
-              Anyone with this link can open the shared files until it expires or you revoke it. It
-              works from a phone or any other device on your network - this is what the QR code
-              below encodes.
+              Copy the whole link, including everything after the # - that part is the key, and this is the
+              only time you will see it. Anyone who has the full link can open the shared files until it
+              expires or you revoke it. The QR code below encodes the same link.
             </p>
           </div>
 
@@ -307,19 +356,21 @@ function ShareModal({ documentIds, title, onClose }) {
             {describeExpiry(createdShare.expiresAt)}, at {formatDateTime(createdShare.expiresAt)}
           </p>
 
-          <div className={styles.localLinkField}>
-            <span className={styles.hint}>
-              Open on this PC:{' '}
-              <a
-                href={createdShare.localShareUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.localLink}
-              >
-                {createdShare.localShareUrl}
-              </a>
-            </span>
-          </div>
+          {createdShare.localShareUrl && (
+            <div className={styles.localLinkField}>
+              <span className={styles.hint}>
+                Open on this PC:{' '}
+                <a
+                  href={createdShare.localShareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.localLink}
+                >
+                  {createdShare.localShareUrl}
+                </a>
+              </span>
+            </div>
+          )}
 
           {!isSingle && (
             <div className={styles.confirmRow}>

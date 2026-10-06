@@ -4,19 +4,19 @@ const createRateLimiter = require('../middleware/rateLimit');
 const { viewSharedManifest, viewSharedFile } = require('../controllers/sharedView.controller');
 
 // No requireSession anywhere in this file - deliberately. This is the
-// public trust boundary: the share token in the URL IS the credential
-// (see controllers/sharedView.controller.js for how the document's DEK
-// is reached without a session at all).
+// public side of a share, and it only ever serves ciphertext: the key that
+// opens it is in the link's #fragment and never reaches the server (see
+// controllers/sharedView.controller.js).
 const router = express.Router();
 
 // "A handful of requests per minute" per the design: generous enough that
 // a real recipient reloading/retrying on a flaky connection won't get
 // blocked, but enough of a ceiling that scripted token-guessing against
-// this credential-free route costs real wall-clock time. The token's own
-// 256 bits of entropy is the actual security boundary; this is basic
-// hygiene on top of it, not a substitute for it.
+// this credential-free route costs real wall-clock time. The 128-bit random
+// shareId, and the key that is never sent here at all, are the actual
+// security boundary; this is basic hygiene on top of it.
 router.get(
-  '/:token',
+  '/:shareId',
   createRateLimiter({ name: 'shared-view-manifest', max: 10, windowMs: 60 * 1000 }),
   viewSharedManifest
 );
@@ -24,7 +24,7 @@ router.get(
 // Separate (higher) bucket: one link can carry many files and "download all"
 // fetches each one, so this can't share the manifest's tight ceiling.
 router.get(
-  '/:token/files/:documentId',
+  '/:shareId/files/:fileId',
   createRateLimiter({ name: 'shared-view-file', max: 120, windowMs: 60 * 1000 }),
   viewSharedFile
 );

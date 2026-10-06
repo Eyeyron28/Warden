@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const Folder = require('../models/Folder');
+const Share = require('../models/Share');
+const SharedFile = require('../models/SharedFile');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
   generateSalt,
@@ -20,6 +22,7 @@ const {
 const { validatePassword } = require('../utils/passwordPolicy');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { resolveLanIp } = require('../utils/network');
+const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
@@ -47,11 +50,10 @@ const FORGOT_GENERIC_MESSAGE =
 // something that works once genuinely hosted (not just "PUBLIC_APP_URL is
 // set") is the deferred phone-pairing/sharing redesign - this function
 // itself is new, needed just to get signup/reset emails working at all.
-const FRONTEND_PORT = 5173;
-function resolvePublicAppUrl(req) {
-  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/+$/, '');
-  const lanIp = resolveLanIp();
-  return lanIp ? `${req.protocol}://${lanIp}:${FRONTEND_PORT}` : null;
+// The origin itself now comes from utils/publicAppUrl.js (validated at
+// startup, never built from request headers).
+function resolvePublicAppUrl() {
+  return getPublicAppUrl();
 }
 
 function hashToken(token) {
@@ -664,6 +666,11 @@ const resetPassword = asyncHandler(async (req, res) => {
 
     await Document.deleteMany({ userId: user._id });
     await Folder.deleteMany({ userId: user._id });
+    // Shares are snapshots of the old vault; a wipe should not leave copies
+    // reachable by link.
+    const shareIdsToDrop = (await Share.find({ ownerUserId: user._id }).select('shareId')).map((share) => share.shareId);
+    await Share.deleteMany({ ownerUserId: user._id });
+    await SharedFile.deleteMany({ shareId: { $in: shareIdsToDrop } });
 
     await finalizeReset(user, dek, newPassword, { newRecoveryKey });
     responseExtra = { recoveryKey: newRecoveryKey, documentsWiped: true };

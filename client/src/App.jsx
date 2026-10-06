@@ -111,7 +111,7 @@ function App() {
         />
         {/* Outside the account flow entirely: a share-link recipient has
             never logged into this account and never will. */}
-        <Route path="/shared/:token" element={<SharedDocumentPage />} />
+        <Route path="/shared/:shareId" element={<SharedDocumentPage />} />
         {/* Same reasoning: a phone opening a pairing QR has no session. */}
         <Route path="/pair/:token" element={<PairPage />} />
         {/* The phone's own local vault, unlocked with its paired PIN and

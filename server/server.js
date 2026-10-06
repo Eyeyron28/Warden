@@ -12,6 +12,7 @@ const connectDB = require('./config/db');
 const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const { detectLanIp } = require('./utils/lanIp');
+const { assertPublicAppUrlConfig, describePublicAppUrl } = require('./utils/publicAppUrl');
 
 const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
@@ -24,6 +25,10 @@ const pairCompleteRoutes = require('./routes/pairComplete.routes');
 const devicesRoutes = require('./routes/devices.routes');
 
 const app = express();
+
+// Fail at startup, not on the first share, if PUBLIC_APP_URL is missing in
+// production or malformed anywhere (https origin only: no path, no userinfo).
+assertPublicAppUrlConfig();
 
 // Fired at module load (not inside the require.main guard below) so a
 // Vercel serverless instance starts warming up its connection the moment
@@ -156,6 +161,7 @@ if (require.main === module) {
     .then(() => {
       https.createServer(httpsOptions, app).listen(PORT, () => {
         console.log(`Warden server running on port ${PORT} (https)`);
+        console.log(describePublicAppUrl());
 
         // Diagnostic only - pairing/sharing resolve this fresh per-request
         // (resolveLanIp), not from this snapshot. Logged once here so a

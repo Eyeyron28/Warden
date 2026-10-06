@@ -4,6 +4,14 @@ import { ArrowSquareOut, CheckCircle, DownloadSimple, FileText, LinkBreak } from
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import { fetchSharedManifest, fetchSharedFile } from '../services/sharedService.js';
+import {
+  decryptBlob,
+  decryptManifest,
+  importShareKey,
+  previewKind,
+  readKeyFromHash,
+  safeDownloadName,
+} from '../utils/shareCrypto.js';
 import styles from './SharedDocumentPage.module.css';
 
 function formatFileSize(bytes) {
@@ -19,31 +27,29 @@ function formatFileSize(bytes) {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unitIndex]}`;
 }
 
-function getFileTypeLabel(filename, contentType) {
-  const match = /\.([a-z0-9]+)$/i.exec(filename || '');
-  if (match) return match[1].toUpperCase();
-  const subtype = contentType?.split('/')[1];
-  return subtype ? subtype.toUpperCase() : 'FILE';
+function getFileTypeLabel(filename) {
+  const match = /\.([a-z0-9]{1,8})$/i.exec(filename || '');
+  return match ? match[1].toUpperCase() : 'FILE';
 }
 
 function saveBlobAs(url, filename) {
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = safeDownloadName(filename);
   document.body.appendChild(link);
   link.click();
   link.remove();
 }
 
 function openInNewTab(url) {
-  const opened = window.open(url, '_blank');
+  const opened = window.open(url, '_blank', 'noopener');
   if (!opened) {
     // Popup blocked - fall back to a real (user-gesture-driven) anchor
     // click, which browsers don't block the way they block window.open.
     const link = document.createElement('a');
     link.href = url;
     link.target = '_blank';
-    link.rel = 'noopener';
+    link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -51,21 +57,36 @@ function openInNewTab(url) {
 }
 
 /**
- * One file from a share link. A link with a single entry (the original,
- * only case before folder sharing) is `eager`: it decrypts on load and shows
- * the image preview, exactly as before. With several entries, each file is
- * fetched/decrypted on demand when View or Download is pressed, so opening
- * a folder link doesn't pull every file at once.
+ * Fetches one encrypted file and decrypts it HERE, in the browser. Everything
+ * about the result is treated as untrusted (the owner chose the name and the
+ * declared type, and the bytes are whatever they uploaded):
+ *   - only png/jpeg/gif/webp/pdf whose own first bytes match their label may
+ *     be previewed inline, from a blob URL typed as that exact type;
+ *   - everything else - html, svg, scripts, unknown - is typed as opaque
+ *     bytes and can only be downloaded, never rendered by this page.
  */
-function SharedFile({ token, entry, eager }) {
-  // Named sharedFile, not "document" - this component needs the real
-  // global `document` (document.createElement) for the click fallbacks
-  // above, and a variable named `document` would shadow it.
-  const [sharedFile, setSharedFile] = useState(null); // { blobUrl, contentType, size }
+async function openSharedFile({ shareId, key, entry }) {
+  const encrypted = await fetchSharedFile(shareId, entry.id);
+  const plain = await decryptBlob(key, shareId, entry.id, encrypted);
+  const kind = previewKind(entry.mime, new Uint8Array(plain, 0, Math.min(16, plain.byteLength)));
+  const blob = new Blob([plain], { type: kind ? entry.mime : 'application/octet-stream' });
+  return { blob, kind, url: URL.createObjectURL(blob) };
+}
+
+/**
+ * One file from a share link. A link with a single entry is `eager`: it
+ * decrypts on load and shows an image preview. With several entries each file
+ * is fetched and decrypted on demand, so opening a folder link doesn't pull
+ * every file at once.
+ */
+function SharedFile({ shareId, shareKey, entry, eager }) {
+  // Named sharedFile, not "document" - this component needs the real global
+  // `document` (document.createElement) for the click fallbacks above.
+  const [sharedFile, setSharedFile] = useState(null); // { url, kind, size }
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
-  const objectUrlRef = useRef(null);
+  const urlRef = useRef(null);
   const loadedRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -73,14 +94,9 @@ function SharedFile({ token, entry, eager }) {
     setBusy(true);
     setFailed(false);
     try {
-      const { blob, contentType } = await fetchSharedFile(token, entry.id);
-      // Reconstructed with an explicit type rather than trusting blob.type
-      // as-is, so the Blob driving both View and Download definitely
-      // carries the real MIME type from the response header - one
-      // decrypted Blob, reused for both buttons instead of fetching twice.
-      const typedBlob = new Blob([blob], { type: contentType || blob.type });
-      objectUrlRef.current = URL.createObjectURL(typedBlob);
-      const loaded = { blobUrl: objectUrlRef.current, contentType, size: typedBlob.size };
+      const opened = await openSharedFile({ shareId, key: shareKey, entry });
+      urlRef.current = opened.url;
+      const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size };
       loadedRef.current = loaded;
       setSharedFile(loaded);
       return loaded;
@@ -90,39 +106,40 @@ function SharedFile({ token, entry, eager }) {
     } finally {
       setBusy(false);
     }
-  }, [token, entry.id]);
+  }, [shareId, shareKey, entry]);
 
   useEffect(() => {
     if (eager) load();
     return () => {
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
       loadedRef.current = null;
     };
   }, [eager, load]);
 
-  // Deliberately no inline iframe/object/embed for PDFs - on Android
-  // Chrome that renders a broken placeholder with a dead "Open" button.
-  // Handing the blob URL to window.open lets the phone's own PDF viewer
-  // (or whatever app handles the file type) open it instead.
+  // Whether a View button is offered depends on the declared type being one
+  // we may preview; whether the bytes really match is confirmed on load.
+  const maybePreviewable = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'].includes(
+    entry.mime
+  );
+
   const handleView = async () => {
     const loaded = await load();
-    if (loaded) openInNewTab(loaded.blobUrl);
+    if (loaded?.kind) openInNewTab(loaded.url);
+    else if (loaded) setFailed(true);
   };
 
   const handleDownload = async () => {
     const loaded = await load();
     if (!loaded) return;
-    saveBlobAs(loaded.blobUrl, entry.filename);
-    // In-memory only, on purpose: a share page is a one-time public view
-    // with no account behind it, so this just reflects "already saved this
-    // visit" back to whoever's looking at the screen right now.
+    saveBlobAs(loaded.url, entry.name);
+    // In-memory only, on purpose: a share page is a public view with no
+    // account behind it.
     setDownloaded(true);
   };
 
-  const contentType = sharedFile?.contentType || entry.mimeType;
-  const isImage = eager && sharedFile?.contentType?.startsWith('image/');
   const size = sharedFile?.size ?? entry.size;
+  const folderLabel = entry.folder && entry.folder !== 'root' ? entry.folder : '';
 
   return (
     <div className={eager ? styles.panelBody : styles.fileRow}>
@@ -130,98 +147,127 @@ function SharedFile({ token, entry, eager }) {
         <div className={styles.fileCard}>
           <FileText size={28} weight="light" className={styles.fileIcon} />
           <div className={styles.fileInfo}>
-            <span className={styles.filename} title={entry.filename}>
-              {entry.filename}
+            {/* Plain text children only: React escapes the name. */}
+            <span className={styles.filename} title={entry.name}>
+              {entry.name}
             </span>
             <span className={styles.fileMeta}>
-              {getFileTypeLabel(entry.filename, contentType)}
+              {getFileTypeLabel(entry.name)}
               {' · '}
               {formatFileSize(size)}
+              {folderLabel ? ` · ${folderLabel}` : ''}
             </span>
           </div>
         </div>
 
-        {isImage && (
-          <img src={sharedFile.blobUrl} alt={entry.filename} className={styles.previewImage} />
+        {eager && sharedFile?.kind === 'image' && (
+          <img src={sharedFile.url} alt="" className={styles.previewImage} />
         )}
       </div>
 
       <div className={styles.actionsColumn}>
         <div className={styles.actionRow}>
-          <button type="button" className={styles.viewButton} onClick={handleView} disabled={busy}>
-            <ArrowSquareOut size={16} weight="bold" />
-            <span>View</span>
-          </button>
-          <button
-            type="button"
-            className={styles.downloadButton}
-            onClick={handleDownload}
-            disabled={busy}
-          >
-            {downloaded ? (
-              <CheckCircle size={16} weight="bold" />
-            ) : (
-              <DownloadSimple size={16} weight="bold" />
-            )}
+          {maybePreviewable && (
+            <button type="button" className={styles.viewButton} onClick={handleView} disabled={busy}>
+              <ArrowSquareOut size={16} weight="bold" />
+              <span>View</span>
+            </button>
+          )}
+          <button type="button" className={styles.downloadButton} onClick={handleDownload} disabled={busy}>
+            {downloaded ? <CheckCircle size={16} weight="bold" /> : <DownloadSimple size={16} weight="bold" />}
             <span>{downloaded ? 'Downloaded' : 'Download'}</span>
           </button>
         </div>
 
         {failed && <p className={styles.savedHint}>Could not open this file.</p>}
         {downloaded && <p className={styles.savedHint}>Saved to this device</p>}
+        {!maybePreviewable && !failed && !downloaded && (
+          <p className={styles.savedHint}>This file type can only be downloaded.</p>
+        )}
       </div>
     </div>
   );
 }
 
 /**
- * The recipient-facing page for a share link (/shared/:token). Deliberately
- * NOT nested under App's authenticated routing in any way - it never reads
- * the session token, never redirects to /login, and renders its own
- * minimal shell rather than VaultShell's. Anyone with the link opens this
- * directly, with no prior context and no account. A link covers one or
- * more files (a shared folder is many); a single-file link looks exactly as
- * it always did.
+ * The recipient-facing page for a share link (/shared/:shareId#k=...).
+ * Deliberately NOT nested under App's authenticated routing in any way - it
+ * never reads the session token and never redirects to /login.
+ *
+ * The key after the # is read once, from the address the page was opened
+ * with, then removed from the address bar and history with replaceState and
+ * kept only in memory. It is never sent to any API. (Because it is removed,
+ * reloading the page cannot decrypt anything: open the full link again.)
  */
 function SharedDocumentPage() {
-  const { token } = useParams();
+  const { shareId } = useParams();
 
-  const [loading, setLoading] = useState(true);
-  const [invalid, setInvalid] = useState(false);
+  // Read once, during the first render, so a remount (React StrictMode in
+  // development) still sees it after the effect below has cleared it.
+  const [keyText] = useState(() => readKeyFromHash(window.location.hash));
+
+  const [phase, setPhase] = useState('loading'); // loading | invalid | ready
+  const [shareKey, setShareKey] = useState(null);
   const [entries, setEntries] = useState([]);
   const [downloadingAll, setDownloadingAll] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    // Take the key out of the address bar and the history entry.
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    // Belt and braces alongside the Referrer-Policy response header
+    // (vercel.json): this page never leaks its address to anything it opens.
+    const meta = document.createElement('meta');
+    meta.name = 'referrer';
+    meta.content = 'no-referrer';
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, []);
 
-    fetchSharedManifest(token)
-      .then((manifest) => {
-        if (!cancelled) setEntries(manifest.entries);
-      })
-      .catch(() => {
-        // The backend intentionally returns the same generic response for
-        // "never existed", "expired", and "revoked" - there is nothing
-        // more specific to show here even if we wanted to.
-        if (!cancelled) setInvalid(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+  useEffect(() => {
+    let cancelled = false;
+    const fail = () => {
+      if (!cancelled) setPhase('invalid');
+    };
+
+    if (!keyText) {
+      fail();
+      return undefined;
+    }
+
+    (async () => {
+      try {
+        const manifest = await fetchSharedManifest(shareId);
+        const key = await importShareKey(keyText);
+        const files = await decryptManifest(key, shareId, manifest.manifest);
+        // Only files the server actually holds, in manifest order.
+        const held = new Set(manifest.files.map((file) => file.id));
+        const usable = files.filter((file) => held.has(file.id));
+        if (usable.length === 0) throw new Error('empty');
+        if (cancelled) return;
+        setShareKey(key);
+        setEntries(usable);
+        setPhase('ready');
+      } catch {
+        // Missing, expired, revoked, or the wrong key: one answer for all.
+        fail();
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [shareId, keyText]);
 
   const handleDownloadAll = async () => {
     setDownloadingAll(true);
     try {
       for (const entry of entries) {
         // eslint-disable-next-line no-await-in-loop
-        const { blob, filename, contentType } = await fetchSharedFile(token, entry.id);
-        const url = URL.createObjectURL(new Blob([blob], { type: contentType || blob.type }));
-        saveBlobAs(url, filename);
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const opened = await openSharedFile({ shareId, key: shareKey, entry });
+        saveBlobAs(opened.url, entry.name);
+        setTimeout(() => URL.revokeObjectURL(opened.url), 60_000);
       }
     } catch {
       // A failure partway just stops; files already saved stay saved.
@@ -238,25 +284,26 @@ function SharedDocumentPage() {
       </header>
 
       <main className={styles.content}>
-        {loading && <p className={styles.hint}>Loading...</p>}
+        {phase === 'loading' && <p className={styles.hint}>Loading...</p>}
 
-        {!loading && invalid && (
+        {phase === 'invalid' && (
           <div className={styles.invalidState}>
             <LinkBreak size={40} weight="light" className={styles.invalidIcon} />
             <h1 className={styles.invalidTitle}>This link is no longer valid.</h1>
             <p className={styles.invalidBody}>
-              It may have expired or been revoked by the person who shared it.
+              It may have expired, been revoked by the person who shared it, or be missing the end of the
+              address. If you reloaded this page, open the full link you were sent again.
             </p>
           </div>
         )}
 
-        {!loading && !invalid && entries.length === 1 && (
+        {phase === 'ready' && entries.length === 1 && (
           <div className={styles.documentPanel}>
-            <SharedFile token={token} entry={entries[0]} eager />
+            <SharedFile shareId={shareId} shareKey={shareKey} entry={entries[0]} eager />
           </div>
         )}
 
-        {!loading && !invalid && entries.length > 1 && (
+        {phase === 'ready' && entries.length > 1 && (
           <div className={styles.documentPanel}>
             <div className={styles.multiHeader}>
               <span className={styles.multiTitle}>{entries.length} files shared with you</span>
@@ -273,7 +320,7 @@ function SharedDocumentPage() {
             <ul className={styles.fileList}>
               {entries.map((entry) => (
                 <li key={entry.id}>
-                  <SharedFile token={token} entry={entry} eager={false} />
+                  <SharedFile shareId={shareId} shareKey={shareKey} entry={entry} eager={false} />
                 </li>
               ))}
             </ul>

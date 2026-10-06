@@ -1,41 +1,36 @@
-import api from './api.js';
+import axios from 'axios';
+
+// Deliberately NOT the shared services/api.js instance: this is the public,
+// signed-out side of a share. That instance attaches the session token and
+// clears it on a 401, neither of which has any business here.
+const publicApi = axios.create({ baseURL: '/api' });
 
 /**
- * GET /api/shared/:token
- * The public, unauthenticated endpoint - this call never sends (and the
- * backend never checks for) a session token. Used only by
- * pages/SharedDocumentPage.jsx, which lives entirely outside the vault's
- * auth flow.
+ * GET /api/shared/:shareId
+ * Returns only ciphertext: the encrypted manifest (base64 of iv || ciphertext
+ * || tag) and the id and size of each encrypted file. The key to open any of
+ * it is in the link's #fragment and is never sent here.
  *
- * The backend intentionally returns the exact same generic 404 for every
- * failure mode (never existed, expired, revoked), so this rejects with
- * whatever axios throws and leaves interpreting that up to the caller.
+ * The backend returns the exact same generic 404 for every failure (never
+ * existed, expired, revoked), so this rejects with whatever axios throws.
  *
- * @param {string} token
- * @returns {Promise<{ expiresAt: string, entries: Array<{ id: string, filename: string, mimeType: string, size: number }> }>}
+ * @param {string} shareId
+ * @returns {Promise<{ expiresAt: string, manifest: string, files: Array<{ id: string, size: number }> }>}
  */
-export async function fetchSharedManifest(token) {
-  const { data } = await api.get(`/shared/${token}`);
+export async function fetchSharedManifest(shareId) {
+  const { data } = await publicApi.get(`/shared/${encodeURIComponent(shareId)}`);
   return data;
 }
 
 /**
- * GET /api/shared/:token/files/:documentId - decrypts one file from the
- * link server-side and returns it as a blob.
- * @param {string} token
- * @param {string} documentId
- * @returns {Promise<{ blob: Blob, filename: string, contentType: string }>}
+ * GET /api/shared/:shareId/files/:fileId - one encrypted file as raw bytes
+ * (iv || ciphertext || tag). Decryption happens in the browser.
+ * @returns {Promise<ArrayBuffer>}
  */
-export async function fetchSharedFile(token, documentId) {
-  const response = await api.get(`/shared/${token}/files/${documentId}`, { responseType: 'blob' });
-
-  const disposition = response.headers['content-disposition'] || '';
-  const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match ? decodeURIComponent(match[1]) : 'document';
-
-  return {
-    blob: response.data,
-    filename,
-    contentType: response.headers['content-type'] || 'application/octet-stream',
-  };
+export async function fetchSharedFile(shareId, fileId) {
+  const { data } = await publicApi.get(
+    `/shared/${encodeURIComponent(shareId)}/files/${encodeURIComponent(fileId)}`,
+    { responseType: 'arraybuffer' }
+  );
+  return data;
 }

@@ -2,33 +2,34 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
-const ShareToken = require('../models/ShareToken');
-const { generateSalt, deriveEncryptionKey, wrapKey } = require('../utils/crypto');
-const { resolveLanIp } = require('../utils/network');
-
-// The frontend's own dev-server port (vite.config.js, README) - there's
-// no env var for it today, same as pairing.controller.js hardcoding a
-// fallback for its own PORT. /shared/:token is a React Router route
-// served by Vite, not this Express app, so the share link must point
-// there, never at this server's own port.
-const FRONTEND_PORT = 5173;
+const Share = require('../models/Share');
+const SharedFile = require('../models/SharedFile');
+const { decryptFile } = require('../utils/crypto');
+const {
+  generateShareKey,
+  encryptForShare,
+  pack,
+  toBase64Url,
+  newShareId,
+  newFileId,
+  SHARE_ID_RE,
+} = require('../utils/shareCrypto');
+const limits = require('../utils/shareLimits');
+const { getPublicAppUrl } = require('../utils/publicAppUrl');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
 // every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function badRequest(message) {
+function httpError(status, message) {
   const error = new Error(message);
-  error.status = 400;
+  error.status = status;
   return error;
 }
-
-function documentNotFound() {
-  const error = new Error('Document not found.');
-  error.status = 404;
-  return error;
-}
+const badRequest = (message) => httpError(400, message);
+const documentNotFound = () => httpError(404, 'Document not found.');
+const shareNotFound = () => httpError(404, 'Share not found.');
 
 function assertValidId(id, label = 'document') {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -36,29 +37,51 @@ function assertValidId(id, label = 'document') {
   }
 }
 
-const SHARE_TOKEN_BYTES = 32;
+const mb = (bytes) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)}MB`;
 
-const MAX_SHARE_ENTRIES = 500;
+/** What this owner has used so far, from their still-active shares. */
+async function usageFor(userId) {
+  const [row] = await Share.aggregate([
+    { $match: { ownerUserId: userId, expiresAt: { $gt: new Date() } } },
+    { $group: { _id: null, bytes: { $sum: '$totalBytes' }, shares: { $sum: 1 } } },
+  ]);
+  const usedBytes = row?.bytes ?? 0;
+  return {
+    usedBytes,
+    remainingBytes: Math.max(0, limits.MAX_USER_SHARE_BYTES - usedBytes),
+    limitBytes: limits.MAX_USER_SHARE_BYTES,
+    perShareLimitBytes: limits.MAX_SHARE_BYTES,
+    activeShares: row?.shares ?? 0,
+    maxActiveShares: limits.MAX_ACTIVE_SHARES,
+    maxDurationHours: limits.MAX_DURATION_HOURS,
+  };
+}
 
 /**
- * The one place a share link is issued - both POST /api/documents/:id/share
- * (a single document) and POST /api/shares (a set, e.g. a whole folder's
- * contents) call this, so a single-file share is just an entries array of
- * length 1 rather than a parallel code path.
+ * The one place a share is issued - POST /api/documents/:id/share (one file)
+ * and POST /api/shares (a set, e.g. a folder's contents) both call this.
  *
- * Owner-only (requireSession, mounted in routes/shares.routes.js): creates
- * a new share token covering `documentIds`, valid for durationHours from
- * now. The public-facing endpoints that consume it live in
- * controllers/sharedView.controller.js with their own trust boundary.
+ * Owner-only (requireSession). The server holds the vault key for this one
+ * request, so it decrypts each selected file and re-encrypts a COPY under a
+ * brand-new random share key. That key goes back in the response, inside the
+ * link's #fragment, and is never stored: the database gets ciphertext, the
+ * encrypted manifest (names, types, folders) and ownership/timing only.
+ * Nothing about a share involves the vault key after this function returns.
  */
 async function issueShare(req, res, documentIds) {
   const rawHours = req.body.durationHours;
-  if (typeof rawHours !== 'number' && typeof rawHours !== 'string') {
-    throw badRequest('durationHours must be a positive number of hours.');
+  let hours = limits.DEFAULT_DURATION_HOURS;
+  if (rawHours !== undefined && rawHours !== null) {
+    if (typeof rawHours !== 'number' && typeof rawHours !== 'string') {
+      throw badRequest('durationHours must be a positive number of hours.');
+    }
+    hours = Number(rawHours);
   }
-  const hours = Number(rawHours);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw badRequest('durationHours must be a positive number of hours.');
+  }
+  if (hours > limits.MAX_DURATION_HOURS) {
+    throw badRequest(`A share link can last at most ${limits.MAX_DURATION_HOURS / 24} days.`);
   }
 
   if (!documentIds.every((id) => typeof id === 'string')) {
@@ -68,77 +91,125 @@ async function issueShare(req, res, documentIds) {
   if (uniqueIds.length === 0) {
     throw badRequest('At least one document is required.');
   }
-  if (uniqueIds.length > MAX_SHARE_ENTRIES) {
-    throw badRequest(`A share link can include at most ${MAX_SHARE_ENTRIES} documents.`);
+  if (uniqueIds.length > limits.MAX_SHARE_FILES) {
+    throw badRequest(`A share link can include at most ${limits.MAX_SHARE_FILES} documents.`);
   }
   uniqueIds.forEach((id) => assertValidId(id));
 
-  const documents = await Document.find({ _id: { $in: uniqueIds }, userId: req.userId }).select(
-    'filename mimeType'
+  const baseUrl = getPublicAppUrl();
+  if (!baseUrl) {
+    throw httpError(
+      500,
+      'No public address is configured for share links. Set PUBLIC_APP_URL (see .env.example) and restart the server.'
+    );
+  }
+
+  // Limits first, before any decryption work.
+  const usage = await usageFor(req.userId);
+  if (usage.activeShares >= limits.MAX_ACTIVE_SHARES) {
+    throw httpError(
+      409,
+      `You already have ${limits.MAX_ACTIVE_SHARES} active share links. Revoke one to create another.`
+    );
+  }
+
+  const objectIds = uniqueIds.map((id) => new mongoose.Types.ObjectId(id));
+  const sizes = await Document.aggregate([
+    { $match: { _id: { $in: objectIds }, userId: req.userId } },
+    { $project: { size: { $binarySize: '$encryptedBlob' } } },
+  ]);
+  if (sizes.length !== uniqueIds.length) {
+    throw documentNotFound();
+  }
+  const totalBytes = sizes.reduce((sum, row) => sum + row.size, 0);
+  if (totalBytes > limits.MAX_SHARE_BYTES) {
+    throw httpError(
+      413,
+      `These files add up to ${mb(totalBytes)}; one share can hold at most ${mb(limits.MAX_SHARE_BYTES)}. Share fewer files.`
+    );
+  }
+  if (usage.usedBytes + totalBytes > limits.MAX_USER_SHARE_BYTES) {
+    throw httpError(
+      409,
+      `Not enough shared storage: this share needs ${mb(totalBytes)} and you have ${mb(usage.remainingBytes)} left of ${mb(limits.MAX_USER_SHARE_BYTES)}. Revoke a share to free space.`
+    );
+  }
+
+  // At most 20MB of blobs from here on.
+  const documents = await Document.find({ _id: { $in: objectIds }, userId: req.userId }).select(
+    'filename mimeType folder encryptedBlob iv authTag checksum'
   );
   if (documents.length !== uniqueIds.length) {
     throw documentNotFound();
   }
 
-  // Same fail-loudly-if-undetermined guarantee as POST /api/pair/init:
-  // a share link built from an unreachable address (e.g. silently
-  // falling back to "localhost") would look fine to the owner and then
-  // not work for whoever they send it to, with nothing telling them why.
-  const lanIp = resolveLanIp();
-  if (!lanIp) {
-    const error = new Error(
-      "Could not determine this PC's LAN address. Set the LAN_IP environment variable (see .env.example) and restart the server."
-    );
-    error.status = 500;
-    throw error;
-  }
-
-  const token = crypto.randomBytes(SHARE_TOKEN_BYTES).toString('hex');
+  const shareId = newShareId();
+  const shareKey = generateShareKey();
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
-  // Wrap a COPY of the vault's DEK (available here via req.session -
-  // requireSession already unwrapped it for this owner's unlocked
-  // session) under a key derived from this specific token, so the public
-  // /api/shared/:token routes can unwrap it later using only the token
-  // from the URL - no session, no password, no recovery key involved at
-  // all. Every document is encrypted under this same DEK, so one wrap per
-  // link covers every entry.
-  const shareSalt = generateSalt();
-  const shareKek = deriveEncryptionKey(token, shareSalt);
-  const wrappedShare = wrapKey(req.dek, shareKek);
+  const files = [];
+  const manifestFiles = [];
+  for (const doc of documents) {
+    const plaintext = decryptFile(doc.encryptedBlob.toString('base64'), req.dek, doc.iv, doc.authTag);
+    const checksum = crypto.createHash('sha256').update(plaintext).digest('hex');
+    if (checksum !== doc.checksum) {
+      throw httpError(500, 'Integrity check failed on a file, so no share was created.');
+    }
+    const fileId = newFileId();
+    const sealed = encryptForShare(plaintext, shareKey, shareId, fileId);
+    files.push({
+      shareId,
+      fileId,
+      ciphertext: sealed.ciphertext,
+      iv: sealed.iv,
+      authTag: sealed.authTag,
+      sizeBytes: sealed.ciphertext.length,
+      expiresAt,
+    });
+    manifestFiles.push({
+      id: fileId,
+      name: doc.filename,
+      mime: doc.mimeType || 'application/octet-stream',
+      folder: doc.folder || 'root',
+      size: plaintext.length,
+    });
+  }
 
-  const shareToken = await ShareToken.create({
-    userId: req.userId,
-    entries: documents.map((doc) => ({
-      documentId: doc._id,
-      filename: doc.filename,
-      mimeType: doc.mimeType,
-    })),
-    token,
-    expiresAt,
-    wrappedDEKShare: wrappedShare.wrappedKey,
-    wrappedDEKShareIv: wrappedShare.iv,
-    wrappedDEKShareAuthTag: wrappedShare.authTag,
-    wrappedDEKShareSalt: shareSalt,
-  });
+  const manifest = encryptForShare(
+    Buffer.from(JSON.stringify({ v: 1, files: manifestFiles }), 'utf8'),
+    shareKey,
+    shareId,
+    'manifest'
+  );
 
-  // Root cause of a past bug (also true of the pairing QR before it was
-  // fixed the same way): building this from the request's own host, or
-  // from the owner's browser tab (window.location.origin), captures
-  // whatever the OWNER happened to be browsing from at that moment -
-  // often "localhost", which means nothing to a recipient on a different
-  // device. lanIp (resolveLanIp, shared with pairing.controller.js) is
-  // this PC's actual LAN-reachable address regardless of how the owner
-  // themselves got here, and FRONTEND_PORT points at the React route
-  // that serves /shared/:token, not this API's own port.
-  const shareUrl = `${req.protocol}://${lanIp}:${FRONTEND_PORT}/shared/${shareToken.token}`;
+  try {
+    await Share.create({
+      shareId,
+      ownerUserId: req.userId,
+      sourceDocumentIds: documents.map((doc) => doc._id),
+      fileCount: files.length,
+      totalBytes,
+      manifestCipher: manifest.ciphertext,
+      manifestIv: manifest.iv,
+      manifestAuthTag: manifest.authTag,
+      expiresAt,
+    });
+    await SharedFile.insertMany(files);
+  } catch (err) {
+    await Promise.allSettled([Share.deleteOne({ shareId }), SharedFile.deleteMany({ shareId })]);
+    throw err;
+  }
 
+  // The key is returned exactly once, in the fragment, and not stored or
+  // logged anywhere. no-store keeps it out of any HTTP cache.
+  res.setHeader('Cache-Control', 'no-store');
   res.status(201).json({
-    id: shareToken._id,
-    token: shareToken.token,
-    expiresAt: shareToken.expiresAt,
-    shareUrl,
-    entryCount: documents.length,
+    id: shareId,
+    expiresAt,
+    shareUrl: `${baseUrl}/shared/${shareId}#k=${toBase64Url(shareKey)}`,
+    entryCount: files.length,
+    totalBytes,
+    usage: await usageFor(req.userId),
   });
 }
 
@@ -167,74 +238,66 @@ const createBulkShare = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/documents/:id/shares
- * Lists this document's currently-active (non-revoked, non-expired) share
- * links, so the owner can see what's out there before deciding to revoke
- * anything.
+ * This document's currently-active shares, so the owner can see what is out
+ * there before deciding to revoke anything. Owner-only; sourceDocumentIds
+ * is used to find them but never returned.
  */
 const listShares = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId }).select('_id');
   if (!document) {
     throw documentNotFound();
   }
 
-  const shares = await ShareToken.find({
-    userId: req.userId,
-    // Covers links that include this document among several, plus legacy
-    // single-document links that predate `entries`.
-    $or: [{ 'entries.documentId': document._id }, { documentId: document._id }],
-    revoked: false,
+  const shares = await Share.find({
+    ownerUserId: req.userId,
+    sourceDocumentIds: document._id,
     expiresAt: { $gt: new Date() },
-  }).sort({ createdAt: -1 });
+  })
+    .select('shareId expiresAt createdAt fileCount')
+    .sort({ createdAt: -1 });
 
   res.status(200).json(
     shares.map((share) => ({
-      id: share._id,
+      id: share.shareId,
       expiresAt: share.expiresAt,
       createdAt: share.createdAt,
-      entryCount: share.getDocumentIds().length,
+      entryCount: share.fileCount,
     }))
   );
 });
 
 /**
- * POST /api/shares/:token/revoke
- * Idempotent by design: the caller is asking for an end state ("this link
- * no longer works"), not reporting a transition, so an already-revoked,
- * already-expired, or even unrecognized token all just return success
- * rather than needing the caller to distinguish those cases.
+ * GET /api/shares/usage
+ * How much shared storage this owner has used, for the share dialog.
  */
-const revokeShare = asyncHandler(async (req, res) => {
-  await ShareToken.updateOne(
-    { token: req.params.token, userId: req.userId },
-    { $set: { revoked: true } }
-  );
-  res.status(200).json({ success: true });
+const getUsage = asyncHandler(async (req, res) => {
+  res.status(200).json(await usageFor(req.userId));
 });
 
 /**
- * POST /api/shares/id/:shareId/revoke
- * Same idempotent behavior as revokeShare above, addressed by the
- * ShareToken's own _id instead of its token. GET /api/documents/:id/shares
- * deliberately never re-exposes a share's raw token after creation (the
- * same one-time-secret hygiene as the recovery key never being shown
- * again) - this is what lets the owner revoke a share from that list
- * without the frontend ever having to hold or redisplay the live token.
+ * DELETE /api/shares/:shareId
+ * Revokes a share by deleting it and every encrypted copy at once. 404 for
+ * a share that does not exist or belongs to someone else (the two are
+ * indistinguishable on purpose).
  */
-const revokeShareById = asyncHandler(async (req, res) => {
-  assertValidId(req.params.shareId, 'share');
-  await ShareToken.updateOne(
-    { _id: req.params.shareId, userId: req.userId },
-    { $set: { revoked: true } }
-  );
-  res.status(200).json({ success: true });
+const revokeShare = asyncHandler(async (req, res) => {
+  if (!SHARE_ID_RE.test(req.params.shareId)) {
+    throw shareNotFound();
+  }
+  const result = await Share.deleteOne({ shareId: req.params.shareId, ownerUserId: req.userId });
+  if (result.deletedCount === 0) {
+    throw shareNotFound();
+  }
+  await SharedFile.deleteMany({ shareId: req.params.shareId });
+  res.status(200).json({ success: true, usage: await usageFor(req.userId) });
 });
 
 module.exports = {
   createShare,
   createBulkShare,
   listShares,
+  getUsage,
   revokeShare,
-  revokeShareById,
 };

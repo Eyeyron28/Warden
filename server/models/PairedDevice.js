@@ -26,7 +26,7 @@ const pairedDeviceSchema = new mongoose.Schema({
   // middleware/requireDeviceAuth.js). Proves future sync requests come
   // from this legitimately paired device without needing the master
   // password again - same "long-lived opaque token, looked up directly"
-  // pattern as ShareToken.token and PairingToken.token, not hashed for
+  // pattern as PairingToken.token and RecoveryRequestToken.token, not hashed for
   // the same reason those aren't: it's a random 256-bit value, not a
   // user-chosen secret that could appear elsewhere.
   deviceToken: {
@@ -62,7 +62,7 @@ const pairedDeviceSchema = new mongoose.Schema({
     default: Date.now,
   },
   // Lets the owner revoke a paired phone's access (from the PC) without
-  // needing the phone present - mirrors ShareToken.revoked.
+  // needing the phone present - mirrors PairingToken.used.
   revoked: {
     type: Boolean,
     default: false,
