@@ -20,7 +20,7 @@ function formatCountdown(msRemaining) {
 }
 
 /**
- * LockScreen's "Recover with paired phone" entry point. Same generate
+ * The "Recover with my paired phone" entry point on /forgot-password. Same generate
  * code -> show QR -> poll status shape as PairDevicePanel, plus a final
  * step once the phone responds: choosing the new master password. The
  * phone never sends its raw DEK here - only the wrapped material POST

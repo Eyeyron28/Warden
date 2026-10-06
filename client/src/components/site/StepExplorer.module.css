@@ -1,0 +1,160 @@
+.explorer {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-7);
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-border);
+}
+
+.tab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-height: 56px;
+  padding: var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  text-align: left;
+  color: var(--color-text-muted);
+  transition: color 160ms var(--ease-standard), background-color 160ms var(--ease-standard);
+}
+
+.tab:hover {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--color-text);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.tabNumber {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.tab[aria-selected='true'] .tabNumber {
+  color: var(--color-accent);
+}
+
+.tabTitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+}
+
+.panel {
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-raised);
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-body);
+}
+
+.edge {
+  fill: none;
+  stroke: var(--color-border-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 5;
+  transition: stroke 200ms var(--ease-standard);
+}
+
+.edge.lit {
+  stroke: var(--color-accent);
+  stroke-dasharray: none;
+}
+
+.edgeLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity 200ms var(--ease-standard);
+}
+
+.edgeLabel.lit {
+  opacity: 1;
+  fill: var(--color-accent);
+}
+
+.node rect:first-child {
+  fill: var(--color-surface);
+  stroke: var(--color-border-strong);
+  stroke-width: 1.5;
+  transition: stroke 200ms var(--ease-standard), fill 200ms var(--ease-standard);
+}
+
+.node.lit rect:first-child {
+  stroke: var(--color-accent);
+  fill: var(--color-accent-wash);
+}
+
+.nodeTitle {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+
+.nodeSub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  fill: var(--color-text-muted);
+}
+
+.slot {
+  fill: var(--color-bg);
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.slotText {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--color-text);
+}
+
+.caption {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.captionStep {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.captionTitle {
+  margin-top: var(--space-2);
+  font-size: var(--fs-xl);
+}
+
+.captionBody {
+  max-width: 58ch;
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  line-height: 1.65;
+}
+
+@media (min-width: 900px) {
+  .explorer {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+    gap: var(--space-7);
+    align-items: start;
+  }
+}

@@ -1,0 +1,39 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+}
+
+.main {
+  flex: 1;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.skipLink {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 160ms var(--ease-standard);
+}
+
+.skipLink:focus {
+  transform: none;
+}
+
+/* Reserves space while a route chunk loads, so the footer doesn't jump
+   up and back down. */
+.loading {
+  min-height: 70vh;
+}

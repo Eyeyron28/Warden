@@ -1,52 +1,75 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
-import LockScreen from './pages/LockScreen.jsx';
-import VaultShell from './pages/VaultShell.jsx';
-import SharedDocumentPage from './pages/SharedDocumentPage.jsx';
-import PairPage from './pages/PairPage.jsx';
-import PhoneVault from './pages/PhoneVault.jsx';
-import VerifyEmailPage from './pages/VerifyEmailPage.jsx';
-import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
+import PublicLayout from './components/site/PublicLayout.jsx';
+import HomePage from './pages/public/HomePage.jsx';
 import { logoutVault } from './services/authService.js';
-import { getToken, setToken, clearToken, subscribeToken } from './services/session.js';
+import { clearToken } from './services/session.js';
 import { isPhoneDevice } from './utils/deviceDetection.js';
+import { useSessionToken } from './utils/useSessionToken.js';
+
+// Every route except the home page is its own chunk, so the landing page
+// downloads only what it shows. Home itself is imported eagerly - it's the
+// first thing most visitors see, and a spinner there would cost more than
+// the bytes it saves.
+const AboutPage = lazy(() => import('./pages/public/AboutPage.jsx'));
+const ContactPage = lazy(() => import('./pages/public/ContactPage.jsx'));
+const PrivacyPage = lazy(() => import('./pages/public/PrivacyPage.jsx'));
+const TermsPage = lazy(() => import('./pages/public/TermsPage.jsx'));
+const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage.jsx'));
+const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
+const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'));
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage.jsx'));
+const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'));
+const VerifyEmailPage = lazy(() => import('./pages/auth/VerifyEmailPage.jsx'));
+const VaultShell = lazy(() => import('./pages/VaultShell.jsx'));
+const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
+const PairPage = lazy(() => import('./pages/PairPage.jsx'));
+const PhoneVault = lazy(() => import('./pages/PhoneVault.jsx'));
 
 /**
- * Root route ("/"): a phone should never drive the live PC session
- * (LockScreen/VaultShell) directly - it always has its own local,
- * PIN-unlocked experience at /phone instead. useState's lazy initializer
- * runs the phone check exactly once, on this component's initial mount,
- * so resizing an already-open desktop window narrower afterward can
- * never trigger it - only the device this route is FIRST opened on
- * decides the redirect.
+ * "/" is the public home page for everyone - except a phone that has
+ * already been paired in this browser, which still goes straight to its
+ * own PIN-unlocked vault at /phone, as before. Any other phone sees the
+ * landing page and can log in normally.
  */
-function RootRoute({ sessionToken, onAuthenticated }) {
+function RootRoute() {
   const [isPhone] = useState(isPhoneDevice);
+  const [paired, setPaired] = useState(isPhone ? null : false);
 
-  if (isPhone) {
-    return <Navigate to="/phone" replace />;
-  }
+  useEffect(() => {
+    if (!isPhone) return undefined;
+    let cancelled = false;
+    // Loaded on demand: only phones need IndexedDB here, so the landing
+    // page's own bundle doesn't carry it.
+    import('./services/localVault.js')
+      .then(({ getAllDeviceAuth }) => getAllDeviceAuth())
+      .then((records) => !cancelled && setPaired(records.length > 0))
+      .catch(() => !cancelled && setPaired(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [isPhone]);
 
-  if (sessionToken) {
-    return <Navigate to="/vault" replace />;
-  }
+  if (paired === null) return null; // a few ms while IndexedDB answers
+  if (paired) return <Navigate to="/phone" replace />;
+  return <HomePage />;
+}
 
-  return <LockScreen onAuthenticated={onAuthenticated} />;
+/**
+ * The vault needs a session. Without one - never logged in, "Lock
+ * vault", or a session that expired mid-use (the axios 401 interceptor
+ * clears the token) - send the person to /login, remembering where they
+ * were so login can bring them straight back.
+ */
+function RequireSession({ children }) {
+  const token = useSessionToken();
+  const location = useLocation();
+  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
+  return children;
 }
 
 function App() {
-  const [sessionToken, setSessionToken] = useState(getToken());
-
-  // Mirrors the module-level session token (set by axios's 401 interceptor
-  // as well as explicit auth actions) into React state so routing reacts
-  // to it.
-  useEffect(() => subscribeToken(setSessionToken), []);
-
-  const handleAuthenticated = useCallback((nextToken) => {
-    setToken(nextToken);
-  }, []);
-
   const handleLocked = useCallback(async () => {
     try {
       await logoutVault();
@@ -59,34 +82,40 @@ function App() {
   }, []);
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={<RootRoute sessionToken={sessionToken} onAuthenticated={handleAuthenticated} />}
-      />
-      <Route
-        path="/vault"
-        element={sessionToken ? <VaultShell onLocked={handleLocked} /> : <Navigate to="/" replace />}
-      />
-      {/* Deliberately outside the auth flow above: no sessionToken check, no
-          LockScreen/VaultShell involved at all. A recipient opening a share
-          link has never logged into this account and never will. */}
-      <Route path="/shared/:token" element={<SharedDocumentPage />} />
-      {/* Same reasoning as /shared/:token above: this runs on a phone that
-          has never logged in (or even seen) this account before, so it
-          can't depend on any of the session/auth state the routes above
-          use. */}
-      <Route path="/pair/:token" element={<PairPage />} />
-      {/* Also outside the auth flow, for the same reason: this is the
-          phone's own local vault, unlocked with its paired PIN and backed
-          by IndexedDB, not a PC session at all. */}
-      <Route path="/phone" element={<PhoneVault />} />
-      {/* Email-link landing pages - the token in the URL is the only
-          credential either one needs, same trust model as /shared/:token. */}
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={null}>
+      <Routes>
+        <Route element={<PublicLayout />}>
+          <Route index element={<RootRoute />} />
+          <Route path="about" element={<AboutPage />} />
+          <Route path="contact" element={<ContactPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="terms" element={<TermsPage />} />
+          <Route path="login" element={<LoginPage />} />
+          <Route path="signup" element={<SignupPage />} />
+          <Route path="forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="reset-password" element={<ResetPasswordPage />} />
+          <Route path="verify-email" element={<VerifyEmailPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+
+        <Route
+          path="/vault"
+          element={
+            <RequireSession>
+              <VaultShell onLocked={handleLocked} />
+            </RequireSession>
+          }
+        />
+        {/* Outside the account flow entirely: a share-link recipient has
+            never logged into this account and never will. */}
+        <Route path="/shared/:token" element={<SharedDocumentPage />} />
+        {/* Same reasoning: a phone opening a pairing QR has no session. */}
+        <Route path="/pair/:token" element={<PairPage />} />
+        {/* The phone's own local vault, unlocked with its paired PIN and
+            backed by IndexedDB, not a PC session at all. */}
+        <Route path="/phone" element={<PhoneVault />} />
+      </Routes>
+    </Suspense>
   );
 }
 

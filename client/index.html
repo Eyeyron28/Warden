@@ -4,8 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#130C11" />
-    <meta name="description" content="Warden - encrypted, locally-hosted personal document vault." />
+    <meta
+      name="description"
+      content="Warden keeps your IDs, contracts and records encrypted with a key only your password or recovery key can unlock. The database stores ciphertext, never your files."
+    />
     <link rel="icon" type="image/svg+xml" href="/src/assets/warden_logo_badge.svg" />
+
+    <!-- Open Graph / link previews. Per-route titles and descriptions are
+         set at runtime (src/utils/usePageMeta.js); these are the defaults a
+         crawler that doesn't run JavaScript sees. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Warden" />
+    <meta property="og:title" content="Warden - an encrypted vault for your important documents" />
+    <meta
+      property="og:description"
+      content="Your documents are stored encrypted with a key only you can unlock. A student capstone project from PHINMA University of Pangasinan."
+    />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Hero headline weight, preloaded so the landing page's largest text
+         renders in its real font without a late swap (see the @font-face
+         block in src/styles/global.css). -->
+    <link
+      rel="preload"
+      href="/fonts/space-grotesk-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
 
     <!-- PWA install: manifest.json's icons list PNGs first because
          installability/"Add to Home Screen" icon support for SVG is
@@ -21,7 +48,7 @@
     <meta name="apple-mobile-web-app-title" content="Warden" />
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <title>Warden - Document Vault</title>
+    <title>Warden - Encrypted document vault</title>
 
     <!-- Blocking (not type="module", not deferred) so this runs before
          anything paints - src/utils/theme.js's getInitialTheme() mirrors

@@ -4,6 +4,8 @@ const router = express.Router();
 const {
   signup,
   verifyEmail,
+  resendVerification,
+  getPublicConfig,
   unlock,
   getMe,
   forgotPassword,
@@ -39,6 +41,15 @@ router.post(
   createRateLimiter({ name: 'verify-email', max: 20, windowMs: 60 * 60 * 1000 }),
   verifyEmail
 );
+router.post(
+  '/resend-verification',
+  createRateLimiter({ name: 'resend-verification-ip', max: 10, windowMs: 60 * 60 * 1000 }),
+  // One send per email per 60 seconds. Keyed by the email whether or not
+  // an account exists, so the 429 itself never hints at which emails do.
+  createRateLimiter({ name: 'resend-verification-email', max: 1, windowMs: 60 * 1000, keyFn: byEmail }),
+  resendVerification
+);
+router.get('/config', getPublicConfig);
 router.post(
   '/unlock',
   createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),

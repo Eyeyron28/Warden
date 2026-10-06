@@ -1,0 +1,123 @@
+import { Link } from 'react-router-dom';
+
+import Reveal from '../../components/site/Reveal.jsx';
+import { PROJECT } from '../../config.js';
+import { usePageMeta } from '../../utils/usePageMeta.js';
+import site from '../../components/site/site.module.css';
+import styles from './AboutPage.module.css';
+
+// ---- Edit the team here ----
+// Placeholder names and roles. Replace each entry with a real member;
+// the page renders whatever is in this array, in this order.
+const TEAM = [
+  { name: 'Member One', role: 'Project lead, backend' },
+  { name: 'Member Two', role: 'Cryptography and security review' },
+  { name: 'Member Three', role: 'Frontend and design' },
+  { name: 'Member Four', role: 'Testing and documentation' },
+];
+
+const DESIGN_POINTS = [
+  {
+    title: 'One random key per vault',
+    body: 'Each account gets its own 256-bit key at signup. Every file is encrypted with it using AES-256-GCM, which also refuses to decrypt a file that has been altered.',
+  },
+  {
+    title: 'The key is never stored in the open',
+    body: 'It is saved twice, each copy locked: once with a key derived from your password (scrypt), once with a key derived from your recovery key. Your password itself is never stored, only a salted hash used to check it.',
+  },
+  {
+    title: 'Sessions hold the key only while you use it',
+    body: 'When you log in, the unlocked key is locked again for your session with a random key that lives only in your browser\'s session token. Logging out deletes the session; inactive sessions expire after 30 minutes.',
+  },
+  {
+    title: 'Recovery is checked before anything changes',
+    body: 'A password reset with your recovery key, or approved from your paired phone, proves it unlocks your exact vault before any password or key is rewritten.',
+  },
+  {
+    title: 'What it does not protect',
+    body: 'File and folder names are stored as plain text. And while you are signed in, the server encrypts and decrypts your files in memory, so a compromised server could see files you open during that time.',
+  },
+];
+
+function AboutPage() {
+  usePageMeta('About', `Why Warden exists, who built it, and how its security works - a capstone project at ${PROJECT.school}.`);
+
+  return (
+    <div className={site.container}>
+      <header className={styles.intro}>
+        <p className={site.marker}>About the project</p>
+        <h1 className={styles.title}>A capstone about keeping documents safe, built to be honest about how.</h1>
+        <div className={styles.introText}>
+          <p>
+            Warden is the capstone project of {PROJECT.group}, {PROJECT.program} at {PROJECT.school}, for our{' '}
+            {PROJECT.course} (computer security) course.
+          </p>
+          <p>
+            We built it because the documents people most need to keep, like IDs, birth certificates, land titles
+            and tax records, usually end up as phone photos or files in a general-purpose drive. Warden is our
+            attempt at a vault for exactly those, where the stored copy is useless to anyone without your key, and
+            where the security claims are ones you can check against the code.
+          </p>
+        </div>
+      </header>
+
+      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="design-title">
+        <div className={styles.designGrid}>
+          <Reveal>
+            <p className={site.marker}>
+              <span className={site.markerNumber}>01</span> Security design
+            </p>
+            <h2 id="design-title" className={site.sectionTitle}>
+              The design, in plain words.
+            </h2>
+            <p className={site.lede}>
+              For the step-by-step version, see{' '}
+              <Link to="/#how-it-works" className={site.textLink}>
+                how it works
+              </Link>
+              .
+            </p>
+          </Reveal>
+          <Reveal as="ol" className={styles.designList}>
+            {DESIGN_POINTS.map((point) => (
+              <li key={point.title}>
+                <h3>{point.title}</h3>
+                <p>{point.body}</p>
+              </li>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
+      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="team-title">
+        <Reveal>
+          <p className={site.marker}>
+            <span className={site.markerNumber}>02</span> Team
+          </p>
+          <h2 id="team-title" className={site.sectionTitle}>
+            {PROJECT.group}
+          </h2>
+        </Reveal>
+        <Reveal as="ul" className={styles.team}>
+          {TEAM.map((member) => (
+            <li key={member.name} className={styles.member}>
+              <span className={styles.initials} aria-hidden="true">
+                {member.name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)}
+              </span>
+              <span>
+                <span className={styles.memberName}>{member.name}</span>
+                <span className={styles.memberRole}>{member.role}</span>
+              </span>
+            </li>
+          ))}
+        </Reveal>
+      </section>
+    </div>
+  );
+}
+
+export default AboutPage;

@@ -177,7 +177,7 @@ function SharedFile({ token, entry, eager }) {
 /**
  * The recipient-facing page for a share link (/shared/:token). Deliberately
  * NOT nested under App's authenticated routing in any way - it never reads
- * the session token, never redirects to LockScreen, and renders its own
+ * the session token, never redirects to /login, and renders its own
  * minimal shell rather than VaultShell's. Anyone with the link opens this
  * directly, with no prior context and no account. A link covers one or
  * more files (a shared folder is many); a single-file link looks exactly as

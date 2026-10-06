@@ -28,6 +28,27 @@ export async function verifyEmailToken(token) {
 }
 
 /**
+ * POST /api/auth/resend-verification - always the same generic response.
+ * Rejects with HTTP 429 if a link was already sent to this email in the
+ * last 60 seconds.
+ * @param {string} email
+ * @returns {Promise<{ message: string }>}
+ */
+export async function resendVerification(email) {
+  const { data } = await api.post('/auth/resend-verification', { email });
+  return data;
+}
+
+/**
+ * GET /api/auth/config - public settings the signup screen needs.
+ * @returns {Promise<{ signupMode: 'open' | 'invite' }>}
+ */
+export async function getPublicConfig() {
+  const { data } = await api.get('/auth/config');
+  return data;
+}
+
+/**
  * POST /api/auth/unlock - login, by email + password now.
  * @param {string} email
  * @param {string} password

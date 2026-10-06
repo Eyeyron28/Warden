@@ -16,7 +16,7 @@ const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 const MANIFEST_DEK_FIELDS = ['wrappedDEKUsb', 'wrappedDEKUsbIv', 'wrappedDEKUsbAuthTag', 'wrappedDEKUsbSalt'];
 
 /**
- * LockScreen's "Recover with USB" entry point. Reads backup-manifest.json
+ * The old "Recover with USB" entry point (currently unused - USB recovery is disabled server-side). Reads backup-manifest.json
  * directly from the selected folder client-side (via a plain
  * webkitdirectory file input - same technique NewMenu.jsx's "Upload
  * folder" already uses) rather than sending a path to the backend: unlike

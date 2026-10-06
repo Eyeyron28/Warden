@@ -50,7 +50,7 @@ import styles from './PhoneVault.module.css';
  * PC-session-gated App flow, same spirit as SharedDocumentPage/PairPage.
  * On load it checks IndexedDB's "deviceAuth" store (populated once by
  * PairPage.jsx at pairing time): if a paired device record exists, this
- * shows PIN entry instead of the master-password LockScreen; the master
+ * shows PIN entry instead of the email-and-password login; the master
  * password is never asked for again after pairing.
  *
  * Once unlocked, the vault view lists documents from the phone's own

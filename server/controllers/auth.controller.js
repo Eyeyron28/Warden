@@ -328,6 +328,58 @@ const verifyEmail = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/auth/resend-verification
+ * Body: { email }
+ * Always the same generic response, whether the email is unknown, already
+ * verified, or genuinely gets a new link - same anti-enumeration rule as
+ * signup and forgot-password. Only an existing, unverified account gets a
+ * fresh token, which REPLACES the stored hash, so the previous link stops
+ * working the moment this one is issued. Rate-limited per IP and per email
+ * (one send per email per 60 seconds) in routes/auth.routes.js.
+ */
+const resendVerification = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (typeof email !== 'string' || !email.trim()) {
+    throw badRequest('email is required.');
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (user && !user.emailVerified) {
+    const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_BYTES).toString('hex');
+    user.verificationTokenHash = hashToken(verificationToken);
+    user.verificationTokenExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+    await user.save();
+
+    const appUrl = resolvePublicAppUrl(req);
+    const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
+    await sendEmail({
+      to: normalizedEmail,
+      subject: 'Your new Warden verification link',
+      text:
+        'Here is a new link to verify your Warden account:\n' +
+        `${verifyUrl || `Verification code: ${verificationToken}`}\n\n` +
+        'This link expires in 24 hours. Any earlier verification link no longer works.',
+    });
+  }
+
+  res.status(200).json({
+    message: 'If this account exists and is not yet verified, a new link has been sent.',
+  });
+});
+
+/**
+ * GET /api/auth/config
+ * Public, non-sensitive settings the signup screen needs before the
+ * person has an account - currently only whether an invite code is
+ * required. Never exposes the code itself.
+ */
+const getPublicConfig = (req, res) => {
+  const signupMode = (process.env.SIGNUP_MODE || 'invite').toLowerCase() === 'open' ? 'open' : 'invite';
+  res.status(200).json({ signupMode });
+};
+
+/**
  * POST /api/auth/unlock
  * Body: { email, password }
  * Login. Route path kept as "unlock" to avoid an unrelated client churn,
@@ -799,6 +851,8 @@ const logout = asyncHandler(async (req, res) => {
 module.exports = {
   signup,
   verifyEmail,
+  resendVerification,
+  getPublicConfig,
   unlock,
   getMe,
   forgotPassword,

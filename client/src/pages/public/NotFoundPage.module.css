@@ -1,0 +1,32 @@
+.wrap {
+  padding-block: clamp(var(--space-7), 12vw, 9rem);
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--color-accent);
+}
+
+.title {
+  max-width: 18ch;
+  margin-top: var(--space-3);
+  font-size: var(--fs-3xl);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.body {
+  max-width: 48ch;
+  margin-top: var(--space-4);
+  font-size: var(--fs-lg);
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}

@@ -1,0 +1,260 @@
+.frame {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-elevated);
+  overflow: hidden;
+  font-size: var(--fs-xs);
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+}
+
+.dots {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+}
+
+.path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.status {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.folders {
+  display: none;
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  border-right: 1px solid var(--color-border);
+}
+
+.folder,
+.folderActive {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.folderActive {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.folderActive svg {
+  color: var(--color-accent);
+}
+
+.count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.files {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1);
+}
+
+.file + .file {
+  border-top: 1px solid var(--color-border);
+}
+
+.fileIcon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.fileMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fileName {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSub {
+  color: var(--color-text-muted);
+}
+
+/* Two stacked lines in the same grid cell, crossfading. */
+.preview {
+  display: grid;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.plain,
+.cipher {
+  grid-area: 1 / 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plain {
+  color: var(--color-text-muted);
+}
+
+.cipher {
+  color: var(--color-accent);
+  opacity: 0;
+}
+
+.chip {
+  flex-shrink: 0;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.chipPlain,
+.chipCipher {
+  grid-area: 1 / 2;
+}
+
+.chipCipher {
+  opacity: 0;
+  color: var(--color-accent);
+}
+
+.lockOnly {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+}
+
+.liveFile .chip svg {
+  grid-area: 1 / 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .plain {
+    animation: hold-out 9s ease-in-out infinite;
+  }
+
+  .cipher,
+  .chipCipher {
+    animation: hold-in 9s ease-in-out infinite;
+  }
+
+  .chipPlain {
+    animation: hold-out 9s ease-in-out infinite;
+  }
+}
+
+/* Reduced motion: show the stored (encrypted) state, not the plain one. */
+@media (prefers-reduced-motion: reduce) {
+  .plain,
+  .chipPlain {
+    opacity: 0;
+  }
+
+  .cipher,
+  .chipCipher {
+    opacity: 1;
+  }
+}
+
+@keyframes hold-out {
+  0%,
+  38% {
+    opacity: 1;
+  }
+  48%,
+  88% {
+    opacity: 0;
+  }
+  98%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes hold-in {
+  0%,
+  38% {
+    opacity: 0;
+  }
+  48%,
+  88% {
+    opacity: 1;
+  }
+  98%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (min-width: 560px) {
+  .body {
+    grid-template-columns: 150px 1fr;
+  }
+
+  .folders {
+    display: block;
+  }
+}

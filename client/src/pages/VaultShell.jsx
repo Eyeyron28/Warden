@@ -50,7 +50,7 @@ import styles from './VaultShell.module.css';
 // page, so there's no point flashing an error banner for it.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-// Same breakpoint LockScreen's desktop layout and the phone-detection
+// Same breakpoint the public site's desktop layouts and the phone-detection
 // check use elsewhere in this app - collapsed by default below it,
 // open by default at or above it. Computed once via useState's lazy
 // initializer (same pattern as App.jsx's RootRoute phone check), so a

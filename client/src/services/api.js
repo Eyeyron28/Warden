@@ -31,7 +31,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Session expired, was invalidated, or never existed. Clearing it
       // here (rather than in every caller) is what lets the app fall
-      // back to the LockScreen from any authenticated call, globally.
+      // back to /login from any authenticated call, globally (App.jsx RequireSession).
       clearToken();
     }
     return Promise.reject(error);
