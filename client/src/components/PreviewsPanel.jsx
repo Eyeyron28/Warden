@@ -102,9 +102,10 @@ function PreviewsPanel({ documents, onThumbnailAdded, onClose }) {
           : `${candidates.length} image or PDF document${candidates.length === 1 ? ' has' : 's have'} no preview yet.`}
       </p>
       <p className={styles.helper}>
-        To draw a preview, each file is downloaded and decrypted in this browser tab, so this uses data in
-        proportion to the files involved (4MB at most each). It runs one file at a time, only while this window
-        is open, and you can stop it at any point.
+        To draw a preview, each file is downloaded to this browser tab (the server decrypts it for you) and the
+        preview is drawn here, then encrypted and stored. This uses data in proportion to the files involved
+        (4MB at most each). It runs one file at a time, only while this window is open, and you can stop it at
+        any point.
       </p>
       <div className={styles.buttonRow}>
         <button type="button" className={styles.cancelButton} onClick={onClose}>

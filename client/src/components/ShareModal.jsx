@@ -291,7 +291,8 @@ function ShareModal({ documentIds, title, onClose }) {
               </button>
             </div>
             <p className={styles.hint}>
-              Works from a phone or any other device on your network - this is what the QR code
+              Anyone with this link can open the shared files until it expires or you revoke it. It
+              works from a phone or any other device on your network - this is what the QR code
               below encodes.
             </p>
           </div>

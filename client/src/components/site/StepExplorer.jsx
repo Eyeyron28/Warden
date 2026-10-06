@@ -6,14 +6,14 @@ const STEPS = [
   {
     title: 'You choose a password',
     body:
-      'Warden never stores it. It keeps a slow, salted scrypt hash to check it at login, and separately derives a key from it that is only ever used to lock your vault key.',
+      'Warden never stores it. It keeps a slow, salted scrypt hash to check it at login, and separately derives a key from it that is only ever used to lock your vault key. Your password reaches the server over HTTPS when you sign up or log in, and the server does this work.',
     diagram: 'Your password, turned into a key-locking key with scrypt.',
     highlight: ['password'],
   },
   {
     title: 'Warden makes a random vault key',
     body:
-      '256 random bits, generated once when you sign up. Every file you upload is encrypted with this key using AES-256-GCM, which also detects tampering.',
+      '256 random bits, generated on the server when you sign up. Files reach the server over HTTPS, and it encrypts each one, and its preview image, with this key using AES-256-GCM, which also detects tampering.',
     diagram: 'A random 256-bit vault key that encrypts every file.',
     highlight: ['vault'],
   },
@@ -27,7 +27,7 @@ const STEPS = [
   {
     title: 'The database keeps only locked things',
     body:
-      'Encrypted files and the two locked copies of the vault key. A copy of the database on its own opens nothing; it needs your password or recovery key.',
+      'Encrypted files and previews, and the two locked copies of the vault key. A copy of the database alone cannot decrypt them without your password or recovery key. While you are signed in, the server unlocks the key for each request to do the encrypting and decrypting, so this is not end-to-end encryption.',
     diagram: 'The database holds encrypted files and the two locked copies of the key.',
     highlight: ['database', 'store'],
   },

@@ -17,24 +17,30 @@ import styles from './HomePage.module.css';
 // actually does (see server/utils/crypto.js, controllers/auth.controller.js
 // and controllers/documents.controller.js). In particular, uploads and
 // downloads are encrypted/decrypted by the server in memory during a
-// signed-in session - so this page says "a copy of the database opens
-// nothing", never "the server can't read your files".
+// signed-in session - so this page never says "the server can't read your
+// files", "end-to-end" or "zero-knowledge", and it keeps the list of what
+// Warden does not protect against (pages/public/limits.js) in view.
 
 const COMPARISON = [
   {
     question: 'Who can read your stored files?',
     drive: 'The provider can - it manages the encryption keys.',
-    warden: 'Nobody, from the stored data alone. Opening it takes your password or recovery key.',
+    warden: 'Not from the stored data alone: opening it takes your password or recovery key.',
+  },
+  {
+    question: 'While you are signed in',
+    drive: 'The provider can read what you open; it holds the keys.',
+    warden: 'The Warden server unlocks your key for each request and decrypts files for you, so you are trusting it. This is not end-to-end encryption.',
   },
   {
     question: 'What sits in the database?',
     drive: 'Your files, encrypted with keys the provider holds.',
-    warden: 'Encrypted files and two locked copies of your vault key. File and folder names are plain text.',
+    warden: 'Encrypted files and previews, and two locked copies of your vault key. File and folder names are plain text.',
   },
   {
     question: 'If the database leaks',
     drive: 'Depends on how the provider guards its keys.',
-    warden: 'Ciphertext and locked keys. Useless without your password or recovery key.',
+    warden: 'Ciphertext and locked keys, useless without your password or recovery key. The exception is a share link you left active; see below.',
   },
   {
     question: 'If you forget your password',
@@ -82,13 +88,13 @@ const FAQ_ITEMS = [
     answer: (
       <>
         <p>
-          Not from what&apos;s stored. Files sit in the database encrypted, and the key that opens them is only
-          ever stored locked by your password or recovery key.
+          Not from what&apos;s stored. Files sit in the database encrypted, and the key that opens them is stored
+          locked by your password and by your recovery key.
         </p>
         <p>
-          To be precise about the limits: while you&apos;re signed in, the server encrypts uploads and decrypts
-          downloads in memory, so you&apos;re trusting the code that runs it, as with any web app. File and
-          folder names are stored as plain text.
+          But this is not end-to-end encryption. While you&apos;re signed in, the server unlocks your key for each
+          request and encrypts uploads and decrypts downloads for you, so anyone who controls the running server
+          could read what you open during that time. File and folder names are stored as plain text.
         </p>
       </>
     ),
@@ -112,11 +118,26 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: "What doesn't Warden protect against?",
+    answer: (
+      <p>
+        A compromised server while you&apos;re signed in, losing both your password and recovery key (the vault
+        can&apos;t be recovered), a compromised or shared device, weak or reused passwords, and share links you leave
+        active. The full list is in{' '}
+        <Link to="/#limits" className={site.textLink}>
+          About
+        </Link>
+        .
+      </p>
+    ),
+  },
+  {
     question: 'Where is my data stored?',
     answer: (
       <p>
-        In a MongoDB Atlas database. What&apos;s stored is your email, a password hash, your encrypted files, the
-        locked copies of your vault key, and basic file details such as names, folders and dates.
+        In a MongoDB Atlas database. What&apos;s stored is your email, a password hash, your encrypted files and
+        their encrypted preview images, the locked copies of your vault key, and basic file details such as names,
+        folders and dates.
       </p>
     ),
   },
@@ -125,7 +146,7 @@ const FAQ_ITEMS = [
 function HomePage() {
   usePageMeta(
     null,
-    'Warden keeps your IDs, contracts and records encrypted with a key only your password or recovery key can unlock.'
+    'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. A student project, provided as-is.'
   );
   const signedIn = Boolean(useSessionToken());
 
@@ -152,8 +173,9 @@ function HomePage() {
               A vault for the documents you can&apos;t afford to lose, or leak.
             </h1>
             <p className={styles.heroLede}>
-              Warden encrypts your IDs, contracts and records with a key that only your password or recovery key
-              can unlock. The database keeps ciphertext; a stolen copy of it opens nothing.
+              Warden stores your IDs, contracts and records encrypted, with a key locked by your password and your
+              recovery key. The database holds only ciphertext and locked keys. It is not end-to-end encrypted; the
+              limits are listed below.
             </p>
             <div className={styles.heroActions}>
               {primaryCta}
@@ -233,8 +255,13 @@ function HomePage() {
               </tbody>
             </table>
             <p className={styles.footnote}>
-              To be exact: while you&apos;re signed in, the server encrypts uploads and decrypts downloads in memory
-              for your session. The guarantee above is about what&apos;s stored.
+              To be exact: this is not end-to-end encryption. While you&apos;re signed in, the server unlocks your
+              key for each request and encrypts uploads and decrypts downloads for you. The comparison is about
+              what&apos;s stored, and the{' '}
+              <Link to="/#limits" className={site.textLink}>
+                limits are listed here
+              </Link>
+              .
             </p>
           </Reveal>
         </div>

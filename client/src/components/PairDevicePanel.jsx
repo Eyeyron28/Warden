@@ -179,7 +179,8 @@ function PairDevicePanel({ onClose }) {
       {status === 'waiting' && (
         <>
           <p className={styles.instructions}>
-            Scan this code with the Warden app on your phone to pair it with this vault.
+            Scan this code with your phone's camera to pair it with this vault. For now, your phone
+            must be on the same network as this PC.
           </p>
 
           {qrDataUrl && (

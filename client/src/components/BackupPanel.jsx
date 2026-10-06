@@ -9,7 +9,7 @@ const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 function BackupPanel({ onSubmit, onCancel, submitting, error, result }) {
   const [targetPath, setTargetPath] = useState('');
   // Same shape as setting a phone PIN at pairing time: a set + confirm
-  // pair, so a typo doesn't lock the owner out of their own USB recovery
+  // pair, so a typo doesn't lock the owner out of their own backup
   // path without them noticing. This passphrase is set fresh on every
   // export (see PairDevicePanel's phonePin for the same one-time-per-
   // pairing spirit) - there's no "forgot the USB passphrase" recovery of
@@ -79,7 +79,7 @@ function BackupPanel({ onSubmit, onCancel, submitting, error, result }) {
 
       <div className={styles.field}>
         <label htmlFor="usb-passphrase" className={styles.label}>
-          USB recovery passphrase
+          Backup passphrase
         </label>
         <input
           id="usb-passphrase"
@@ -112,9 +112,9 @@ function BackupPanel({ onSubmit, onCancel, submitting, error, result }) {
         />
         {passphraseMismatch && <p className={styles.helper}>Passphrases don't match.</p>}
         <p className={styles.helper}>
-          This lets you reset your master password later using only this backup and this
-          passphrase - separate from your recovery key, and set fresh on every export. There's no
-          way to recover it if forgotten, so write it down somewhere safe.
+          This passphrase locks the copy of your vault key stored in the backup. It's separate
+          from your recovery key and set fresh on every export. There's no way to recover it if
+          forgotten, so write it down somewhere safe.
         </p>
       </div>
 

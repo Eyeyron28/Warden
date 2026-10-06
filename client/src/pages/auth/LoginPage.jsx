@@ -115,7 +115,7 @@ function LoginPage() {
   return (
     <AuthLayout
       title="Log in to your vault"
-      subtitle="Your password unlocks your vault key for this session only."
+      subtitle="Your password unlocks your vault for this session. It ends after 30 minutes without activity, or when you reload the page."
       dial={dial}
       footer={
         <>

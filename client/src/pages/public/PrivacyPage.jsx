@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import LegalPage from '../../components/site/LegalPage.jsx';
 import { CONTACT_EMAIL, PROJECT } from '../../config.js';
+import { LIMITS } from './limits.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 
 // Also shown inside the signup page's read-before-you-agree dialog
@@ -24,7 +25,8 @@ export const SECTIONS = [
             <strong>A password hash</strong> (scrypt, salted). We never store your password itself.
           </li>
           <li>
-            <strong>Your documents, encrypted.</strong> Each file is stored as ciphertext (AES-256-GCM).
+            <strong>Your documents, encrypted.</strong> Each file, and the small preview image made for images and
+            PDFs, is stored as ciphertext (AES-256-GCM).
           </li>
           <li>
             <strong>Locked copies of your vault key</strong>, one locked by your password and one by your
@@ -35,7 +37,8 @@ export const SECTIONS = [
             and upload dates. These are stored as plain text so the vault can list and sort them.
           </li>
           <li>
-            <strong>Paired devices</strong>: the name you give a paired phone and when it was paired.
+            <strong>Paired devices</strong>: the name you give a paired phone and when it was paired. The phone
+            itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
           </li>
           <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per
@@ -54,14 +57,28 @@ export const SECTIONS = [
         <p>
           Your files are stored encrypted with a key unique to your vault. That key is itself only ever stored in
           locked form, so the stored data on its own cannot be read by us or by anyone who obtains a copy of the
-          database.
+          database. The one exception is a share link you have left active, described below.
         </p>
         <p>
-          To be precise about the limits: while you are signed in, the server encrypts the files you upload and
-          decrypts the ones you open, in memory, to serve them to you. A paired phone encrypts and decrypts on
-          the phone itself. File and folder names are not encrypted.
+          This is not end-to-end encryption. Files travel to and from the server over HTTPS, and while you are
+          signed in the server unlocks your vault key for each request to encrypt the files you upload and decrypt
+          the ones you open. Your session token is kept in browser memory only, and sessions end after 30 minutes
+          without activity. A paired phone encrypts and decrypts on the phone itself.
         </p>
       </>
+    ),
+  },
+  {
+    id: 'limits',
+    title: 'What Warden does not protect against',
+    content: (
+      <ul>
+        {LIMITS.map((item) => (
+          <li key={item.title}>
+            <strong>{item.title}.</strong> {item.body}
+          </li>
+        ))}
+      </ul>
     ),
   },
   {

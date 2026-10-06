@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 import Reveal from '../../components/site/Reveal.jsx';
 import { PROJECT } from '../../config.js';
+import { LIMITS } from './limits.js';
 import site from '../../components/site/site.module.css';
 import styles from './AboutSection.module.css';
 
@@ -26,15 +27,11 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Sessions hold the key only while you use it',
-    body: 'When you log in, the unlocked key is locked again for your session with a random key that lives only in your browser\'s session token. Logging out deletes the session; inactive sessions expire after 30 minutes.',
+    body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in browser memory, so reloading the page signs you out. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity.',
   },
   {
     title: 'Recovery is checked before anything changes',
     body: 'A password reset with your recovery key, or approved from your paired phone, proves it unlocks your exact vault before any password or key is rewritten.',
-  },
-  {
-    title: 'What it does not protect',
-    body: 'File and folder names are stored as plain text. And while you are signed in, the server encrypts and decrypts your files in memory, so a compromised server could see files you open during that time.',
   },
 ];
 
@@ -59,8 +56,8 @@ function AboutSection() {
           <p>
             We built it because the documents people most need to keep, like IDs, birth certificates, land titles
             and tax records, usually end up as phone photos or files in a general-purpose drive. Warden is our
-            attempt at a vault for exactly those, where the stored copy is useless to anyone without your key, and
-            where the security claims are ones you can check against the code.
+            attempt at a vault for exactly those, with security claims you can check against the code, and a plain
+            list of what it does not protect against.
           </p>
         </div>
       </header>
@@ -93,10 +90,34 @@ function AboutSection() {
         </div>
       </section>
 
+      <section id="limits" className={`${site.section} ${site.sectionRule}`} aria-labelledby="limits-title">
+        <div className={styles.designGrid}>
+          <Reveal>
+            <p className={site.marker}>
+              <span className={site.markerNumber}>02</span> Limits
+            </p>
+            <h3 id="limits-title" className={site.sectionTitle}>
+              What Warden does not protect against.
+            </h3>
+            <p className={site.lede}>
+              Warden is not end-to-end encrypted, and some risks sit outside what encryption can do.
+            </p>
+          </Reveal>
+          <Reveal as="ul" className={styles.designList}>
+            {LIMITS.map((item) => (
+              <li key={item.title}>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </li>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
       <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="team-title">
         <Reveal>
           <p className={site.marker}>
-            <span className={site.markerNumber}>02</span> Team
+            <span className={site.markerNumber}>03</span> Team
           </p>
           <h3 id="team-title" className={site.sectionTitle}>
             {PROJECT.group}
