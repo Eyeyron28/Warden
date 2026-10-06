@@ -5,6 +5,7 @@ import Icon from '../../components/site/Icon.jsx';
 import { loginVault } from '../../services/authService.js';
 import { extractErrorMessage } from '../../services/api.js';
 import { setToken } from '../../services/session.js';
+import { safeRedirectPath } from '../../utils/safeRedirect.js';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import AuthLayout from './AuthLayout.jsx';
@@ -16,11 +17,17 @@ import styles from './auth.module.css';
 
 const SETTLE_DELAY_MS = 350; // lets the vault dial finish its "unlocked" turn
 
-/** Only ever redirect back to an in-app path, never an outside URL. */
+/**
+ * Where to go after logging in: back to the page the person was on, if
+ * there is one, otherwise the vault. The remembered path is router state,
+ * so it goes through safeRedirectPath (utils/safeRedirect.js) - a missing,
+ * malformed or hostile value (`//evil.com`, `/\evil.com`, encoded variants)
+ * is ignored and the normal destination is used instead.
+ */
 export function returnPathFrom(location) {
   const from = location.state?.from;
   const path = from ? `${from.pathname || ''}${from.search || ''}` : '';
-  return path.startsWith('/') && !path.startsWith('//') ? path : '/vault';
+  return safeRedirectPath(path, '/vault');
 }
 
 function formatCountdown(seconds) {

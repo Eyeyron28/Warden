@@ -37,17 +37,77 @@ function getTransporter() {
   return transporter;
 }
 
+const MAX_ADDRESS_LENGTH = 254; // RFC 5321 path limit
+const MAX_LOCAL_PART_LENGTH = 64;
+
+// Letters, digits and the RFC 5322 "atext" punctuation - deliberately
+// WITHOUT the characters that give an address list its structure or let it
+// carry a display name or comment: , ; : < > ( ) [ ] \ " @ and whitespace.
+const LOCAL_PART_RE = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
+const DOMAIN_LABEL_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
+
+/**
+ * True only for ONE plain ASCII mailbox like `name@example.com`.
+ *
+ * Nodemailer's `to` accepts a whole address list ("a@x.com, Bob <b@y.com>"),
+ * so a value that merely looks like an email to a loose check can address
+ * extra recipients: `victim@example.com,attacker@evil.com` or
+ * `attacker@evil.com <victim@example.com>`. This rejects anything that
+ * isn't exactly one address - no commas, angle brackets, quotes, comments,
+ * whitespace or control characters (so no CRLF header injection), no
+ * non-ASCII text and no internationalised/punycode (`xn--`) domains (the
+ * Unicode-lookalike class of delivery-to-the-wrong-domain bugs), and nothing
+ * over 254 characters. Plain, unmistakable addresses only.
+ *
+ * @param {unknown} address
+ * @returns {boolean}
+ */
+function isSafeRecipient(address) {
+  if (typeof address !== 'string') return false;
+  if (address.length < 3 || address.length > MAX_ADDRESS_LENGTH) return false;
+  // Printable ASCII only: rules out whitespace, CR/LF, other controls and
+  // every non-ASCII character in one check.
+  if (!/^[\x21-\x7E]+$/.test(address)) return false;
+
+  const parts = address.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+
+  if (!local || local.length > MAX_LOCAL_PART_LENGTH || !LOCAL_PART_RE.test(local)) return false;
+
+  const labels = domain.split('.');
+  if (labels.length < 2) return false;
+  return labels.every(
+    (label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      DOMAIN_LABEL_RE.test(label) &&
+      !label.toLowerCase().startsWith('xn--')
+  );
+}
+
 /**
  * Sends one email, or logs it to the console if SMTP isn't configured.
- * Never throws on a send failure - every caller in this app sends emails
- * from anti-enumeration flows (signup, forgot-password) where the HTTP
- * response must be identical whether or not the send actually succeeded,
- * so a failure here is logged for the operator and otherwise swallowed
- * rather than surfaced to the caller.
+ * Never throws - every caller in this app sends emails from anti-
+ * enumeration flows (signup, forgot-password) where the HTTP response must
+ * be identical whether or not the send actually succeeded, so a failure
+ * here is logged for the operator and otherwise swallowed rather than
+ * surfaced to the caller.
+ *
+ * The recipient is validated first (isSafeRecipient) and a bad one is
+ * dropped before Nodemailer - or the console fallback - ever sees it.
  *
  * @param {{ to: string, subject: string, text: string, html?: string }} params
+ * @returns {Promise<boolean>} whether the email was handed off (or logged)
  */
 async function sendEmail({ to, subject, text, html }) {
+  if (!isSafeRecipient(to)) {
+    // JSON.stringify so a hostile value (CRLF, control characters) can't
+    // forge extra log lines; truncated so it can't flood them either.
+    console.error(`Refusing to send email: invalid recipient ${JSON.stringify(String(to).slice(0, 80))}`);
+    return false;
+  }
+
   if (!smtpConfigured()) {
     // Dev fallback - the full email, verification/reset link included, so
     // local development never needs a real mailbox. Never logs SMTP_*
@@ -56,7 +116,7 @@ async function sendEmail({ to, subject, text, html }) {
     console.log(
       `\n--- DEV EMAIL (SMTP not configured, logging instead of sending) ---\nTo: ${to}\nSubject: ${subject}\n\n${text}\n--- END DEV EMAIL ---\n`
     );
-    return;
+    return true;
   }
 
   try {
@@ -67,13 +127,28 @@ async function sendEmail({ to, subject, text, html }) {
       text,
       html,
     });
+    return true;
   } catch (err) {
     // Deliberately not rethrown - see function comment. Logs the failure
     // reason for operator visibility, never the SMTP credentials
     // themselves (err.message from Nodemailer/the SMTP server doesn't
     // include SMTP_PASS - only the auth outcome).
     console.error(`Failed to send email to ${to}: ${err.message}`);
+    return false;
   }
 }
 
-module.exports = { sendEmail };
+/**
+ * Checks the SMTP settings by opening a connection and authenticating
+ * (nodemailer's transport.verify()), without sending anything. Used by
+ * scripts/verify-smtp.js, never on a request path. Rejects with the
+ * underlying error if SMTP isn't configured or the server refuses.
+ */
+async function verifySmtp() {
+  if (!smtpConfigured()) {
+    throw new Error(`SMTP is not configured: set ${SMTP_VARS.join(', ')}.`);
+  }
+  return getTransporter().verify();
+}
+
+module.exports = { sendEmail, isSafeRecipient, verifySmtp };

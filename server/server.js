@@ -33,16 +33,32 @@ const app = express();
 // still fails loudly there.
 connectDB();
 
-// Vercel terminates TLS itself and proxies over HTTP to this app, so
-// req.protocol/req.ip would otherwise read as "http"/the proxy's own
-// address instead of the real client's - this tells Express to trust the
-// X-Forwarded-* headers Vercel's proxy sets. `1` trusts exactly one hop
-// (the proxy immediately in front of this app), not an arbitrary chain -
-// appropriate for a single reverse proxy in front, not a longer chain of
-// untrusted intermediaries. Harmless locally (mkcert's https.createServer
-// is reached directly, no proxy in front, so these headers are simply
-// absent and req.ip falls back to the real socket address as before).
-app.set('trust proxy', 1);
+// How many reverse proxies sit in front of this app and set
+// X-Forwarded-For. This must match reality in BOTH directions:
+//   - too low behind a proxy: req.ip is the proxy's address, so every
+//     visitor shares one rate-limit bucket;
+//   - too high (or any trust at all) with NO proxy: a client can send its
+//     own X-Forwarded-For and Express believes it, so a client chooses the
+//     IP that every per-IP rate limit keys on and can dodge all of them.
+// So: 1 on Vercel (its edge proxy is the single hop, and it sets the header
+// itself), 0 everywhere else - local dev, where mkcert's https.createServer
+// is reached directly. TRUST_PROXY_HOPS overrides this for another
+// deployment (e.g. 1 behind nginx, 2 behind a CDN plus nginx).
+function trustProxyHops() {
+  const configured = process.env.TRUST_PROXY_HOPS;
+  if (configured !== undefined && configured !== '') {
+    const hops = Number(configured);
+    if (!Number.isInteger(hops) || hops < 0 || hops > 5) {
+      throw new Error('TRUST_PROXY_HOPS must be a whole number from 0 to 5.');
+    }
+    return hops;
+  }
+  return process.env.VERCEL ? 1 : 0;
+}
+
+// A hop COUNT (not `true`) trusts only that many proxies from the right of
+// X-Forwarded-For, so entries a client prepended are ignored.
+app.set('trust proxy', trustProxyHops());
 
 // Standard security headers (X-Content-Type-Options, X-Frame-Options,
 // removing X-Powered-By, CSP, etc), on defaults. First in the chain so even

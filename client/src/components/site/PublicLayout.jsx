@@ -6,7 +6,15 @@ import SiteFooter from './SiteFooter.jsx';
 import styles from './PublicLayout.module.css';
 
 function scrollToHash(hash) {
-  const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+  let id = '';
+  try {
+    id = decodeURIComponent(hash.slice(1));
+  } catch {
+    // A malformed escape (e.g. "/#%") would otherwise throw out of the
+    // effect and blank the page - treat it as "no such section".
+    return false;
+  }
+  const target = id ? document.getElementById(id) : null;
   if (!target) return false;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // scroll-margin-top (styles/global.css) keeps it clear of the sticky header.
