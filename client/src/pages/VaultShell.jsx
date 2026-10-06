@@ -9,6 +9,7 @@ import UploadForm from '../components/UploadForm.jsx';
 import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import BackupPanel from '../components/BackupPanel.jsx';
+import PreviewsPanel from '../components/PreviewsPanel.jsx';
 import RestorePanel from '../components/RestorePanel.jsx';
 import Modal from '../components/Modal.jsx';
 import PairDevicePanel from '../components/PairDevicePanel.jsx';
@@ -24,6 +25,7 @@ import {
   listDocuments,
   uploadDocument,
   fetchDocumentBlob,
+  putThumbnail,
   openBlob,
   deleteDocument,
   deleteFolder,
@@ -32,6 +34,8 @@ import {
 } from '../services/documentsService.js';
 import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { invalidateThumbnail } from '../services/thumbnailCache.js';
+import { generateThumbnail } from '../utils/thumbnail.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { sortByExpiryUrgency } from '../utils/documentSort.js';
 import {
@@ -118,6 +122,7 @@ function VaultShell({ onLocked }) {
   const [backupResult, setBackupResult] = useState(null);
 
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [previewsOpen, setPreviewsOpen] = useState(false);
   const [restoreSubmitting, setRestoreSubmitting] = useState(false);
   const [restoreError, setRestoreError] = useState('');
   const [restoreResult, setRestoreResult] = useState(null);
@@ -245,12 +250,35 @@ function VaultShell({ onLocked }) {
     refreshFolders();
   };
 
+  // A document's preview now exists on the server: flag it so its card/row
+  // fetches it (and drops any stale cached copy).
+  const markThumbnailAdded = useCallback((id) => {
+    invalidateThumbnail(id);
+    setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasThumb: true } : doc)));
+  }, []);
+
+  // Lazy backfill: the document was just decrypted for viewing, so if it has
+  // no preview yet, draw one from that same plaintext and upload it. Fully
+  // best-effort and silent - viewing never waits on it or fails because of it.
+  const backfillThumbnail = async (doc, blob) => {
+    if (!doc || doc.hasThumb) return;
+    try {
+      const thumb = await generateThumbnail(blob, { name: doc.filename });
+      if (!thumb) return;
+      await putThumbnail(doc.id, thumb);
+      markThumbnailAdded(doc.id);
+    } catch {
+      // Nothing to do: the document just keeps its type icon.
+    }
+  };
+
   const handleView = async (id) => {
     setActionError('');
     setViewingId(id);
     try {
       const { blob, filename } = await fetchDocumentBlob(id);
       openBlob(blob, filename);
+      backfillThumbnail(documents.find((doc) => doc.id === id), blob);
     } catch (err) {
       if (!isSessionExpired(err)) {
         setActionError(extractErrorMessage(err, 'Could not open this document.'));
@@ -566,6 +594,7 @@ function VaultShell({ onLocked }) {
     setUploadOpen(false);
     setBackupOpen(false);
     setRestoreOpen(false);
+    setPreviewsOpen(false);
     setPairOpen(false);
     setDevicesOpen(false);
   };
@@ -583,6 +612,11 @@ function VaultShell({ onLocked }) {
   const openRestorePanel = () => {
     closeAllPanels();
     setRestoreOpen(true);
+  };
+
+  const openPreviewsPanel = () => {
+    closeAllPanels();
+    setPreviewsOpen(true);
   };
 
   const openPairPanel = () => {
@@ -721,6 +755,7 @@ function VaultShell({ onLocked }) {
           onOpenDocuments={() => setCurrentPath('')}
           onOpenBackup={openBackupPanel}
           onOpenRestore={openRestorePanel}
+          onOpenPreviews={openPreviewsPanel}
           onOpenPair={openPairPanel}
           onOpenDevices={openDevicesPanel}
         />
@@ -1003,6 +1038,16 @@ function VaultShell({ onLocked }) {
             submitting={backupSubmitting}
             error={backupError}
             result={backupResult}
+          />
+        </Modal>
+      )}
+
+      {previewsOpen && (
+        <Modal title="Generate previews" onClose={() => setPreviewsOpen(false)}>
+          <PreviewsPanel
+            documents={documents}
+            onThumbnailAdded={markThumbnailAdded}
+            onClose={() => setPreviewsOpen(false)}
           />
         </Modal>
       )}

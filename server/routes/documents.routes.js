@@ -15,6 +15,8 @@ const {
   moveItems,
   updateDocument,
   viewDocument,
+  getThumbnail,
+  putThumbnail,
   deleteDocument,
 } = require('../controllers/documents.controller');
 
@@ -32,10 +34,20 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
 });
 
+// An upload carries the document under "file" and, optionally, a small
+// preview image under "thumb" (drawn by the browser from the plaintext
+// before it leaves the page; the controller encrypts it - see
+// utils/thumbnails.js). Anything else in the multipart body is rejected by
+// multer as an unexpected field.
+const uploadFields = upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'thumb', maxCount: 1 },
+]);
+
 // Wraps multer so a file-too-large rejection comes back as a normal JSON
 // error (via the shared errorHandler) instead of multer's raw error shape.
 function handleUpload(req, res, next) {
-  upload.single('file')(req, res, (err) => {
+  uploadFields(req, res, (err) => {
     if (!err) return next();
 
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -67,6 +79,8 @@ router.post('/folders', createFolder);
 router.patch('/folders', renameFolder);
 router.post('/move', moveItems);
 router.get('/:id/view', viewDocument);
+router.get('/:id/thumbnail', getThumbnail);
+router.put('/:id/thumbnail', handleUpload, putThumbnail);
 router.patch('/:id', updateDocument);
 
 module.exports = router;

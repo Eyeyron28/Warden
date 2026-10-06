@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 
 import Icon from '../../components/site/Icon.jsx';
@@ -15,6 +15,10 @@ import ResendButton from './ResendButton.jsx';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './auth.module.css';
+
+// The terms/privacy dialog is only needed once someone opens it, so it (and
+// the legal text it carries) stays out of this page's own chunk.
+const LegalModal = lazy(() => import('../../components/site/LegalModal.jsx'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 254;
@@ -55,6 +59,12 @@ function SignupPage() {
   const [serverFieldErrors, setServerFieldErrors] = useState({});
   const [recoveryKey, setRecoveryKey] = useState(null);
   const [signupMode, setSignupMode] = useState(null); // 'open' | 'invite' | 'unknown'
+  // Terms and privacy: read in a dialog (scrolled to the end of each) before
+  // the agreement checkbox becomes tickable.
+  const [legalTab, setLegalTab] = useState(null); // null (closed) | 'terms' | 'privacy'
+  const [legalRead, setLegalRead] = useState({ terms: false, privacy: false });
+  const [agreed, setAgreed] = useState(false);
+  const legalOpenerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +76,19 @@ function SignupPage() {
     };
   }, []);
 
+  const markLegalRead = useCallback(
+    (key) => setLegalRead((prev) => (prev[key] ? prev : { ...prev, [key]: true })),
+    []
+  );
+  const closeLegal = useCallback(() => {
+    setLegalTab(null);
+    requestAnimationFrame(() => legalOpenerRef.current?.focus());
+  }, []);
+  const openLegal = (key) => (event) => {
+    legalOpenerRef.current = event.currentTarget;
+    setLegalTab(key);
+  };
+
   if (token) return <Navigate to="/vault" replace />;
 
   const inviteRequired = signupMode === 'invite';
@@ -73,6 +96,8 @@ function SignupPage() {
   const errors = { ...fieldErrors(values, { inviteRequired }), ...serverFieldErrors };
   const visibleError = (field) => (touched[field] || serverFieldErrors[field] ? errors[field] : '');
   const isValid = Object.keys(fieldErrors(values, { inviteRequired })).length === 0;
+  const legalAllRead = legalRead.terms && legalRead.privacy;
+  const canSubmit = isValid && agreed && legalAllRead;
 
   const update = (field) => (event) => {
     setValues((prev) => ({ ...prev, [field]: event.target.value }));
@@ -84,7 +109,7 @@ function SignupPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setTouched({ email: true, password: true, confirm: true, invite: true });
-    if (!isValid || submitting) return;
+    if (!canSubmit || submitting) return;
 
     setSubmitting(true);
     setFormError('');
@@ -261,22 +286,54 @@ function SignupPage() {
         <button
           type="submit"
           className={`${site.button} ${site.primary} ${site.block}`}
-          disabled={!isValid || submitting || signupMode === null}
+          disabled={!canSubmit || submitting || signupMode === null}
         >
           {submitting ? 'Creating your vault…' : 'Create vault'}
         </button>
-        <p className={forms.hint}>
-          By creating a vault you agree to the{' '}
-          <Link to="/terms" className={site.textLink}>
-            terms
-          </Link>{' '}
-          and{' '}
-          <Link to="/privacy" className={site.textLink}>
-            privacy policy
-          </Link>
-          .
-        </p>
+        <div className={forms.field}>
+          <label className={forms.checkboxRow} style={legalAllRead ? undefined : { cursor: 'not-allowed' }}>
+            <input
+              type="checkbox"
+              checked={agreed}
+              disabled={!legalAllRead}
+              onChange={(event) => setAgreed(event.target.checked)}
+              aria-describedby="signup-legal-hint"
+            />
+            <span>
+              I have read and agree to the{' '}
+              <button type="button" className={site.textLink} onClick={openLegal('terms')}>
+                Terms of use
+              </button>{' '}
+              and the{' '}
+              <button type="button" className={site.textLink} onClick={openLegal('privacy')}>
+                Privacy policy
+              </button>
+              .
+            </span>
+          </label>
+          <p id="signup-legal-hint" className={forms.hint} aria-live="polite">
+            {legalAllRead
+              ? 'Thanks for reading. Tick the box to continue.'
+              : `Open and read both to enable this box${
+                  legalRead.terms || legalRead.privacy
+                    ? ` (still to read: ${legalRead.terms ? 'Privacy policy' : 'Terms of use'})`
+                    : ''
+                }.`}
+          </p>
+        </div>
       </form>
+
+      {legalTab && (
+        <Suspense fallback={null}>
+          <LegalModal
+            tab={legalTab}
+            onTabChange={setLegalTab}
+            read={legalRead}
+            onRead={markLegalRead}
+            onClose={closeLegal}
+          />
+        </Suspense>
+      )}
     </AuthLayout>
   );
 }

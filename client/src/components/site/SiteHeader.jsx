@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import wardenLogo from '../../assets/warden_logo_badge.svg';
 import { useSessionToken } from '../../utils/useSessionToken.js';
@@ -10,8 +10,8 @@ import site from './site.module.css';
 import styles from './SiteHeader.module.css';
 
 const NAV_LINKS = [
-  { to: '/about', label: 'About' },
-  { to: '/contact', label: 'Contact' },
+  { to: '/#about', label: 'About', hash: '#about' },
+  { to: '/#contact', label: 'Contact', hash: '#contact' },
 ];
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -55,6 +55,10 @@ function SiteHeader() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // About and Contact are sections of the home page, so "active" is the
+  // URL hash on "/" rather than a route.
+  const isActiveLink = (link) => location.pathname === '/' && location.hash === link.hash;
+
   const closeDrawer = useCallback(({ restoreFocus = true } = {}) => {
     setDrawerOpen(false);
     if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
@@ -63,7 +67,7 @@ function SiteHeader() {
   // Navigating anywhere closes the drawer.
   useEffect(() => {
     setDrawerOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
@@ -124,13 +128,14 @@ function SiteHeader() {
 
         <nav className={styles.nav} aria-label="Main">
           {NAV_LINKS.map((link) => (
-            <NavLink
+            <Link
               key={link.to}
               to={link.to}
-              className={({ isActive }) => `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`}
+              className={`${styles.navLink} ${isActiveLink(link) ? styles.navLinkActive : ''}`}
+              aria-current={isActiveLink(link) ? 'location' : undefined}
             >
               {link.label}
-            </NavLink>
+            </Link>
           ))}
         </nav>
 

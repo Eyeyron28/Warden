@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
 const { encryptFile, decryptFile } = require('../utils/crypto');
+const { encryptThumbnail, decryptThumbnail, hasThumbnail } = require('../utils/thumbnails');
 const {
   httpError,
   parentOf,
@@ -97,6 +98,10 @@ function toListSummary(doc) {
     daysUntilExpiry,
     expiryStatus,
     syncStatus: doc.syncStatus,
+    // Only a flag: thumbnails are never embedded in list responses (they
+    // would bloat every call) - the client fetches each one on demand from
+    // GET /api/documents/:id/thumbnail.
+    hasThumb: hasThumbnail(doc),
     createdAt: doc.createdAt,
   };
 }
@@ -109,11 +114,12 @@ function toListSummary(doc) {
  * persisted.
  */
 const createDocument = asyncHandler(async (req, res) => {
-  if (!req.file) {
+  const uploadedFile = req.files?.file?.[0];
+  if (!uploadedFile) {
     throw badRequest('No file uploaded.');
   }
 
-  const { buffer, originalname, mimetype } = req.file;
+  const { buffer, originalname, mimetype } = uploadedFile;
   const { folder, expiryDate } = req.body;
 
   // Multipart fields are parsed by multer, which (via bracket syntax like
@@ -134,6 +140,11 @@ const createDocument = asyncHandler(async (req, res) => {
 
   const { ciphertext, iv, authTag } = encryptFile(buffer, req.dek);
 
+  // Optional preview the browser drew from the plaintext. An invalid or
+  // oversized one is simply dropped - it must never fail the upload.
+  const thumbUpload = req.files?.thumb?.[0];
+  const thumbnail = thumbUpload ? encryptThumbnail(thumbUpload.buffer, thumbUpload.mimetype, req.dek) : null;
+
   // Implicit folder creation: "josh/2024" files into an existing
   // "Josh/2024" rather than creating a second, differently-cased folder
   // (see utils/folders.js ensureFolderPath). Never errors on a collision.
@@ -151,6 +162,7 @@ const createDocument = asyncHandler(async (req, res) => {
     originDevice: 'pc', // phone client is future work
     expiryDate: expiryDate || undefined,
     syncStatus: 'pending',
+    ...(thumbnail || {}),
   });
 
   res.status(201).json({
@@ -158,6 +170,7 @@ const createDocument = asyncHandler(async (req, res) => {
     filename: document.filename,
     folder: document.folder,
     expiryDate: document.expiryDate,
+    hasThumb: hasThumbnail(document),
     createdAt: document.createdAt,
   });
 });
@@ -166,7 +179,10 @@ const createDocument = asyncHandler(async (req, res) => {
  * GET /api/documents
  */
 const listDocuments = asyncHandler(async (req, res) => {
-  const documents = await Document.find({ userId: req.userId }).sort({ createdAt: -1 });
+  // The blobs are never part of a list response, so don't load them at all.
+  const documents = await Document.find({ userId: req.userId })
+    .select('-encryptedBlob -thumbCipher')
+    .sort({ createdAt: -1 });
   res.status(200).json(documents.map(toListSummary));
 });
 
@@ -553,6 +569,67 @@ const viewDocument = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/documents/:id/thumbnail
+ * The owner's own preview, decrypted with the session's DEK the same way
+ * /view serves the file itself. Scoped by { _id, userId }, so another
+ * account's id is a plain 404. Never cached by the browser or any proxy,
+ * since it is document content.
+ */
+const getThumbnail = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  if (!document || !hasThumbnail(document)) {
+    throw documentNotFound();
+  }
+
+  let image;
+  try {
+    image = decryptThumbnail(document, req.dek);
+  } catch {
+    // Treated as "no usable thumbnail" so the client falls back to the icon
+    // instead of surfacing a 500 for something purely cosmetic.
+    throw documentNotFound();
+  }
+
+  res.setHeader('Content-Type', document.thumbMime);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.status(200).send(image);
+});
+
+/**
+ * PUT /api/documents/:id/thumbnail
+ * multipart with a single "thumb" file. Adds (or replaces) the preview of
+ * an existing document - used when the browser has just decrypted that
+ * document for viewing and can draw one from it. Same validation and
+ * encryption as at upload; touches nothing but the thumbnail fields.
+ */
+const putThumbnail = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+
+  const thumbUpload = req.files?.thumb?.[0];
+  if (!thumbUpload) {
+    throw badRequest('No thumbnail uploaded.');
+  }
+
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  if (!document) {
+    throw documentNotFound();
+  }
+
+  const thumbnail = encryptThumbnail(thumbUpload.buffer, thumbUpload.mimetype, req.dek);
+  if (!thumbnail) {
+    throw badRequest('Thumbnail must be a WebP or JPEG image of at most 40KB.');
+  }
+
+  document.set(thumbnail);
+  await document.save();
+
+  res.status(200).json({ id: document._id, hasThumb: true });
+});
+
+/**
  * DELETE /api/documents/:id
  */
 const deleteDocument = asyncHandler(async (req, res) => {
@@ -577,5 +654,7 @@ module.exports = {
   moveItems,
   updateDocument,
   viewDocument,
+  getThumbnail,
+  putThumbnail,
   deleteDocument,
 };

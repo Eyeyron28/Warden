@@ -68,6 +68,29 @@ const documentSchema = new mongoose.Schema(
     expiryDate: {
       type: Date,
     },
+    // Optional encrypted preview thumbnail (see utils/thumbnails.js). Same
+    // protection as the file: AES-256-GCM under the account's DEK with its
+    // own random IV/auth tag. thumbMime is the type of the PLAINTEXT image
+    // (image/webp or image/jpeg) and doubles as the "has a thumbnail" marker,
+    // so list queries can leave thumbCipher out entirely. A document without
+    // these fields is fully valid.
+    thumbCipher: {
+      type: Buffer,
+      validate: {
+        validator: (value) => !value || value.length <= 40 * 1024,
+        message: 'thumbCipher must be at most 40KB.',
+      },
+    },
+    thumbIv: {
+      type: String,
+    },
+    thumbAuthTag: {
+      type: String,
+    },
+    thumbMime: {
+      type: String,
+      enum: ['image/webp', 'image/jpeg'],
+    },
     // Whether this document has been synced between the PC backend and the
     // phone client yet.
     syncStatus: {

@@ -1,4 +1,5 @@
 import api from './api.js';
+import { generateThumbnail } from '../utils/thumbnail.js';
 
 /**
  * GET /api/documents
@@ -94,6 +95,12 @@ export async function updateDocument(id, updates) {
 export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
   const formData = new FormData();
   formData.append('file', file);
+  // Drawn here, in the browser, from the plaintext file; the server
+  // encrypts it. Optional by design: generateThumbnail never throws, and
+  // null (non-image/PDF, corrupt file, too large to fit) just means this
+  // document gets a type icon instead.
+  const thumb = await generateThumbnail(file);
+  if (thumb) formData.append('thumb', thumb, 'thumb');
   if (folder) formData.append('folder', folder);
   if (expiryDate) formData.append('expiryDate', expiryDate);
 
@@ -104,6 +111,19 @@ export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
       }
     },
   });
+  return data;
+}
+
+/**
+ * PUT /api/documents/:id/thumbnail - adds a preview to an existing
+ * document, drawn by the browser from a plaintext copy it already has.
+ * @param {string} id
+ * @param {Blob} thumb
+ */
+export async function putThumbnail(id, thumb) {
+  const formData = new FormData();
+  formData.append('thumb', thumb, 'thumb');
+  const { data } = await api.put(`/documents/${id}/thumbnail`, formData);
   return data;
 }
 

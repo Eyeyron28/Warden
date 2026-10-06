@@ -38,11 +38,6 @@
   opacity: 0.7;
 }
 
-.fileIcon {
-  flex-shrink: 0;
-  color: var(--color-text-faint);
-}
-
 .meta {
   flex: 1;
   min-width: 0;

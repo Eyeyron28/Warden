@@ -25,8 +25,8 @@ function SiteFooter() {
           </div>
           <div className={styles.column}>
             <p className={styles.heading}>Project</p>
-            <Link to="/about">About</Link>
-            <Link to="/contact">Contact</Link>
+            <Link to="/#about">About</Link>
+            <Link to="/#contact">Contact</Link>
           </div>
           <div className={styles.column}>
             <p className={styles.heading}>Legal</p>

@@ -6,7 +6,9 @@ import LegalPage from '../../components/site/LegalPage.jsx';
 import { CONTACT_EMAIL, MAX_FILE_SIZE_MB, PROJECT } from '../../config.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 
-const SECTIONS = [
+// Also shown inside the signup page's read-before-you-agree dialog
+// (components/site/LegalModal.jsx), so it is exported.
+export const SECTIONS = [
   {
     id: 'the-service',
     title: 'What Warden is',

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const { serializeThumbnail } = require('../utils/thumbnails');
 const { ensureFolderPath, listFolderPaths, toDocumentFolder } = require('../utils/folders');
 
 // Routes are async, but Express doesn't forward rejected promises to
@@ -36,6 +37,10 @@ function toSyncPayload(doc) {
     originDevice: doc.originDevice,
     syncStatus: doc.syncStatus,
     createdAt: doc.createdAt,
+    // Still ciphertext (thumbCipher/thumbIv/thumbAuthTag) - copied as stored,
+    // and only present when the document has a preview. Scoped by userId
+    // like every other field here, since the query above is.
+    ...serializeThumbnail(doc),
   };
 }
 

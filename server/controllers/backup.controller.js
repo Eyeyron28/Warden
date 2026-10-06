@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const Document = require('../models/Document');
 const User = require('../models/User');
 const BackupLog = require('../models/BackupLog');
+const { serializeThumbnail, restoreThumbnail } = require('../utils/thumbnails');
 const { generateSalt, deriveEncryptionKey, wrapKey, fingerprintDEK } = require('../utils/crypto');
 const { ensureFolderPath, toDocumentFolder } = require('../utils/folders');
 
@@ -207,6 +208,9 @@ const exportBackup = asyncHandler(async (req, res) => {
           checksum: doc.checksum,
           mimeType: doc.mimeType,
           createdAt: doc.createdAt,
+          // Optional, still-encrypted preview, so a restore keeps it. Not in
+          // REQUIRED_BACKUP_RECORD_FIELDS: older backups without one stay valid.
+          ...serializeThumbnail(doc),
         };
         return fs.writeFile(
           path.join(backupDir, `${doc._id}.json`),
@@ -383,6 +387,7 @@ const importBackup = asyncHandler(async (req, res) => {
       createdAt: record.createdAt,
       originDevice: 'restored',
       syncStatus: 'synced',
+      ...restoreThumbnail(record),
     });
 
     // Prevents re-importing the same document twice within one import run

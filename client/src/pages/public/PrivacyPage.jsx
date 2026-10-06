@@ -6,7 +6,9 @@ import LegalPage from '../../components/site/LegalPage.jsx';
 import { CONTACT_EMAIL, PROJECT } from '../../config.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 
-const SECTIONS = [
+// Also shown inside the signup page's read-before-you-agree dialog
+// (components/site/LegalModal.jsx), so it is exported.
+export const SECTIONS = [
   {
     id: 'what-we-collect',
     title: 'What we collect',
@@ -130,7 +132,7 @@ const SECTIONS = [
     content: (
       <p>
         If this policy changes, we will update the date at the top of this page. Questions go to{' '}
-        <Link to="/contact">our contact page</Link>.
+        <Link to="/#contact">our contact page</Link>.
       </p>
     ),
   },

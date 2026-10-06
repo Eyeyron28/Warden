@@ -2,10 +2,9 @@ import { useRef, useState } from 'react';
 
 import Icon from '../../components/site/Icon.jsx';
 import { CONTACT_EMAIL } from '../../config.js';
-import { usePageMeta } from '../../utils/usePageMeta.js';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
-import styles from './ContactPage.module.css';
+import styles from './ContactSection.module.css';
 
 const MESSAGE_MAX = 2000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,9 +31,7 @@ function buildMailto(values) {
  * A hidden honeypot field filters the simplest bots - if it's filled in,
  * the form pretends to succeed and does nothing.
  */
-function ContactPage() {
-  usePageMeta('Contact', 'Questions, bug reports or account deletion requests for the Warden team.');
-
+function ContactSection() {
   const [values, setValues] = useState({ name: '', email: '', message: '', website: '' });
   const [touched, setTouched] = useState({});
   const [submitted, setSubmitted] = useState(null); // null | { mailto }
@@ -65,9 +62,15 @@ function ContactPage() {
   };
 
   return (
-    <div className={`${site.container} ${styles.layout}`}>
+    <section
+      id="contact"
+      className={`${site.container} ${site.sectionRule} ${styles.layout}`}
+      aria-labelledby="contact-title"
+    >
       <header className={styles.aside}>
-        <h1 className={styles.title}>Get in touch</h1>
+        <h2 id="contact-title" className={styles.title}>
+          Get in touch
+        </h2>
         <p className={styles.lede}>
           Questions about how Warden works, a bug you found, or a request to delete your account. We read
           everything; replies may take a few days.
@@ -92,7 +95,7 @@ function ContactPage() {
         {submitted ? (
           <div className={styles.success} role="status">
             <Icon name="check" size={28} className={styles.successIcon} />
-            <h2 className={styles.successTitle}>Your email app should be open.</h2>
+            <h3 className={styles.successTitle}>Your email app should be open.</h3>
             <p>
               The message is ready to send from your own email account. Nothing is sent until you press send
               there.
@@ -207,8 +210,8 @@ function ContactPage() {
           </form>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
-export default ContactPage;
+export default ContactSection;

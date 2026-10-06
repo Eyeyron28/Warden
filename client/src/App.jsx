@@ -12,8 +12,6 @@ import { useSessionToken } from './utils/useSessionToken.js';
 // downloads only what it shows. Home itself is imported eagerly - it's the
 // first thing most visitors see, and a spinner there would cost more than
 // the bytes it saves.
-const AboutPage = lazy(() => import('./pages/public/AboutPage.jsx'));
-const ContactPage = lazy(() => import('./pages/public/ContactPage.jsx'));
 const PrivacyPage = lazy(() => import('./pages/public/PrivacyPage.jsx'));
 const TermsPage = lazy(() => import('./pages/public/TermsPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage.jsx'));
@@ -89,8 +87,10 @@ function App() {
       <Routes>
         <Route element={<PublicLayout />}>
           <Route index element={<RootRoute />} />
-          <Route path="about" element={<AboutPage />} />
-          <Route path="contact" element={<ContactPage />} />
+          {/* About and Contact are sections of the one-page landing site now;
+              the old URLs still work and land on the right section. */}
+          <Route path="about" element={<Navigate to="/#about" replace />} />
+          <Route path="contact" element={<Navigate to="/#contact" replace />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />
           <Route path="login" element={<LoginPage />} />

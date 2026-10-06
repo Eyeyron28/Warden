@@ -1,0 +1,62 @@
+.box {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--color-surface);
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+/* Card: a fixed-aspect preview, so cards never change height as images load. */
+.card {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+}
+
+/* List row: a 40px rounded tile. */
+.row {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* A document preview is read top-down: keep the top of a page in frame. */
+  object-position: top center;
+}
+
+.shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--color-text) 7%, transparent) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: color-mix(in srgb, var(--color-text) 5%, transparent);
+  }
+}

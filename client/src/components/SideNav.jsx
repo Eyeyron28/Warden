@@ -45,6 +45,7 @@ function SideNav({
   onOpenDocuments,
   onOpenBackup,
   onOpenRestore,
+  onOpenPreviews,
   onOpenPair,
   onOpenDevices,
 }) {
@@ -75,6 +76,9 @@ function SideNav({
           </button>
           <button type="button" className={styles.childItem} onClick={onOpenRestore}>
             Restore from backup
+          </button>
+          <button type="button" className={styles.childItem} onClick={onOpenPreviews}>
+            Generate previews
           </button>
         </NavGroup>
 

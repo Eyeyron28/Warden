@@ -25,18 +25,16 @@
 }
 
 .thumb {
-  display: grid;
-  place-items: center;
-  height: 88px;
+  display: block;
+  width: 100%;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
   color: var(--color-text-faint);
-  transition: background var(--duration-fast) var(--ease-standard),
+  transition: opacity var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard);
 }
 
 .thumb:hover:not(:disabled) {
-  background: var(--color-surface-raised);
+  opacity: 0.88;
   color: var(--color-text-muted);
 }
 

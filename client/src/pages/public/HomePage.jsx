@@ -5,6 +5,8 @@ import Reveal from '../../components/site/Reveal.jsx';
 import VaultMock from '../../components/site/VaultMock.jsx';
 import StepExplorer from '../../components/site/StepExplorer.jsx';
 import Faq from '../../components/site/Faq.jsx';
+import AboutSection from './AboutSection.jsx';
+import ContactSection from './ContactSection.jsx';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import { MAX_FILE_SIZE_MB } from '../../config.js';
@@ -273,7 +275,7 @@ function HomePage() {
             </h2>
             <p className={site.lede}>
               Something missing?{' '}
-              <Link to="/contact" className={site.textLink}>
+              <Link to="/#contact" className={site.textLink}>
                 Ask us
               </Link>
               .
@@ -301,6 +303,11 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ---- One page, three parts: Home -> About -> Contact. The header
+          links and the old /about and /contact routes scroll to these. ---- */}
+      <AboutSection />
+      <ContactSection />
     </>
   );
 }

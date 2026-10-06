@@ -2,9 +2,8 @@ import { Link } from 'react-router-dom';
 
 import Reveal from '../../components/site/Reveal.jsx';
 import { PROJECT } from '../../config.js';
-import { usePageMeta } from '../../utils/usePageMeta.js';
 import site from '../../components/site/site.module.css';
-import styles from './AboutPage.module.css';
+import styles from './AboutSection.module.css';
 
 // ---- Edit the team here ----
 // Placeholder names and roles. Replace each entry with a real member;
@@ -39,14 +38,19 @@ const DESIGN_POINTS = [
   },
 ];
 
-function AboutPage() {
-  usePageMeta('About', `Why Warden exists, who built it, and how its security works - a capstone project at ${PROJECT.school}.`);
-
+/**
+ * The "About" part of the one-page landing site (Home -> About -> Contact):
+ * why the project exists, how its security works in plain words, and the
+ * team. Lives at /#about; the old /about route redirects there.
+ */
+function AboutSection() {
   return (
-    <div className={site.container}>
+    <section id="about" className={`${site.container} ${site.sectionRule}`} aria-labelledby="about-title">
       <header className={styles.intro}>
         <p className={site.marker}>About the project</p>
-        <h1 className={styles.title}>A capstone about keeping documents safe, built to be honest about how.</h1>
+        <h2 id="about-title" className={styles.title}>
+          A capstone about keeping documents safe, built to be honest about how.
+        </h2>
         <div className={styles.introText}>
           <p>
             Warden is the capstone project of {PROJECT.group}, {PROJECT.program} at {PROJECT.school}, for our{' '}
@@ -67,9 +71,9 @@ function AboutPage() {
             <p className={site.marker}>
               <span className={site.markerNumber}>01</span> Security design
             </p>
-            <h2 id="design-title" className={site.sectionTitle}>
+            <h3 id="design-title" className={site.sectionTitle}>
               The design, in plain words.
-            </h2>
+            </h3>
             <p className={site.lede}>
               For the step-by-step version, see{' '}
               <Link to="/#how-it-works" className={site.textLink}>
@@ -94,9 +98,9 @@ function AboutPage() {
           <p className={site.marker}>
             <span className={site.markerNumber}>02</span> Team
           </p>
-          <h2 id="team-title" className={site.sectionTitle}>
+          <h3 id="team-title" className={site.sectionTitle}>
             {PROJECT.group}
-          </h2>
+          </h3>
         </Reveal>
         <Reveal as="ul" className={styles.team}>
           {TEAM.map((member) => (
@@ -116,8 +120,8 @@ function AboutPage() {
           ))}
         </Reveal>
       </section>
-    </div>
+    </section>
   );
 }
 
-export default AboutPage;
+export default AboutSection;

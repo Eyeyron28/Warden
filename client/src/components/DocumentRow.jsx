@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ArrowsOutCardinal, FileText, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
+import { ArrowsOutCardinal, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
+
+import DocumentThumb from './DocumentThumb.jsx';
 
 import StatusBadge from './StatusBadge.jsx';
 import { formatDate } from '../utils/formatDate.js';
@@ -68,7 +70,7 @@ function DocumentRow({
         disabled={isViewing}
         aria-label={`View ${document.filename}`}
       >
-        <FileText size={20} weight="light" className={styles.fileIcon} />
+        <DocumentThumb document={document} variant="row" />
         <span className={styles.meta}>
           <span className={styles.filename}>{document.filename}</span>
           <span className={styles.subMeta}>

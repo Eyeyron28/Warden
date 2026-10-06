@@ -1,0 +1,11 @@
+.icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
