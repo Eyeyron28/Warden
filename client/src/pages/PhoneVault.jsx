@@ -42,6 +42,7 @@ import {
   pathStillExists,
 } from '../utils/folderPath.js';
 import { submitPhoneRecovery } from '../services/phoneRecoveryService.js';
+import { sameOriginApiBase } from '../utils/apiOrigin.js';
 import { extractErrorMessage } from '../services/api.js';
 import styles from './PhoneVault.module.css';
 
@@ -63,7 +64,7 @@ function PhoneVault() {
   // Pre-fills the recovery-help form below if this page was opened by
   // scanning the PC's recovery QR (PhoneRecoveryModal.jsx) - a directly-
   // openable `/phone?recover=<token>` URL, same pattern as PairPage's
-  // `?apiBase=`. Still fully usable if typed in by hand instead.
+  // `/pair/:token`. Still fully usable if typed in by hand instead.
   const recoverTokenFromUrl = searchParams.get('recover') || '';
 
   const [phase, setPhase] = useState('checking'); // checking | no-device | locked | unlocked
@@ -122,7 +123,11 @@ function PhoneVault() {
           const mostRecent = [...records].sort(
             (a, b) => new Date(b.pairedAt) - new Date(a.pairedAt)
           )[0];
-          setDeviceAuth(mostRecent);
+          // The stored apiBase is NOT trusted: older pairings saved whatever
+          // address the pairing link carried. Every request from this page
+          // goes to this page's own origin instead (utils/apiOrigin.js) -
+          // the origin that paired is the one whose IndexedDB this is.
+          setDeviceAuth({ ...mostRecent, apiBase: sameOriginApiBase() });
           setPhase('locked');
         }
       })

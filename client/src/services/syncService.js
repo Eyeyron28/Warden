@@ -1,14 +1,16 @@
 import axios from 'axios';
 
+import { assertSameOrigin } from '../utils/apiOrigin.js';
+
 /**
  * Phone-side sync calls. Deliberately NOT using the shared services/api.js
- * axios instance (same reasoning as pairCompleteService.js): the PC this
- * phone syncs with is whatever apiBase it paired against, stored in its
- * own IndexedDB deviceAuth record, which has nothing to do with wherever
- * this frontend itself happens to be hosted. Auth is a deviceToken bearer
- * (see server/middleware/requireDeviceAuth.js), not the session token
- * services/api.js attaches.
- */
+ * axios instance: these carry a deviceToken bearer (see server/middleware/
+ * requireDeviceAuth.js), not the session token services/api.js attaches.
+ *
+ * `apiBase` is passed in explicitly but must be this page's own origin -
+ * every function asserts it (utils/apiOrigin.js), so the device token can
+ * only ever go to the server this page was loaded from, never to an
+ * address taken from a link or from storage. */
 
 /**
  * POST {apiBase}/api/sync/pull
@@ -25,6 +27,7 @@ import axios from 'axios';
  *   folder path on the PC (excluding "root").
  */
 export async function pullDocuments(apiBase, deviceToken, knownDocumentIds) {
+  assertSameOrigin(apiBase);
   const { data } = await axios.post(
     `${apiBase}/api/sync/pull`,
     { knownDocumentIds },
@@ -38,6 +41,7 @@ export async function pullDocuments(apiBase, deviceToken, knownDocumentIds) {
  * authorized here by deviceToken instead of a session token.
  */
 export async function deleteDocumentOnPC(apiBase, deviceToken, id) {
+  assertSameOrigin(apiBase);
   await axios.delete(`${apiBase}/api/documents/${id}`, {
     headers: { Authorization: `Bearer ${deviceToken}` },
   });
@@ -48,6 +52,7 @@ export async function deleteDocumentOnPC(apiBase, deviceToken, id) {
  * folder markers under `path` (documents themselves are deleted separately).
  */
 export async function deleteFolderOnPC(apiBase, deviceToken, path) {
+  assertSameOrigin(apiBase);
   await axios.delete(`${apiBase}/api/documents/folders`, {
     params: { path },
     headers: { Authorization: `Bearer ${deviceToken}` },
@@ -63,6 +68,7 @@ export async function deleteFolderOnPC(apiBase, deviceToken, path) {
  * @returns {Promise<{ idMap: Array<{ localId: string|null, id: string }> }>}
  */
 export async function pushDocuments(apiBase, deviceToken, newDocuments, newFolders = []) {
+  assertSameOrigin(apiBase);
   const { data } = await axios.post(
     `${apiBase}/api/sync/push`,
     { newDocuments, newFolders },

@@ -87,6 +87,28 @@ function isSafeRecipient(address) {
 }
 
 /**
+ * The one place an email address typed by a person becomes the canonical
+ * address we store, look up and mail: trimmed, validated as a single plain
+ * address (isSafeRecipient), then lowercased. Returns null for anything
+ * that isn't one.
+ *
+ * Validation runs on the trimmed value BEFORE lowercasing, on purpose:
+ * toLowerCase() can turn some non-ASCII characters into ASCII (the Kelvin
+ * sign U+212A becomes "k"), which would let a lookalike address pass an
+ * ASCII-only check as a different, clean-looking address. Leading and
+ * trailing whitespace (including a trailing CRLF) is trimmed, as it always
+ * was; anything inside the address that isn't allowed is a rejection.
+ *
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+function normalizeRecipient(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return isSafeRecipient(trimmed) ? trimmed.toLowerCase() : null;
+}
+
+/**
  * Sends one email, or logs it to the console if SMTP isn't configured.
  * Never throws - every caller in this app sends emails from anti-
  * enumeration flows (signup, forgot-password) where the HTTP response must
@@ -151,4 +173,4 @@ async function verifySmtp() {
   return getTransporter().verify();
 }
 
-module.exports = { sendEmail, isSafeRecipient, verifySmtp };
+module.exports = { sendEmail, isSafeRecipient, normalizeRecipient, verifySmtp };

@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { assertSameOrigin } from '../utils/apiOrigin.js';
+
 /**
  * Phone-side call for "Help recover PC vault" (PhoneVault.jsx).
  * Deliberately NOT using the shared services/api.js axios instance - same
@@ -20,6 +22,7 @@ import axios from 'axios';
  * @returns {Promise<{ success: boolean }>}
  */
 export async function submitPhoneRecovery(apiBase, deviceToken, params) {
+  assertSameOrigin(apiBase);
   const { data } = await axios.post(`${apiBase}/api/auth/recover-via-phone/submit`, params, {
     headers: { Authorization: `Bearer ${deviceToken}` },
   });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle, LinkBreak } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
@@ -7,6 +7,7 @@ import PasswordField from '../components/PasswordField.jsx';
 import { completePairing } from '../services/pairCompleteService.js';
 import { saveDeviceAuthLocally } from '../services/localVault.js';
 import { extractErrorMessage } from '../services/api.js';
+import { sameOriginApiBase } from '../utils/apiOrigin.js';
 import styles from './PairPage.module.css';
 
 const MIN_PHONE_PIN_LENGTH = 4;
@@ -17,21 +18,24 @@ const MIN_PHONE_PIN_LENGTH = 4;
  * auth flow - same spirit as SharedDocumentPage - since a phone that's
  * never paired before has no session, no local vault data, nothing.
  *
- * The QR encodes a full, directly-openable URL
- * (`${origin}/pair/:token?apiBase=...`) rather than a JSON payload for a
- * dedicated in-app scanner: the phone's own native camera app can open
- * it with no Warden-specific scanning code needed, and no new
- * dependency (see PairDevicePanel for where that URL is built). apiBase
- * is read from the query string since the PC that generated it may be
- * on a different LAN address than wherever this page itself is hosted.
+ * The QR encodes a full, directly-openable URL (`${origin}/pair/:token`)
+ * rather than a JSON payload for a dedicated in-app scanner: the phone's
+ * own native camera app can open it with no Warden-specific scanning code
+ * needed, and no new dependency (see PairDevicePanel for where that URL is
+ * built).
+ *
+ * This page sends the master password, so it only ever talks to the origin
+ * it was loaded from (utils/apiOrigin.js) - NEVER to an address taken from
+ * the URL. It used to read `?apiBase=`, which let a crafted pairing link
+ * point the password at any server. Nothing in the query string or hash is
+ * read here any more, and a leftover `?apiBase=` in an old QR is ignored.
  */
 const REDIRECT_DELAY_MS = 1200;
 
 function PairPage() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const apiBase = searchParams.get('apiBase') || window.location.origin;
+  const apiBase = sameOriginApiBase();
 
   const [masterPassword, setMasterPassword] = useState('');
   const [phonePin, setPhonePin] = useState('');

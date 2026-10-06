@@ -20,7 +20,7 @@ const {
 const { validatePassword } = require('../utils/passwordPolicy');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { resolveLanIp } = require('../utils/network');
-const { sendEmail } = require('../utils/email');
+const { sendEmail, normalizeRecipient } = require('../utils/email');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
 const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -32,8 +32,11 @@ const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RECOVERY_REQUEST_TOKEN_BYTES = 32;
 const RECOVERY_REQUEST_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes, same as PairingToken
 
-const MAX_EMAIL_LENGTH = 254; // RFC 5321
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Same text for every outcome of these two endpoints - an unknown email, an
+// already-verified one, a malformed one and a real send all look identical.
+const RESEND_GENERIC_MESSAGE = 'If this account exists and is not yet verified, a new link has been sent.';
+const FORGOT_GENERIC_MESSAGE =
+  'If this account exists and is verified, a password reset link has been sent.';
 
 // /phone and /verify-email and /reset-password are React Router routes
 // served by Vite, not this Express app - links built here have to point
@@ -211,8 +214,14 @@ const signup = asyncHandler(async (req, res) => {
     throw badRequest('inviteCode must be a string.');
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || normalizedEmail.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(normalizedEmail)) {
+  // Must be exactly one plain address (see utils/email.js isSafeRecipient):
+  // an address like "a,b@evil.com" would otherwise create an account and have
+  // its verification link mailed to BOTH recipients. Checked first, before
+  // anything is looked up, created or generated. The answer depends only on
+  // the text typed, never on whether an account exists, so it reveals nothing
+  // about who is registered.
+  const normalizedEmail = normalizeRecipient(email);
+  if (!normalizedEmail) {
     throw badRequest('A valid email is required.');
   }
 
@@ -342,7 +351,12 @@ const resendVerification = asyncHandler(async (req, res) => {
   if (typeof email !== 'string' || !email.trim()) {
     throw badRequest('email is required.');
   }
-  const normalizedEmail = email.trim().toLowerCase();
+  // Not a single plain address: nothing to look up, no token, no email - and
+  // the very same generic answer as every other outcome.
+  const normalizedEmail = normalizeRecipient(email);
+  if (!normalizedEmail) {
+    return res.status(200).json({ message: RESEND_GENERIC_MESSAGE });
+  }
 
   const user = await User.findOne({ email: normalizedEmail });
   if (user && !user.emailVerified) {
@@ -364,7 +378,7 @@ const resendVerification = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({
-    message: 'If this account exists and is not yet verified, a new link has been sent.',
+    message: RESEND_GENERIC_MESSAGE,
   });
 });
 
@@ -491,7 +505,10 @@ const forgotPassword = asyncHandler(async (req, res) => {
   if (typeof email !== 'string') {
     throw badRequest('email is required.');
   }
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeRecipient(email);
+  if (!normalizedEmail) {
+    return res.status(200).json({ message: FORGOT_GENERIC_MESSAGE });
+  }
 
   const user = await User.findOne({ email: normalizedEmail });
   if (user && user.emailVerified) {
@@ -513,7 +530,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({
-    message: 'If this account exists and is verified, a password reset link has been sent.',
+    message: FORGOT_GENERIC_MESSAGE,
   });
 });
 

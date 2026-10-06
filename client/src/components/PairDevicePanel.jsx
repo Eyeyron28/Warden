@@ -22,13 +22,13 @@ function formatCountdown(msRemaining) {
  * to "Paired successfully" on its own.
  *
  * The QR encodes a full, directly-openable URL -
- * `http://<LAN host>:<frontend port>/pair/:token?apiBase=...` - rather
- * than a JSON payload for some dedicated in-app scanner: the phone's own
- * native camera app can open it straight into pages/PairPage.jsx with
- * zero Warden-specific scanning code and no new dependency. apiBase is
- * embedded as a query param because the PC's LAN-reachable API address
- * (where PairPage needs to POST the completed pairing) has nothing to
- * do with wherever this frontend itself happens to be hosted.
+ * `https://<LAN host>:<frontend port>/pair/:token` - rather than a JSON
+ * payload for some dedicated in-app scanner: the phone's own native camera
+ * app can open it straight into pages/PairPage.jsx with zero
+ * Warden-specific scanning code and no new dependency. There is
+ * deliberately no API address in the link: PairPage sends the master
+ * password, so it talks only to the origin it was loaded from, which is
+ * this same frontend host (the dev server proxies /api to the backend).
  *
  * Deliberately NOT window.location.origin here, unlike ShareModal's
  * shareUrl. ShareModal can get away with window.location.origin because
@@ -105,7 +105,7 @@ function PairDevicePanel({ onClose }) {
     // page's own protocol keeps this correct automatically whenever the
     // app's scheme changes again, instead of going stale a second time.
     const protocol = window.location.protocol;
-    const pairUrl = `${protocol}//${lanHost}${port}/pair/${pairingToken}?apiBase=${encodeURIComponent(apiBase)}`;
+    const pairUrl = `${protocol}//${lanHost}${port}/pair/${pairingToken}`;
     QRCode.toDataURL(pairUrl, { margin: 1, width: 220 })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);
