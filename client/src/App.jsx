@@ -51,7 +51,10 @@ function RootRoute() {
     };
   }, [isPhone]);
 
-  if (paired === null) return null; // a few ms while IndexedDB answers
+  // While IndexedDB is still answering (`paired === null`) the landing page
+  // renders as normal: returning null here made the whole page pop in a
+  // moment later on phones and pushed the footer down (CLS ~0.7). A paired
+  // phone just sees the page briefly before being redirected.
   if (paired) return <Navigate to="/phone" replace />;
   return <HomePage />;
 }
