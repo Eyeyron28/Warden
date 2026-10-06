@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 
 const documentSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
     filename: {
       type: String,
       required: true,
@@ -89,5 +94,11 @@ documentSchema.pre('validate', function requireEncryptedBlob(next) {
   }
   next();
 });
+
+// Every list/filter query in documents.controller.js and sync.controller.js
+// is userId + something else (folder, expiryDate, checksum) - this compound
+// index covers all of them without a separate index per field.
+documentSchema.index({ userId: 1, folder: 1 });
+documentSchema.index({ userId: 1, checksum: 1 });
 
 module.exports = mongoose.model('Document', documentSchema);

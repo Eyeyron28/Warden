@@ -25,7 +25,24 @@ const devicesRoutes = require('./routes/devices.routes');
 
 const app = express();
 
+// Fired at module load (not inside the require.main guard below) so a
+// Vercel serverless instance starts warming up its connection the moment
+// this module is first required, not only once a request arrives. Local
+// dev awaits this same promise explicitly before calling .listen() - see
+// the bottom of this file - so a misconfigured/unreachable Atlas cluster
+// still fails loudly there.
 connectDB();
+
+// Vercel terminates TLS itself and proxies over HTTP to this app, so
+// req.protocol/req.ip would otherwise read as "http"/the proxy's own
+// address instead of the real client's - this tells Express to trust the
+// X-Forwarded-* headers Vercel's proxy sets. `1` trusts exactly one hop
+// (the proxy immediately in front of this app), not an arbitrary chain -
+// appropriate for a single reverse proxy in front, not a longer chain of
+// untrusted intermediaries. Harmless locally (mkcert's https.createServer
+// is reached directly, no proxy in front, so these headers are simply
+// absent and req.ip falls back to the real socket address as before).
+app.set('trust proxy', 1);
 
 // Standard security headers (X-Content-Type-Options, X-Frame-Options,
 // removing X-Powered-By, CSP, etc), on defaults. First in the chain so even
@@ -35,22 +52,19 @@ connectDB();
 // between networks (see utils/lanIp.js).
 app.use(helmet());
 app.use(cors(corsOptions));
-// Express's default JSON body limit (100kb) is far too small for
-// POST /api/sync/push: it receives an entire encrypted document as base64
-// inside the JSON body, and base64 inflates raw bytes by ~4/3. The PC
-// upload route already caps a document at 20MB (MAX_FILE_SIZE_BYTES in
-// documents.routes.js, enforced by multer - unaffected by this setting,
-// which only applies to JSON bodies), so a full-size document arrives
-// here as roughly 20MB * 4/3 ≈ 26.7MB of base64 alone, before the small
-// surrounding JSON envelope (filename, iv, authTag, checksum, etc). 30mb
-// covers that real worst case with headroom - anchored to the actual
-// upload cap, not an arbitrary large number - while still rejecting a
+// Vercel Hobby caps request bodies at 4.5MB, and documents.routes.js now
+// caps a single upload at 4MB (see MAX_FILE_SIZE_BYTES there) to stay
+// under that with room for the surrounding multipart overhead. This
+// limit covers the OTHER body-heavy path, POST /api/sync/push, which
+// receives an encrypted document as base64 inside a JSON body - base64
+// inflates raw bytes by ~4/3, so a 4MB document arrives as roughly 5.3MB
+// of base64 alone. 6mb covers that with headroom while still rejecting a
 // genuinely oversized body with a clean 413 (via this same errorHandler)
 // rather than accepting anything without limit. Applied globally rather
 // than scoped per-route since every other JSON body in this app (auth,
 // document metadata edits, share/pairing/device actions) is tiny by
-// comparison and a 30mb ceiling on them is generous, not risky.
-app.use(express.json({ limit: '30mb' }));
+// comparison and a 6mb ceiling on them is generous, not risky.
+app.use(express.json({ limit: '6mb' }));
 // NoSQL operator-injection guard: strips keys starting with "$" (or containing
 // ".") from req.body, req.query and req.params before any route sees them, so
 // {"$ne": null} in place of a string can never reach a Mongoose filter. It
@@ -85,44 +99,69 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-// mkcert-generated cert, valid only for the SANs it was issued with:
-// localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172, 192.168.1.38
-// (added when the LAN IP changed after switching Wi-Fi networks - a
-// request to an IP outside this list fails TLS validation with
-// SEC_E_WRONG_PRINCIPAL/ERR_CERT_COMMON_NAME_INVALID, which then makes
-// GET /api/auth/status look "unreachable" to the frontend and mistakenly
-// show the first-run setup screen instead of unlock, even though the
-// vault itself is untouched).
-//
-// Auto-detecting the LAN IP (utils/lanIp.js) fixes the frontend/pairing/
-// sharing side of this going stale on a network change, but it does NOT
-// fix certificate coverage - mkcert still only trusts the exact IPs
-// listed when it was generated. If a genuinely new IP is ever used,
-// regenerate with `mkcert -key-file localhost+3-key.pem -cert-file
-// localhost+3.pem localhost 127.0.0.1 <every LAN IP still in use, plus
-// the new one>` (run from certs/) and update CORS_ORIGINS to match.
-const httpsOptions = {
-  key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
-};
+// Exported unconditionally so a Vercel serverless entry point (api/
+// index.js at the repo root) can require this same app without this file
+// ever calling .listen() itself under that runtime - Vercel's own
+// platform terminates TLS and invokes the exported app per-request; it
+// has no use for (and no filesystem access to) the mkcert certs below.
+module.exports = app;
 
-https.createServer(httpsOptions, app).listen(PORT, () => {
-  console.log(`Warden server running on port ${PORT} (https)`);
+// Everything past this point - the local HTTPS dev server - only runs
+// when this file is executed directly (`node server.js` / `npm run dev`
+// via nodemon), never when required as a module (by a test, or by the
+// Vercel entry point above).
+if (require.main === module) {
+  // mkcert-generated cert, valid only for the SANs it was issued with:
+  // localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172, 192.168.1.38
+  // (added when the LAN IP changed after switching Wi-Fi networks - a
+  // request to an IP outside this list fails TLS validation with
+  // SEC_E_WRONG_PRINCIPAL/ERR_CERT_COMMON_NAME_INVALID, which then makes
+  // GET /api/auth/me look "unreachable" to the frontend, even though the
+  // account itself is untouched).
+  //
+  // Auto-detecting the LAN IP (utils/lanIp.js) fixes the frontend/pairing/
+  // sharing side of this going stale on a network change, but it does NOT
+  // fix certificate coverage - mkcert still only trusts the exact IPs
+  // listed when it was generated. If a genuinely new IP is ever used,
+  // regenerate with `mkcert -key-file localhost+3-key.pem -cert-file
+  // localhost+3.pem localhost 127.0.0.1 <every LAN IP still in use, plus
+  // the new one>` (run from certs/) and update CORS_ORIGINS to match.
+  const httpsOptions = {
+    key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
+  };
 
-  // Diagnostic only - pairing/sharing resolve this fresh per-request
-  // (resolveLanIp), not from this snapshot. Logged once here so a stale
-  // network or an unexpected adapter pick is obvious from startup output
-  // alone, without needing to trigger a pairing/share request to check.
-  if (process.env.LAN_IP) {
-    console.log(`LAN IP: ${process.env.LAN_IP} (manual override via LAN_IP in .env)`);
-  } else {
-    const detected = detectLanIp();
-    if (detected) {
-      console.log(`LAN IP: ${detected.ip} (auto-detected, adapter: "${detected.adapter}")`);
-    } else {
-      console.log(
-        'LAN IP: could not auto-detect one - phone pairing and network share links will fail until LAN_IP is set in .env.'
-      );
-    }
-  }
-});
+  // Local dev gets the explicit "fail loudly" behavior a standalone
+  // process should have (process.exit(1) is wrong inside a serverless
+  // invocation, which is why connectDB() itself no longer calls it - see
+  // config/db.js) - awaited here, once, before the server starts
+  // accepting connections at all.
+  connectDB()
+    .then(() => {
+      https.createServer(httpsOptions, app).listen(PORT, () => {
+        console.log(`Warden server running on port ${PORT} (https)`);
+
+        // Diagnostic only - pairing/sharing resolve this fresh per-request
+        // (resolveLanIp), not from this snapshot. Logged once here so a
+        // stale network or an unexpected adapter pick is obvious from
+        // startup output alone, without needing to trigger a pairing/
+        // share request to check.
+        if (process.env.LAN_IP) {
+          console.log(`LAN IP: ${process.env.LAN_IP} (manual override via LAN_IP in .env)`);
+        } else {
+          const detected = detectLanIp();
+          if (detected) {
+            console.log(`LAN IP: ${detected.ip} (auto-detected, adapter: "${detected.adapter}")`);
+          } else {
+            console.log(
+              'LAN IP: could not auto-detect one - phone pairing and network share links will fail until LAN_IP is set in .env.'
+            );
+          }
+        }
+      });
+    })
+    .catch(() => {
+      // connectDB() already logged the reason.
+      process.exit(1);
+    });
+}

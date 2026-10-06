@@ -16,6 +16,17 @@ const mongoose = require('mongoose');
 // it never needs to round-trip through the browser at all.
 const recoveryRequestTokenSchema = new mongoose.Schema(
   {
+    // Which account this recovery request is for - resolved at POST
+    // /api/auth/recover-via-phone/init from the email the locked-out
+    // owner types in (there's no session to read it from; see
+    // controllers/auth.controller.js). POST .../complete resolves the
+    // account from THIS field, never a singleton lookup.
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     token: {
       type: String,
       required: true,

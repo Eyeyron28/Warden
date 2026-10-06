@@ -10,10 +10,14 @@ const mongoose = require('mongoose');
 // is no foreign key between them to keep in sync.
 const folderSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
     name: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
   },
@@ -21,5 +25,10 @@ const folderSchema = new mongoose.Schema(
     timestamps: { createdAt: true, updatedAt: false },
   }
 );
+
+// `name` used to be globally unique; now a folder name only has to be
+// unique within one account - two different accounts can both have a
+// "Taxes" folder.
+folderSchema.index({ userId: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.model('Folder', folderSchema);

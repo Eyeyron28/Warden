@@ -5,13 +5,9 @@ import VaultDial from '../components/VaultDial.jsx';
 import PasswordField from '../components/PasswordField.jsx';
 import RecoveryKeyReveal from '../components/RecoveryKeyReveal.jsx';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter.jsx';
-import UsbRecoveryModal from '../components/UsbRecoveryModal.jsx';
 import PhoneRecoveryModal from '../components/PhoneRecoveryModal.jsx';
-import Modal from '../components/Modal.jsx';
-import RestorePanel from '../components/RestorePanel.jsx';
 import wardenLogo from '../assets/warden_logo_badge.svg';
-import { setupVault, unlockVault, recoverVault } from '../services/authService.js';
-import { importBackup } from '../services/backupService.js';
+import { signupVault, loginVault, forgotPassword } from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import styles from './LockScreen.module.css';
@@ -19,42 +15,41 @@ import styles from './LockScreen.module.css';
 const SETTLE_DELAY_MS = 350;
 const ERROR_DIAL_RESET_MS = 500;
 
-function LockScreen({ statusLoading, initialized, onAuthenticated }) {
-  // Unlock flow
-  const [passphrase, setPassphrase] = useState('');
-  const [unlockMode, setUnlockMode] = useState('unlock'); // 'unlock' | 'recover'
+/**
+ * Multi-account now: there is no single implicit vault to detect "has
+ * this been set up yet" from, so this is always a Login/Sign up toggle
+ * rather than the old setup-vs-unlock branch driven by GET /api/auth/
+ * status. `mode` starts on 'login' - the far more common return visit.
+ */
+function LockScreen({ onAuthenticated }) {
+  const [mode, setMode] = useState('login'); // login | signup
 
-  // Forgot-password / recovery flow
-  const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  // Login
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
-  // First-run setup flow
-  const [setupPhase, setSetupPhase] = useState('form'); // 'form' | 'reveal'
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  // Forgot password (inline from the login form, like the old recovery
+  // choices) - this just sends the email; the actual reset happens on the
+  // /reset-password page the emailed link opens.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
+
+  const [phoneRecoveryOpen, setPhoneRecoveryOpen] = useState(false);
+
+  // Signup
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [confirmError, setConfirmError] = useState('');
-  const [pendingSession, setPendingSession] = useState(null); // { sessionToken, recoveryKey }
+  const [signupPhase, setSignupPhase] = useState('form'); // form | reveal | done
+  const [pendingRecoveryKey, setPendingRecoveryKey] = useState(null);
 
   const [dialStatus, setDialStatus] = useState('idle'); // idle | unlocking | unlocked | error
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  // Alongside the recovery-key flow above: two more ways to reset a
-  // forgotten master password (see UsbRecoveryModal/PhoneRecoveryModal).
-  // Each is a self-contained modal that calls onAuthenticated itself on
-  // success, same as every other unlock/recover path here.
-  const [usbRecoveryOpen, setUsbRecoveryOpen] = useState(false);
-  const [phoneRecoveryOpen, setPhoneRecoveryOpen] = useState(false);
-  // "Forgot your password?" expands inline into the three recovery choices.
-  const [recoveryChoicesOpen, setRecoveryChoicesOpen] = useState(false);
-
-  // Fresh-install restore: only reachable pre-setup (no vault exists yet),
-  // so it needs the backup's own master password rather than a session -
-  // see RestorePanel's requirePassword prop and backup.controller.js
-  // importBackup's fresh-install branch.
-  const [restoreOpen, setRestoreOpen] = useState(false);
-  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
-  const [restoreError, setRestoreError] = useState('');
 
   const timeoutRef = useRef(null);
 
@@ -67,26 +62,24 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     timeoutRef.current = setTimeout(() => setDialStatus('idle'), ERROR_DIAL_RESET_MS);
   };
 
-  const switchToRecover = () => {
+  const switchToSignup = () => {
     setError('');
-    setPassphrase('');
-    setRecoveryChoicesOpen(false);
-    setUnlockMode('recover');
+    setMode('signup');
   };
 
-  const switchToUnlock = () => {
+  const switchToLogin = () => {
     setError('');
-    setRecoveryKeyInput('');
-    setNewPassword('');
-    setUnlockMode('unlock');
+    setForgotOpen(false);
+    setForgotMessage('');
+    setMode('login');
   };
 
-  const handleUnlockSubmit = async (event) => {
+  const handleLoginSubmit = async (event) => {
     event.preventDefault();
     if (submitting) return;
 
-    if (!passphrase.trim()) {
-      flashError('Enter your vault passphrase.');
+    if (!loginEmail.trim() || !loginPassword) {
+      flashError('Enter your email and password.');
       return;
     }
 
@@ -95,64 +88,53 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     setDialStatus('unlocking');
 
     try {
-      const { sessionToken } = await unlockVault(passphrase);
+      const { sessionToken } = await loginVault(loginEmail.trim(), loginPassword);
       setDialStatus('unlocked');
       clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
     } catch (err) {
       setSubmitting(false);
-      flashError(extractErrorMessage(err, 'Incorrect passphrase.'));
+      flashError(extractErrorMessage(err, 'Incorrect email or password.'));
     }
   };
 
-  const recoverPolicy = validatePassword(newPassword);
-  const isRecoverFormValid = recoveryKeyInput.trim().length > 0 && recoverPolicy.valid;
-
-  const handleRecoverSubmit = async (event) => {
+  const handleForgotSubmit = async (event) => {
     event.preventDefault();
-    if (submitting) return;
+    if (forgotSubmitting || !forgotEmail.trim()) return;
 
-    if (!recoveryKeyInput.trim()) {
-      flashError('Enter your recovery key.');
-      return;
-    }
-
-    if (!recoverPolicy.valid) {
-      flashError(recoverPolicy.errors.join(' '));
-      return;
-    }
-
-    setError('');
-    setSubmitting(true);
-    setDialStatus('unlocking');
-
+    setForgotSubmitting(true);
     try {
-      const { sessionToken } = await recoverVault(recoveryKeyInput.trim(), newPassword);
-      setDialStatus('unlocked');
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
+      const { message } = await forgotPassword(forgotEmail.trim());
+      setForgotMessage(message);
     } catch (err) {
-      setSubmitting(false);
-      flashError(extractErrorMessage(err, 'Recovery failed.'));
+      // forgot-password is anti-enumeration by design server-side, so a
+      // rejected request here means something genuinely went wrong (bad
+      // input, network), not "that email doesn't exist" - still shown
+      // plainly rather than silently swallowed.
+      setForgotMessage(extractErrorMessage(err, 'Something went wrong. Please try again.'));
+    } finally {
+      setForgotSubmitting(false);
     }
   };
 
-  const setupPolicy = validatePassword(password);
-  const isSetupFormValid =
-    setupPolicy.valid && confirmPassword.length > 0 && password === confirmPassword;
+  const signupPolicy = validatePassword(signupPassword);
+  const isSignupFormValid =
+    signupEmail.trim().length > 0 &&
+    signupPolicy.valid &&
+    signupConfirmPassword.length > 0 &&
+    signupPassword === signupConfirmPassword;
 
-  const handleSetupSubmit = async (event) => {
+  const handleSignupSubmit = async (event) => {
     event.preventDefault();
     if (submitting) return;
 
     setConfirmError('');
 
-    if (!setupPolicy.valid) {
-      flashError(setupPolicy.errors.join(' '));
+    if (!signupPolicy.valid) {
+      flashError(signupPolicy.errors.join(' '));
       return;
     }
-
-    if (password !== confirmPassword) {
+    if (signupPassword !== signupConfirmPassword) {
       clearTimeout(timeoutRef.current);
       setConfirmError('Passwords do not match.');
       setDialStatus('error');
@@ -165,114 +147,96 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
     setDialStatus('unlocking');
 
     try {
-      const { sessionToken, recoveryKey } = await setupVault(password);
+      const { recoveryKey } = await signupVault(signupEmail.trim(), signupPassword, inviteCode.trim() || undefined);
       setDialStatus('unlocked');
-      setPendingSession({ sessionToken, recoveryKey });
-      setSetupPhase('reveal');
+      setPendingRecoveryKey(recoveryKey);
+      setSignupPhase('reveal');
     } catch (err) {
       setSubmitting(false);
-      flashError(extractErrorMessage(err, 'Could not set up the vault.'));
+      flashError(extractErrorMessage(err, 'Could not create an account.'));
     }
   };
 
-  // Same success shape as setup/recover: the backend created a brand-new
-  // User record from the manifest's key material and hands back a session
-  // token straight away, so this drops the caller into the vault exactly
-  // like every other authenticated path here, with no separate "restore
-  // complete" screen first (matching handleRecoveryModalSuccess below).
-  const handleFreshInstallRestore = async (sourcePath, backupPassword) => {
-    setRestoreSubmitting(true);
-    setRestoreError('');
-    try {
-      const { sessionToken } = await importBackup(sourcePath, backupPassword);
-      setRestoreOpen(false);
-      setDialStatus('unlocked');
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
-    } catch (err) {
-      setRestoreError(extractErrorMessage(err, 'Restore failed.'));
-    } finally {
-      setRestoreSubmitting(false);
-    }
+  const handleRecoveryKeyConfirm = () => {
+    setSignupPhase('done');
+    setDialStatus('idle');
+    setSubmitting(false);
   };
 
-  const handleRecoveryConfirm = () => {
-    if (pendingSession) onAuthenticated(pendingSession.sessionToken);
+  const handleBackToLoginAfterSignup = () => {
+    setMode('login');
+    setSignupPhase('form');
+    setLoginEmail(signupEmail);
+    setSignupEmail('');
+    setSignupPassword('');
+    setSignupConfirmPassword('');
+    setInviteCode('');
+    setPendingRecoveryKey(null);
   };
 
-  // Shared success handler for both new recovery modals - same settle
-  // delay/dial-unlocked flourish as handleUnlockSubmit/handleRecoverSubmit,
-  // just triggered from a modal instead of this component's own form.
-  const handleRecoveryModalSuccess = (sessionToken) => {
-    setUsbRecoveryOpen(false);
+  // Shared success handler for the phone-recovery modal - same settle
+  // delay/dial-unlocked flourish as handleLoginSubmit, just triggered from
+  // a modal instead of this component's own form.
+  const handlePhoneRecoverySuccess = (sessionToken) => {
     setPhoneRecoveryOpen(false);
     setDialStatus('unlocked');
     clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => onAuthenticated(sessionToken), SETTLE_DELAY_MS);
   };
 
-  const isChecking = statusLoading;
-  const isSetupReveal = !isChecking && !initialized && setupPhase === 'reveal' && pendingSession;
-  const isSetupForm = !isChecking && !initialized && setupPhase === 'form';
-  const isUnlock = !isChecking && initialized && unlockMode === 'unlock';
-  const isRecover = !isChecking && initialized && unlockMode === 'recover';
+  const isSignupReveal = mode === 'signup' && signupPhase === 'reveal' && pendingRecoveryKey;
+  const isSignupDone = mode === 'signup' && signupPhase === 'done';
+  const isSignupForm = mode === 'signup' && signupPhase === 'form';
+  const isLogin = mode === 'login';
 
   return (
     <main className={styles.screen}>
       <div className={styles.grid} aria-hidden="true" />
 
       <div className={styles.panel}>
-        {!isSetupReveal && (
+        {!isSignupReveal && (
           <div className={styles.brandRow}>
             <img src={wardenLogo} alt="Warden" className={styles.mark} />
             <span className={styles.wordmark}>WARDEN</span>
           </div>
         )}
 
-        {!isSetupReveal && <VaultDial status={dialStatus} />}
+        {!isSignupReveal && <VaultDial status={dialStatus} />}
 
-        {isChecking && (
-          <div className={styles.copy}>
-            <h1 className={styles.title}>Checking vault status...</h1>
-          </div>
-        )}
-
-        {isSetupForm && (
+        {isLogin && (
           <>
             <div className={styles.copy}>
-              <h1 className={styles.title}>Create your master password</h1>
-              <p className={styles.subtitle}>
-                This password encrypts everything in your vault. It can't be
-                recovered if lost, only the recovery key shown next.
-              </p>
+              <h1 className={styles.title}>Welcome back.</h1>
+              <p className={styles.subtitle}>Log in to decrypt and open your vault.</p>
             </div>
 
-            <form className={styles.form} onSubmit={handleSetupSubmit} noValidate>
+            <form className={styles.form} onSubmit={handleLoginSubmit} noValidate>
+              <div className={styles.field}>
+                <label htmlFor="login-email" className={styles.fieldLabel}>
+                  Email
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  className={styles.textInput}
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+
               <PasswordField
-                label="Master password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter a strong password"
+                label="Password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter your password"
                 error={error}
-                autoFocus
               />
 
-              <PasswordStrengthMeter password={password} />
-
-              <PasswordField
-                label="Confirm password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter password"
-                error={confirmError}
-              />
-
-              <button
-                type="submit"
-                className={styles.primaryButton}
-                disabled={submitting || !isSetupFormValid}
-              >
-                <span>{submitting ? 'Creating vault' : 'Create vault'}</span>
+              <button type="submit" className={styles.primaryButton} disabled={submitting}>
+                <span>{submitting ? 'Logging in' : 'Log in'}</span>
                 <ArrowRight size={18} weight="bold" />
               </button>
 
@@ -280,159 +244,167 @@ function LockScreen({ statusLoading, initialized, onAuthenticated }) {
                 type="button"
                 className={styles.linkButton}
                 onClick={() => {
-                  setRestoreError('');
-                  setRestoreOpen(true);
+                  setForgotOpen((open) => !open);
+                  setForgotMessage('');
+                  setForgotEmail(loginEmail);
                 }}
-              >
-                Restore from a backup instead
-              </button>
-            </form>
-          </>
-        )}
-
-        {isUnlock && (
-          <>
-            <div className={styles.copy}>
-              <h1 className={styles.title}>Your vault is sealed.</h1>
-              <p className={styles.subtitle}>
-                Enter your passphrase to decrypt and open this local vault.
-              </p>
-            </div>
-
-            <form className={styles.form} onSubmit={handleUnlockSubmit} noValidate>
-              <PasswordField
-                label="Vault passphrase"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Enter passphrase"
-                error={error}
-                autoFocus
-              />
-
-              <button type="submit" className={styles.primaryButton} disabled={submitting}>
-                <span>{submitting ? 'Unlocking' : 'Unlock vault'}</span>
-                <ArrowRight size={18} weight="bold" />
-              </button>
-
-              <button
-                type="button"
-                className={styles.linkButton}
-                onClick={() => setRecoveryChoicesOpen((open) => !open)}
-                aria-expanded={recoveryChoicesOpen}
+                aria-expanded={forgotOpen}
               >
                 Forgot your password?
               </button>
-              {recoveryChoicesOpen && (
+
+              {forgotOpen && (
                 <div className={styles.recoveryChoices}>
-                  <button type="button" className={styles.recoveryChoice} onClick={switchToRecover}>
-                    Recovery passkey
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.recoveryChoice}
-                    onClick={() => setUsbRecoveryOpen(true)}
-                  >
-                    Recover with USB
-                  </button>
+                  {forgotMessage ? (
+                    <p className={styles.subtitle}>{forgotMessage}</p>
+                  ) : (
+                    <form className={styles.form} onSubmit={handleForgotSubmit} noValidate>
+                      <div className={styles.field}>
+                        <label htmlFor="forgot-email" className={styles.fieldLabel}>
+                          Account email
+                        </label>
+                        <input
+                          id="forgot-email"
+                          type="email"
+                          className={styles.textInput}
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          autoComplete="email"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className={styles.primaryButton}
+                        disabled={forgotSubmitting || !forgotEmail.trim()}
+                      >
+                        {forgotSubmitting ? 'Sending...' : 'Email me a reset link'}
+                      </button>
+                    </form>
+                  )}
                   <button
                     type="button"
                     className={styles.recoveryChoice}
                     onClick={() => setPhoneRecoveryOpen(true)}
                   >
-                    Recover with paired phone
+                    Recover with paired phone instead
                   </button>
                 </div>
               )}
+
+              <button type="button" className={styles.linkButton} onClick={switchToSignup}>
+                Don't have an account? Create one
+              </button>
             </form>
           </>
         )}
 
-        {isRecover && (
+        {isSignupForm && (
           <>
             <div className={styles.copy}>
-              <h1 className={styles.title}>Reset your password</h1>
+              <h1 className={styles.title}>Create your account</h1>
               <p className={styles.subtitle}>
-                Enter your recovery key and choose a new master password. Your
-                documents stay exactly as they are.
+                Your master password encrypts everything in your vault. It can't be recovered if
+                lost, only the recovery key shown next.
               </p>
             </div>
 
-            <form className={styles.form} onSubmit={handleRecoverSubmit} noValidate>
+            <form className={styles.form} onSubmit={handleSignupSubmit} noValidate>
               <div className={styles.field}>
-                <label htmlFor="recovery-key-input" className={styles.fieldLabel}>
-                  Recovery key
+                <label htmlFor="signup-email" className={styles.fieldLabel}>
+                  Email
                 </label>
                 <input
-                  id="recovery-key-input"
+                  id="signup-email"
+                  type="email"
+                  className={styles.textInput}
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+
+              <PasswordField
+                label="Master password"
+                value={signupPassword}
+                onChange={(e) => setSignupPassword(e.target.value)}
+                placeholder="Enter a strong password"
+                error={error}
+              />
+
+              <PasswordStrengthMeter password={signupPassword} />
+
+              <PasswordField
+                label="Confirm password"
+                value={signupConfirmPassword}
+                onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                error={confirmError}
+              />
+
+              <div className={styles.field}>
+                <label htmlFor="signup-invite" className={styles.fieldLabel}>
+                  Invite code (if you have one)
+                </label>
+                <input
+                  id="signup-invite"
                   type="text"
                   className={styles.textInput}
-                  value={recoveryKeyInput}
-                  onChange={(e) => setRecoveryKeyInput(e.target.value)}
-                  placeholder="XXXX-XXXX-XXXX-XXXX"
-                  autoFocus
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="Leave blank if not required"
                   autoComplete="off"
                   spellCheck={false}
                 />
               </div>
 
-              <PasswordField
-                label="New master password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter a new strong password"
-                error={error}
-              />
-
-              <PasswordStrengthMeter password={newPassword} />
-
               <button
                 type="submit"
                 className={styles.primaryButton}
-                disabled={submitting || !isRecoverFormValid}
+                disabled={submitting || !isSignupFormValid}
               >
-                <span>{submitting ? 'Resetting password' : 'Reset password'}</span>
+                <span>{submitting ? 'Creating account' : 'Create account'}</span>
                 <ArrowRight size={18} weight="bold" />
               </button>
 
-              <button type="button" className={styles.linkButton} onClick={switchToUnlock}>
-                Back to unlock
+              <button type="button" className={styles.linkButton} onClick={switchToLogin}>
+                Already have an account? Log in
               </button>
             </form>
           </>
         )}
 
-        {isSetupReveal && (
+        {isSignupReveal && (
           <RecoveryKeyReveal
-            recoveryKey={pendingSession.recoveryKey}
-            onConfirm={handleRecoveryConfirm}
+            recoveryKey={pendingRecoveryKey}
+            onConfirm={handleRecoveryKeyConfirm}
+            subtitle="If you're setting up for the first time, this is the only way to recover your vault if you forget your master password. Save it now - it's shown once, right now, and never again."
           />
         )}
-      </div>
 
-      {usbRecoveryOpen && (
-        <UsbRecoveryModal
-          onClose={() => setUsbRecoveryOpen(false)}
-          onRecovered={handleRecoveryModalSuccess}
-        />
-      )}
+        {isSignupDone && (
+          <div className={styles.copy}>
+            <h1 className={styles.title}>Check your email</h1>
+            <p className={styles.subtitle}>
+              If that email can be registered, a verification link was just sent to it. Open it to
+              finish setting up your account, then come back and log in.
+            </p>
+            <button type="button" className={styles.primaryButton} onClick={handleBackToLoginAfterSignup}>
+              <span>Back to log in</span>
+              <ArrowRight size={18} weight="bold" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {phoneRecoveryOpen && (
         <PhoneRecoveryModal
           onClose={() => setPhoneRecoveryOpen(false)}
-          onRecovered={handleRecoveryModalSuccess}
+          onRecovered={handlePhoneRecoverySuccess}
+          initialEmail={forgotEmail || loginEmail}
         />
-      )}
-
-      {restoreOpen && (
-        <Modal title="Restore from backup" onClose={() => setRestoreOpen(false)}>
-          <RestorePanel
-            requirePassword
-            onSubmit={handleFreshInstallRestore}
-            onCancel={() => setRestoreOpen(false)}
-            submitting={restoreSubmitting}
-            error={restoreError}
-          />
-        </Modal>
       )}
     </main>
   );

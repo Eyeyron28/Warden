@@ -16,7 +16,12 @@ const {
   deleteDocument,
 } = require('../controllers/documents.controller');
 
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB - IDs, contracts, PDFs, not videos
+// 4MB, down from the old local-only 20MB cap: Vercel Hobby caps a whole
+// request body at 4.5MB, so a single upload has to fit comfortably under
+// that (plus the small multipart envelope around it) - see server.js's
+// own express.json limit comment for the matching reasoning on the
+// JSON/base64 upload path (POST /api/sync/push).
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 
 // Memory storage only: the file buffer stays in RAM for encryption and is
 // never written to a temp file on disk.
@@ -32,7 +37,7 @@ function handleUpload(req, res, next) {
     if (!err) return next();
 
     if (err.code === 'LIMIT_FILE_SIZE') {
-      const error = new Error('File exceeds the 20MB size limit.');
+      const error = new Error('File exceeds the 4MB size limit.');
       error.status = 413;
       return next(error);
     }

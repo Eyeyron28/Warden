@@ -7,6 +7,12 @@ const mongoose = require('mongoose');
 // view without touching the auth record.
 const backupLogSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     documentCount: {
       type: Number,
       required: true,

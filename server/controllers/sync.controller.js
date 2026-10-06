@@ -62,14 +62,15 @@ const pullDocuments = asyncHandler(async (req, res) => {
   );
 
   const [newDocuments, index, documentFolders, emptyFolders] = await Promise.all([
-    Document.find({ _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
-    // Metadata-only listing of EVERY document on the PC - this is what lets
-    // the phone notice PC-side deletes (an id it holds that's missing here)
-    // and renames/moves (same id, different filename/folder/expiry), which
-    // the "new to you" list above can never express.
-    Document.find({}, 'filename folder expiryDate'),
-    Document.distinct('folder'),
-    Folder.distinct('name'),
+    Document.find({ userId: req.userId, _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
+    // Metadata-only listing of EVERY document on this account - this is
+    // what lets the phone notice PC-side deletes (an id it holds that's
+    // missing here) and renames/moves (same id, different filename/
+    // folder/expiryDate), which the "new to you" list above can never
+    // express.
+    Document.find({ userId: req.userId }, 'filename folder expiryDate'),
+    Document.distinct('folder', { userId: req.userId }),
+    Folder.distinct('name', { userId: req.userId }),
   ]);
 
   const folders = [...new Set([...documentFolders, ...emptyFolders].filter(Boolean))].filter(
@@ -122,9 +123,13 @@ const pushDocuments = asyncHandler(async (req, res) => {
     const trimmed = typeof name === 'string' ? name.trim() : '';
     if (!trimmed || trimmed === 'root') continue;
     // eslint-disable-next-line no-await-in-loop -- small batches
-    if (!(await Document.exists({ folder: trimmed }))) {
+    if (!(await Document.exists({ userId: req.userId, folder: trimmed }))) {
       // eslint-disable-next-line no-await-in-loop
-      await Folder.updateOne({ name: trimmed }, { $setOnInsert: { name: trimmed } }, { upsert: true });
+      await Folder.updateOne(
+        { userId: req.userId, name: trimmed },
+        { $setOnInsert: { userId: req.userId, name: trimmed } },
+        { upsert: true }
+      );
     }
   }
 
@@ -161,6 +166,7 @@ const pushDocuments = asyncHandler(async (req, res) => {
 
     // eslint-disable-next-line no-await-in-loop -- small batches, sequential writes are fine here
     const document = await Document.create({
+      userId: req.userId,
       filename,
       folder: folder || undefined, // let the schema default ("root") apply
       encryptedBlob: Buffer.from(encryptedBlob, 'base64'),

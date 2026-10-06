@@ -19,6 +19,18 @@ const entrySchema = new mongoose.Schema(
 );
 
 const shareTokenSchema = new mongoose.Schema({
+  // The account that issued this link. Only the owner-facing routes
+  // (createShare/createBulkShare/listShares/revokeShare*) filter by this -
+  // the public GET /api/shared/:token routes deliberately do NOT, since
+  // the token itself (not the account) is that route's entire credential;
+  // anyone holding a valid token can still view it regardless of who
+  // issued it.
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  },
   // The files this link covers. A single-document share is simply an entries
   // array of length 1 - there is no separate single-file code path.
   entries: {

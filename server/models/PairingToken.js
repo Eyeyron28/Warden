@@ -8,6 +8,17 @@ const mongoose = require('mongoose');
 // the phone's camera, too short to be worth attacking.
 const pairingTokenSchema = new mongoose.Schema(
   {
+    // Whose account this QR is pairing a device to - set at POST
+    // /api/pair/init (already requireSession-gated) from req.userId.
+    // POST /api/pair/complete resolves the account from THIS field, never
+    // from a session (the phone doesn't have one) and never from a
+    // singleton lookup - see controllers/pairing.controller.js.
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     token: {
       type: String,
       required: true,

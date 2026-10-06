@@ -117,9 +117,10 @@ const createDocument = asyncHandler(async (req, res) => {
   // copying files around.
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
 
-  const { ciphertext, iv, authTag } = encryptFile(buffer, req.session.encryptionKey);
+  const { ciphertext, iv, authTag } = encryptFile(buffer, req.dek);
 
   const document = await Document.create({
+    userId: req.userId,
     filename: originalname,
     folder: folder || undefined, // let the schema default ("root") apply
     encryptedBlob: Buffer.from(ciphertext, 'base64'),
@@ -145,7 +146,7 @@ const createDocument = asyncHandler(async (req, res) => {
  * GET /api/documents
  */
 const listDocuments = asyncHandler(async (req, res) => {
-  const documents = await Document.find().sort({ createdAt: -1 });
+  const documents = await Document.find({ userId: req.userId }).sort({ createdAt: -1 });
   res.status(200).json(documents.map(toListSummary));
 });
 
@@ -163,7 +164,7 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
   // expiryStatus depends on "today", so it can't be computed in the Mongo
   // query itself - fetch candidates that have a date at all, then filter
   // and sort in JS using the same computeExpiryInfo the list endpoint uses.
-  const documents = await Document.find({ expiryDate: { $ne: null } });
+  const documents = await Document.find({ userId: req.userId, expiryDate: { $ne: null } });
 
   const expiring = documents
     .map(toListSummary)
@@ -186,8 +187,8 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
  */
 const listFolders = asyncHandler(async (req, res) => {
   const [documentFolders, emptyFolders] = await Promise.all([
-    Document.distinct('folder'),
-    Folder.distinct('name'),
+    Document.distinct('folder', { userId: req.userId }),
+    Folder.distinct('name', { userId: req.userId }),
   ]);
   const folderSet = new Set([...documentFolders, ...emptyFolders].filter(Boolean));
   folderSet.add(FOLDER_ROOT);
@@ -228,12 +229,16 @@ const createFolder = asyncHandler(async (req, res) => {
     throw badRequest('"root" is reserved for uncategorized documents.');
   }
 
-  const alreadyHasDocuments = await Document.exists({ folder: trimmed });
+  const alreadyHasDocuments = await Document.exists({ userId: req.userId, folder: trimmed });
   if (!alreadyHasDocuments) {
     // upsert rather than a plain create: a second "create this folder"
     // call for a name that already exists as an empty Folder record
     // should succeed quietly, not throw a duplicate-key error.
-    await Folder.updateOne({ name: trimmed }, { $setOnInsert: { name: trimmed } }, { upsert: true });
+    await Folder.updateOne(
+      { userId: req.userId, name: trimmed },
+      { $setOnInsert: { userId: req.userId, name: trimmed } },
+      { upsert: true }
+    );
   }
 
   res.status(201).json({ name: trimmed });
@@ -259,7 +264,10 @@ const deleteFolder = asyncHandler(async (req, res) => {
   }
 
   const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  await Folder.deleteMany({ $or: [{ name: trimmed }, { name: { $regex: `^${escaped}/` } }] });
+  await Folder.deleteMany({
+    userId: req.userId,
+    $or: [{ name: trimmed }, { name: { $regex: `^${escaped}/` } }],
+  });
 
   res.status(204).send();
 });
@@ -282,7 +290,7 @@ const deleteFolder = asyncHandler(async (req, res) => {
 const updateDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findById(req.params.id);
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
   if (!document) {
     throw documentNotFound();
   }
@@ -338,14 +346,14 @@ const updateDocument = asyncHandler(async (req, res) => {
 const viewDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findById(req.params.id);
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
   if (!document) {
     throw documentNotFound();
   }
 
   const plaintext = decryptFile(
     document.encryptedBlob.toString('base64'),
-    req.session.encryptionKey,
+    req.dek,
     document.iv,
     document.authTag
   );
@@ -374,7 +382,7 @@ const viewDocument = asyncHandler(async (req, res) => {
 const deleteDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findByIdAndDelete(req.params.id);
+  const document = await Document.findOneAndDelete({ _id: req.params.id, userId: req.userId });
   if (!document) {
     throw documentNotFound();
   }

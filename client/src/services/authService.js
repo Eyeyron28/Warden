@@ -1,68 +1,90 @@
 import api from './api.js';
 
 /**
- * GET /api/auth/status
- * @returns {Promise<{ initialized: boolean }>}
- */
-export async function getAuthStatus() {
-  const { data } = await api.get('/auth/status');
-  return data;
-}
-
-/**
- * POST /api/auth/setup - first-run only.
+ * POST /api/auth/signup
+ * Response is intentionally identical whether or not `email` already has
+ * an account, down to a `recoveryKey` field that's either the real,
+ * one-time key (new account) or a decoy of the same shape (existing
+ * account) - see the server's own comment on this for why. The caller
+ * cannot and should not try to tell which case it got.
+ * @param {string} email
  * @param {string} password
- * @returns {Promise<{ sessionToken: string, recoveryKey: string }>}
+ * @param {string} [inviteCode]
+ * @returns {Promise<{ message: string, recoveryKey: string }>}
  */
-export async function setupVault(password) {
-  const { data } = await api.post('/auth/setup', { password });
+export async function signupVault(email, password, inviteCode) {
+  const { data } = await api.post('/auth/signup', { email, password, inviteCode });
   return data;
 }
 
 /**
- * POST /api/auth/unlock
+ * POST /api/auth/verify-email
+ * @param {string} token
+ * @returns {Promise<{ message: string }>}
+ */
+export async function verifyEmailToken(token) {
+  const { data } = await api.post('/auth/verify-email', { token });
+  return data;
+}
+
+/**
+ * POST /api/auth/unlock - login, by email + password now.
+ * @param {string} email
  * @param {string} password
  * @returns {Promise<{ sessionToken: string }>}
  */
-export async function unlockVault(password) {
-  const { data } = await api.post('/auth/unlock', { password });
+export async function loginVault(email, password) {
+  const { data } = await api.post('/auth/unlock', { email, password });
   return data;
 }
 
 /**
- * POST /api/auth/recover - the "forgot password" flow.
- * @param {string} recoveryKey
- * @param {string} newPassword
- * @returns {Promise<{ sessionToken: string }>}
+ * GET /api/auth/me - who, if anyone, the current bearer token belongs to.
+ * @returns {Promise<{ email: string, emailVerified: boolean }>}
  */
-export async function recoverVault(recoveryKey, newPassword) {
-  const { data } = await api.post('/auth/recover', { recoveryKey, newPassword });
+export async function getMe() {
+  const { data } = await api.get('/auth/me');
   return data;
 }
 
 /**
- * POST /api/auth/recover-via-usb - the USB backup "forgot your password"
- * flow. `wrappedDEK`/`wrappedDEKIv`/`wrappedDEKAuthTag`/`wrappedDEKSalt`
- * come straight from the selected backup folder's backup-manifest.json,
- * read client-side (see components/UsbRecoveryModal.jsx) - this call
- * never touches the filesystem itself.
- * @param {{ wrappedDEK: string, wrappedDEKIv: string, wrappedDEKAuthTag: string, wrappedDEKSalt: string, usbPassphrase: string, newPassword: string }} params
- * @returns {Promise<{ sessionToken: string }>}
+ * POST /api/auth/forgot-password - always the same generic response.
+ * @param {string} email
+ * @returns {Promise<{ message: string }>}
  */
-export async function recoverViaUsb(params) {
-  const { data } = await api.post('/auth/recover-via-usb', params);
+export async function forgotPassword(email) {
+  const { data } = await api.post('/auth/forgot-password', { email });
+  return data;
+}
+
+/**
+ * POST /api/auth/reset-password
+ * @param {{ token: string, newPassword: string, recoveryKey?: string, confirmWipe?: boolean }} params
+ * @returns {Promise<{ message: string, recoveryKey?: string, documentsWiped?: boolean }>}
+ *   `recoveryKey` is present only on the no-recovery-key (wipe) path - a
+ *   brand-new one, since the old one no longer unwraps anything meaningful.
+ */
+export async function resetPassword({ token, newPassword, recoveryKey, confirmWipe }) {
+  const { data } = await api.post('/auth/reset-password', {
+    token,
+    newPassword,
+    recoveryKey,
+    confirmWipe,
+  });
   return data;
 }
 
 /**
  * POST /api/auth/recover-via-phone/init - starts a new 5-minute
- * paired-phone recovery window from the locked-out PC. `recoverUrl` is
- * null if the server couldn't determine its own LAN IP - the frontend
- * should fall back to showing `recoveryToken` as a manually-typed code.
+ * paired-phone recovery window. Requires the account's email now (there's
+ * no single implicit vault to fall back to). `recoverUrl` is null if the
+ * server couldn't determine its own LAN IP - the frontend should fall
+ * back to showing `recoveryToken` as a manually-typed code.
+ * @param {string} email
  * @returns {Promise<{ recoveryToken: string, recoverUrl: string|null, expiresAt: string }>}
  */
-export async function initPhoneRecovery() {
-  const { data } = await api.post('/auth/recover-via-phone/init');
+export async function initPhoneRecovery(email) {
+  const { data } = await api.post('/auth/recover-via-phone/init', { email });
   return data;
 }
 
@@ -91,7 +113,7 @@ export async function completePhoneRecovery(recoveryToken, newPassword) {
 
 /**
  * POST /api/auth/logout
- * Explicitly ends the session server-side, so "Lock vault" actually kills
+ * Explicitly ends the session server-side, so "Log out" actually kills
  * the old token instead of leaving it valid until its 30-min expiry.
  * @returns {Promise<{ success: boolean }>}
  */

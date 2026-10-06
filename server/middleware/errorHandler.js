@@ -25,6 +25,14 @@ const errorHandler = (err, req, res, next) => {
     errorBody.lockedUntil = err.lockedUntil;
     errorBody.minutesRemaining = err.minutesRemaining;
   }
+  // Optional: an unverified-account login rejection (POST /api/auth/
+  // unlock, only ever set AFTER the password has already been verified
+  // correct - see unverifiedAccountError in auth.controller.js), so the
+  // frontend can show a "check your email" message instead of a generic
+  // "incorrect email or password."
+  if (err.emailVerificationRequired) {
+    errorBody.emailVerificationRequired = true;
+  }
 
   res.status(status).json({
     success: false,

@@ -5,8 +5,7 @@ const crypto = require('crypto');
 const Document = require('../models/Document');
 const User = require('../models/User');
 const BackupLog = require('../models/BackupLog');
-const { generateSalt, deriveEncryptionKey, wrapKey, unwrapKey, fingerprintDEK } = require('../utils/crypto');
-const { createSession } = require('../utils/sessionStore');
+const { generateSalt, deriveEncryptionKey, wrapKey, fingerprintDEK } = require('../utils/crypto');
 
 const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 
@@ -26,6 +25,13 @@ function badRequest(message) {
  * ways a USB export commonly fails (drive not plugged in, wrong drive
  * letter/path, permissions) - so the caller gets a clear reason instead of
  * a raw fs error.
+ *
+ * NOTE (multi-user): targetPath/sourcePath are paths on whatever machine
+ * this Express process is running on - fine for local dev, but this
+ * won't work once genuinely deployed to a serverless host with no
+ * persistent/user-controllable filesystem. That redesign (stream the
+ * backup to/from the browser instead of a server-local path) was
+ * explicitly deferred; this prompt only adds the userId scoping below.
  */
 async function assertWritableDirectory(targetPath) {
   let stats;
@@ -112,24 +118,9 @@ function isValidBackupRecord(record) {
 
 // manifestVersion introduced alongside the fields below - a manifest
 // without it (or below it) predates the DEK-wrapping fix and doesn't carry
-// the User key material a restore now depends on.
+// the dekFingerprint a restore now depends on to confirm it belongs to
+// this account.
 const CURRENT_MANIFEST_VERSION = 2;
-
-// Present only on a v2+ manifest, and only needed to rebuild the User
-// record from scratch on a fresh install (see importBackup) - an
-// existing-vault restore never touches these, it only compares
-// dekFingerprint (checked separately, since it's needed by both branches).
-const REQUIRED_MANIFEST_USER_FIELDS = [
-  'passwordHash',
-  'salt',
-  'recoveryKeyHash',
-  'wrappedDEKPassword',
-  'wrappedDEKPasswordIv',
-  'wrappedDEKPasswordAuthTag',
-  'wrappedDEKRecovery',
-  'wrappedDEKRecoveryIv',
-  'wrappedDEKRecoveryAuthTag',
-];
 
 function oldManifestError() {
   const error = new Error(
@@ -139,41 +130,33 @@ function oldManifestError() {
   return error;
 }
 
-function vaultMismatchError() {
+function accountMismatchError() {
   const error = new Error(
-    'This backup belongs to a different vault and cannot be imported here - doing so would leave documents this vault can never decrypt. Import aborted.'
+    'This backup belongs to a different account and cannot be imported here - doing so would leave documents this account can never decrypt. Import aborted.'
   );
   error.status = 409;
   return error;
 }
 
-function wrongBackupPasswordError() {
-  const error = new Error('Incorrect password for this backup.');
-  error.status = 401;
-  return error;
-}
-
 /**
  * POST /api/backup/export
- * Body: { targetPath, usbPassphrase }
+ * requireSession. Body: { targetPath, usbPassphrase }
  *
  * Copies every document's already-encrypted blob (plus its iv/authTag/
- * checksum) into targetPath/warden-backup, one JSON file per document,
- * alongside a tamper-evident manifest. Nothing is decrypted or
- * re-encrypted here - the export is exactly as unreadable as the live
- * vault, which is the whole point of backing up ciphertext-at-rest: a
- * copied USB drive is useless without the master password, no separate
- * pairing or key exchange required.
+ * checksum) belonging to THIS account into targetPath/warden-backup, one
+ * JSON file per document, alongside a tamper-evident manifest. Nothing is
+ * decrypted or re-encrypted here - the export is exactly as unreadable as
+ * the live account, which is the whole point of backing up ciphertext-
+ * at-rest: a copied USB drive is useless without the master password, no
+ * separate pairing or key exchange required.
  *
- * Also wraps a COPY of the vault's DEK under a key derived from
- * `usbPassphrase` (same wrap-the-DEK pattern as the password/recovery-key/
- * phone-PIN KEKs on User and PairedDevice) and writes it into the
- * manifest as wrappedDEKUsb* - this is what lets POST
- * /api/auth/recover-via-usb reset the master password later using only
- * this backup folder and the passphrase, without the DEK ever touching
- * disk unencrypted. The manifest's existing tamper-evidence checksum
- * (below) covers these new fields automatically, since it hashes
- * whatever manifestBody ends up containing.
+ * Also wraps a COPY of the account's DEK under a key derived from
+ * `usbPassphrase` (same wrap-the-DEK pattern as the password/recovery-key
+ * KEKs on User) and writes it into the manifest as wrappedDEKUsb* - this
+ * is what POST /api/auth/recover-via-usb used to read before it was
+ * temporarily disabled (see auth.controller.js) pending its own
+ * multi-user redesign; the field is still written here so an existing
+ * backup folder's shape doesn't change out from under that future work.
  */
 const exportBackup = asyncHandler(async (req, res) => {
   const { targetPath, usbPassphrase } = req.body;
@@ -189,19 +172,11 @@ const exportBackup = asyncHandler(async (req, res) => {
     throw badRequest(`A USB recovery passphrase of at least ${MIN_USB_PASSPHRASE_LENGTH} characters is required.`);
   }
 
-  const user = await User.findOne();
+  const user = await User.findById(req.userId);
   if (!user) {
-    const error = new Error('The vault has not been set up yet.');
+    const error = new Error('Account not found.');
     error.status = 404;
     throw error;
-  }
-  // Same lazy backfill as unlock/recover (auth.controller.js) - a vault
-  // that predates dekFingerprint won't have one yet, and req.session.
-  // encryptionKey (available here - this route is behind requireSession)
-  // is the real, live DEK to backfill it from.
-  if (!user.dekFingerprint) {
-    user.dekFingerprint = fingerprintDEK(req.session.encryptionKey);
-    await user.save();
   }
 
   await assertWritableDirectory(targetPath);
@@ -216,7 +191,7 @@ const exportBackup = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const documents = await Document.find();
+  const documents = await Document.find({ userId: req.userId });
 
   try {
     await Promise.all(
@@ -249,42 +224,24 @@ const exportBackup = asyncHandler(async (req, res) => {
 
   const timestamp = new Date().toISOString();
 
-  // A COPY of the vault's DEK, wrapped under a key derived from
-  // usbPassphrase - never the raw DEK. req.session.encryptionKey is the
-  // live DEK, available here because this route is behind requireSession
-  // (routes/backup.routes.js), same as every other place in this app
-  // that reads it.
+  // A COPY of the account's DEK, wrapped under a key derived from
+  // usbPassphrase - never the raw DEK. req.dek is the live DEK, available
+  // here because this route is behind requireSession (routes/
+  // backup.routes.js), same as every other place in this app that reads it.
   const usbSalt = generateSalt();
   const usbKek = deriveEncryptionKey(usbPassphrase, usbSalt);
-  const wrappedUsb = wrapKey(req.session.encryptionKey, usbKek);
+  const wrappedUsb = wrapKey(req.dek, usbKek);
 
   // Tamper-evidence: hash the manifest's own content (everything except
   // the checksum field) and store the hash alongside it. Editing the
   // manifest afterward - by hand or by a corrupted copy - won't match a
-  // recomputed hash of the remaining fields, so tampering (including of
-  // the wrapped DEK fields below) is detectable without needing to
-  // re-check every document file.
+  // recomputed hash of the remaining fields, so tampering is detectable
+  // without needing to re-check every document file.
   const manifestBody = {
     manifestVersion: CURRENT_MANIFEST_VERSION,
     timestamp,
     documentCount: documents.length,
     backupPath: backupDir,
-    // Every wrapped-DEK-related field currently on User, so a restore -
-    // onto a fresh install, or checked against an existing vault - has
-    // everything it needs (see importBackup). Without these, restoring
-    // onto a fresh install could only ever generate a brand-new random
-    // DEK, and every restored document would fail its authTag check
-    // forever: it was encrypted under the OLD DEK, which would no longer
-    // exist anywhere.
-    passwordHash: user.passwordHash,
-    salt: user.salt,
-    recoveryKeyHash: user.recoveryKeyHash,
-    wrappedDEKPassword: user.wrappedDEKPassword,
-    wrappedDEKPasswordIv: user.wrappedDEKPasswordIv,
-    wrappedDEKPasswordAuthTag: user.wrappedDEKPasswordAuthTag,
-    wrappedDEKRecovery: user.wrappedDEKRecovery,
-    wrappedDEKRecoveryIv: user.wrappedDEKRecoveryIv,
-    wrappedDEKRecoveryAuthTag: user.wrappedDEKRecoveryAuthTag,
     dekFingerprint: user.dekFingerprint,
     wrappedDEKUsb: wrappedUsb.wrappedKey,
     wrappedDEKUsbIv: wrappedUsb.iv,
@@ -300,7 +257,7 @@ const exportBackup = asyncHandler(async (req, res) => {
     'utf8'
   );
 
-  await BackupLog.create({ documentCount: documents.length, backupPath: backupDir });
+  await BackupLog.create({ userId: req.userId, documentCount: documents.length, backupPath: backupDir });
 
   res.status(200).json({
     documentsBackedUp: documents.length,
@@ -311,41 +268,39 @@ const exportBackup = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/backup/import
- * Body: { sourcePath, password? }
+ * requireSession. Body: { sourcePath }
  *
  * Restores documents from a warden-backup folder (produced by
- * POST /api/backup/export) into a vault. Nothing is decrypted during
- * import - the restored rows carry whatever ciphertext, iv, and authTag
- * the backup had.
+ * POST /api/backup/export) into the CURRENTLY LOGGED-IN account. Nothing
+ * is decrypted during import - the restored rows carry whatever
+ * ciphertext, iv, and authTag the backup had.
  *
- * Two very different situations reach this handler, distinguished purely
- * by whether a User document already exists (see routes/backup.routes.js
- * for how a fresh install even reaches this route without a session at
- * all):
- *
- * - Fresh install (no User yet): there's no DEK anywhere yet either, so
- *   restoring documents encrypted under the ORIGINAL vault's DEK requires
- *   rebuilding that vault's key material from the manifest first - see
- *   CURRENT_MANIFEST_VERSION and REQUIRED_MANIFEST_USER_FIELDS. `password`
- *   is required here, and is verified by actually unwrapping the
- *   manifest's wrappedDEKPassword with it BEFORE anything is written -
- *   same verify-before-write discipline as every other recovery flow in
- *   this app (POST /api/auth/recover-via-usb and friends).
- * - Existing vault: the current live DEK (req.session.encryptionKey) is
- *   already known and is never replaced or re-derived. The manifest's
- *   dekFingerprint is compared against this vault's - a mismatch means
- *   this backup is from a DIFFERENT vault, and the import is refused
- *   outright rather than mixing in documents this vault could never
- *   decrypt (the bug this fix closes).
+ * The old single-vault version of this route had a second, unauthenticated
+ * "fresh install" branch (no User existed yet, so a password in the
+ * request body proved ownership instead of a session). That branch is
+ * retired here: in a multi-user account there is no longer a meaningful
+ * "the one vault doesn't exist yet" state to detect - there are simply
+ * other people's accounts, which must never be reachable without a
+ * session. Restoring a backup now always means "add these documents to
+ * MY already-logged-in account," checked the same way an existing-vault
+ * restore always was: req.dek is the real, live DEK for this session (no
+ * unwrap/password needed), and the manifest's dekFingerprint is compared
+ * against it - a mismatch means this backup is from a DIFFERENT account,
+ * refused outright rather than mixing in documents this account could
+ * never decrypt.
  */
 const importBackup = asyncHandler(async (req, res) => {
-  const { sourcePath, password } = req.body;
+  const { sourcePath } = req.body;
 
   if (!sourcePath || typeof sourcePath !== 'string') {
     throw badRequest('A sourcePath is required.');
   }
-  if (password !== undefined && typeof password !== 'string') {
-    throw badRequest('password must be a string.');
+
+  const user = await User.findById(req.userId);
+  if (!user) {
+    const error = new Error('Account not found.');
+    error.status = 404;
+    throw error;
   }
 
   const manifestPath = await assertBackupSource(sourcePath);
@@ -358,7 +313,7 @@ const importBackup = asyncHandler(async (req, res) => {
   }
 
   // Recompute the manifest's own tamper-evidence hash (see exportBackup)
-  // and reject the whole import before touching the vault if it doesn't
+  // and reject the whole import before touching anything if it doesn't
   // match - a corrupted or edited manifest means the document files next
   // to it can't be trusted either.
   const { checksum: storedChecksum, ...manifestBody } = manifest;
@@ -368,77 +323,20 @@ const importBackup = asyncHandler(async (req, res) => {
     throw badRequest('This backup appears corrupted or tampered with (manifest checksum mismatch). Import aborted.');
   }
 
-  // Old-format manifest (predates this fix): refuse outright rather than
-  // attempt a restore with no key material to rebuild a fresh install's
-  // vault from, or no dekFingerprint to check an existing vault against.
   if (manifest.manifestVersion !== CURRENT_MANIFEST_VERSION) {
     throw oldManifestError();
   }
-  // Guaranteed present on any manifest that legitimately carries this
-  // version (exportBackup always writes it, backfilling first if
-  // needed) - a v2-tagged manifest missing it is malformed the same way
-  // an old one is.
   if (typeof manifest.dekFingerprint !== 'string' || !manifest.dekFingerprint) {
     throw oldManifestError();
   }
 
-  const existingUser = await User.findOne();
-  let dek;
-
-  if (existingUser) {
-    // Existing vault: never touch its key material, only compare
-    // fingerprints. req.session.encryptionKey IS the current vault's
-    // real, live DEK (present - this branch is only reached once
-    // requireSession has already run), so no unwrap or password is
-    // needed here at all - only whether this backup's DEK is the SAME
-    // DEK, not a foreign one from a different Warden installation.
-    dek = req.session.encryptionKey;
-    const currentFingerprint = existingUser.dekFingerprint || fingerprintDEK(dek);
-    if (!existingUser.dekFingerprint) {
-      existingUser.dekFingerprint = currentFingerprint;
-      await existingUser.save();
-    }
-    if (manifest.dekFingerprint !== currentFingerprint) {
-      throw vaultMismatchError();
-    }
-  } else {
-    // Fresh install: no User yet, so no session was possible - this is
-    // the one state in which routes/backup.routes.js lets this route
-    // through without requireSession at all.
-    if (!password) {
-      throw badRequest('This backup\'s master password is required to restore it onto a fresh install.');
-    }
-    if (!REQUIRED_MANIFEST_USER_FIELDS.every((field) => typeof manifest[field] === 'string' && manifest[field])) {
-      throw oldManifestError();
-    }
-
-    try {
-      const passwordKek = deriveEncryptionKey(password, manifest.salt);
-      dek = unwrapKey(
-        manifest.wrappedDEKPassword,
-        passwordKek,
-        manifest.wrappedDEKPasswordIv,
-        manifest.wrappedDEKPasswordAuthTag
-      );
-    } catch {
-      throw wrongBackupPasswordError();
-    }
-
-    // Only now, after the password has actually proved correct, is
-    // anything written - same verify-before-write discipline as every
-    // other recovery flow in this app.
-    await User.create({
-      passwordHash: manifest.passwordHash,
-      salt: manifest.salt,
-      recoveryKeyHash: manifest.recoveryKeyHash,
-      wrappedDEKPassword: manifest.wrappedDEKPassword,
-      wrappedDEKPasswordIv: manifest.wrappedDEKPasswordIv,
-      wrappedDEKPasswordAuthTag: manifest.wrappedDEKPasswordAuthTag,
-      wrappedDEKRecovery: manifest.wrappedDEKRecovery,
-      wrappedDEKRecoveryIv: manifest.wrappedDEKRecoveryIv,
-      wrappedDEKRecoveryAuthTag: manifest.wrappedDEKRecoveryAuthTag,
-      dekFingerprint: manifest.dekFingerprint,
-    });
+  const currentFingerprint = user.dekFingerprint || fingerprintDEK(req.dek);
+  if (!user.dekFingerprint) {
+    user.dekFingerprint = currentFingerprint;
+    await user.save();
+  }
+  if (manifest.dekFingerprint !== currentFingerprint) {
+    throw accountMismatchError();
   }
 
   const entries = await fs.readdir(sourcePath);
@@ -460,7 +358,7 @@ const importBackup = asyncHandler(async (req, res) => {
     backupRecords.push(record);
   }
 
-  const existingDocuments = await Document.find({}, 'checksum');
+  const existingDocuments = await Document.find({ userId: req.userId }, 'checksum');
   const existingChecksums = new Set(existingDocuments.map((doc) => doc.checksum));
 
   let documentsImported = 0;
@@ -473,6 +371,7 @@ const importBackup = asyncHandler(async (req, res) => {
     }
 
     await Document.create({
+      userId: req.userId,
       filename: record.filename,
       folder: record.folder,
       encryptedBlob: Buffer.from(record.encryptedBlob, 'base64'),
@@ -495,21 +394,16 @@ const importBackup = asyncHandler(async (req, res) => {
     documentsImported,
     documentsSkipped,
     timestamp: new Date().toISOString(),
-    note: existingUser
-      ? 'This backup was verified to belong to this vault, so every restored document decrypts normally.'
-      : "This backup's key material was restored along with your documents - everything decrypts normally with the password you just entered.",
-    // Only present on a fresh-install restore: there was no session to
-    // have beforehand, so the caller needs one to actually enter the
-    // vault, same as POST /api/auth/setup and every recovery endpoint.
-    ...(existingUser ? {} : { sessionToken: createSession(dek) }),
+    note: 'This backup was verified to belong to this account, so every restored document decrypts normally.',
   });
 });
 
 /**
  * GET /api/backup/status
+ * requireSession.
  */
 const getStatus = asyncHandler(async (req, res) => {
-  const lastBackup = await BackupLog.findOne().sort({ createdAt: -1 });
+  const lastBackup = await BackupLog.findOne({ userId: req.userId }).sort({ createdAt: -1 });
 
   if (!lastBackup) {
     return res.status(200).json({ lastBackupAt: null, documentCount: null, backupPath: null });

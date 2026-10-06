@@ -1,26 +1,65 @@
 const mongoose = require('mongoose');
 
-// Warden is a single-user, single-installation local vault: there is no
-// multi-account system, so this collection is expected to hold exactly one
-// document per installation. No username/email field is needed because
-// nothing ever needs to look a user up by identity - the app just checks
-// "does a User document exist yet" (first-run setup) and, once it does,
-// verifies the master password against it.
+// One document per account. Multi-user: `email` is the account's real
+// identity now (lowercased/trimmed, unique), everything else keeps the
+// exact crypto design the single-vault app already used - it just applies
+// per-account instead of globally. There is still exactly one DEK per
+// account, wrapped under the password and the recovery key the same way.
 const userSchema = new mongoose.Schema(
   {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      maxlength: 254, // RFC 5321
+    },
+
+    // Set once POST /api/auth/verify-email consumes a valid token. Login
+    // is refused (after the password check - see auth.controller.js
+    // login) until this is true.
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    // SHA-256 of the current email-verification token, never the token
+    // itself - same "store only the hash" pattern as recovery/reset
+    // tokens below. Cleared once consumed or replaced by a fresh signup
+    // attempt against an unverified account.
+    verificationTokenHash: {
+      type: String,
+      required: false,
+    },
+    verificationTokenExpiresAt: {
+      type: Date,
+      required: false,
+    },
+
+    // Password-reset token (POST /api/auth/forgot-password /
+    // reset-password) - same hash-only, single-use, expiring pattern.
+    resetTokenHash: {
+      type: String,
+      required: false,
+    },
+    resetTokenExpiresAt: {
+      type: Date,
+      required: false,
+    },
+
     // Hash of the master password (never the password itself).
     passwordHash: {
       type: String,
       required: true,
     },
     // Salt used to derive the key-encryption key from the master password.
-    // Generated once at first-run setup.
+    // Generated once at signup.
     salt: {
       type: String,
       required: true,
     },
     // Hash of the recovery key. The recovery key itself is shown to the
-    // user once at setup and is never stored in plain form. Its salt is
+    // user once at signup and is never stored in plain form. Its salt is
     // embedded in this string (see utils/crypto.js hashRecoveryKey) and
     // doubles as the salt used to derive the recovery-key KEK below.
     recoveryKeyHash: {
@@ -28,16 +67,16 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Documents are encrypted with a single Data Encryption Key (DEK),
-    // generated once at setup and never regenerated - not even when the
-    // master password is reset. The DEK itself is never stored directly;
-    // it's stored "wrapped" (encrypted) under two independently-derived
-    // keys, so either the password or the recovery key alone is enough to
-    // recover it. This indirection is what makes password reset possible
-    // without losing access to documents already encrypted with the old
-    // password: resetting the password only re-wraps the existing DEK
-    // under a new password-derived key (see POST /api/auth/recover) - it
-    // never touches the DEK or re-encrypts any document.
+    // Documents are encrypted with a single Data Encryption Key (DEK) per
+    // account, generated once at signup and never regenerated - not even
+    // when the master password is reset. The DEK itself is never stored
+    // directly; it's stored "wrapped" (encrypted) under two independently-
+    // derived keys, so either the password or the recovery key alone is
+    // enough to recover it. This indirection is what makes password reset
+    // possible without losing access to documents already encrypted with
+    // the old password: resetting the password only re-wraps the existing
+    // DEK under a new password-derived key - it never touches the DEK or
+    // re-encrypts any document.
     wrappedDEKPassword: {
       type: String,
       required: true,
@@ -65,32 +104,24 @@ const userSchema = new mongoose.Schema(
     },
 
     // SHA-256 of the DEK itself (utils/crypto.js fingerprintDEK), set once
-    // at setup and never changed since the DEK itself never changes. Lets
-    // the USB and paired-phone recovery flows confirm the key material
-    // they unwrapped from an external source (a backup file, a phone)
-    // actually belongs to THIS vault before writing anything - a correct
-    // passphrase/token only proves the submitted blob unwraps cleanly, not
-    // that the blob came from this installation at all. Not needed by the
-    // recovery-key flow, which is already anchored to this same User
-    // record's own wrappedDEKRecovery field and has no equivalent risk.
-    //
-    // Deliberately NOT schema-required: vaults created before this field
-    // existed have no value, and a required rule would fail every save of
-    // that User (including plain unlock). It's backfilled lazily instead -
-    // see backfillDekFingerprint / verifyDekBelongsToVault in
-    // controllers/auth.controller.js.
+    // at signup and never changed since the DEK itself never changes. Lets
+    // a password reset without the recovery key (POST /api/auth/
+    // reset-password, no recoveryKey given) recognize that it's about to
+    // create a brand-new DEK and wipe the old one's documents, and lets
+    // POST /api/backup/import refuse a backup that belongs to a different
+    // account before writing anything.
     dekFingerprint: {
       type: String,
-      required: false,
+      required: true,
     },
 
-    // Count of consecutive failed unlock attempts since the last lockout
-    // (or since the last successful unlock). Resets to 0 either time.
+    // Count of consecutive failed login attempts since the last lockout
+    // (or since the last successful login). Resets to 0 either time.
     failedAttempts: {
       type: Number,
       default: 0,
     },
-    // Set once failedAttempts crosses the lockout threshold; unlock is
+    // Set once failedAttempts crosses the lockout threshold; login is
     // rejected outright (without even checking the password) while this
     // is present and in the future. Absent/undefined means not locked.
     lockedUntil: {

@@ -9,7 +9,11 @@ import styles from './RecoveryKeyReveal.module.css';
  * can't be dismissed by an accidental click - the recovery key is never
  * retrievable again after this screen closes.
  */
-function RecoveryKeyReveal({ recoveryKey, onConfirm }) {
+function RecoveryKeyReveal({
+  recoveryKey,
+  onConfirm,
+  subtitle = "This key is the only way to recover your vault if you forget your master password. It is shown once, right now, and never again.",
+}) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -30,10 +34,7 @@ function RecoveryKeyReveal({ recoveryKey, onConfirm }) {
 
       <div className={styles.copy}>
         <h1 className={styles.title}>Save your recovery key</h1>
-        <p className={styles.subtitle}>
-          This key is the only way to recover your vault if you forget your master
-          password. It is shown once, right now, and never again.
-        </p>
+        <p className={styles.subtitle}>{subtitle}</p>
       </div>
 
       <div className={styles.keyRow}>

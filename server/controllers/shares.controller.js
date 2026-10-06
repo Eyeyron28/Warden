@@ -73,7 +73,9 @@ async function issueShare(req, res, documentIds) {
   }
   uniqueIds.forEach((id) => assertValidId(id));
 
-  const documents = await Document.find({ _id: { $in: uniqueIds } }).select('filename mimeType');
+  const documents = await Document.find({ _id: { $in: uniqueIds }, userId: req.userId }).select(
+    'filename mimeType'
+  );
   if (documents.length !== uniqueIds.length) {
     throw documentNotFound();
   }
@@ -103,9 +105,10 @@ async function issueShare(req, res, documentIds) {
   // link covers every entry.
   const shareSalt = generateSalt();
   const shareKek = deriveEncryptionKey(token, shareSalt);
-  const wrappedShare = wrapKey(req.session.encryptionKey, shareKek);
+  const wrappedShare = wrapKey(req.dek, shareKek);
 
   const shareToken = await ShareToken.create({
+    userId: req.userId,
     entries: documents.map((doc) => ({
       documentId: doc._id,
       filename: doc.filename,
@@ -171,12 +174,13 @@ const createBulkShare = asyncHandler(async (req, res) => {
 const listShares = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findById(req.params.id);
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
   if (!document) {
     throw documentNotFound();
   }
 
   const shares = await ShareToken.find({
+    userId: req.userId,
     // Covers links that include this document among several, plus legacy
     // single-document links that predate `entries`.
     $or: [{ 'entries.documentId': document._id }, { documentId: document._id }],
@@ -202,7 +206,10 @@ const listShares = asyncHandler(async (req, res) => {
  * rather than needing the caller to distinguish those cases.
  */
 const revokeShare = asyncHandler(async (req, res) => {
-  await ShareToken.updateOne({ token: req.params.token }, { $set: { revoked: true } });
+  await ShareToken.updateOne(
+    { token: req.params.token, userId: req.userId },
+    { $set: { revoked: true } }
+  );
   res.status(200).json({ success: true });
 });
 
@@ -217,7 +224,10 @@ const revokeShare = asyncHandler(async (req, res) => {
  */
 const revokeShareById = asyncHandler(async (req, res) => {
   assertValidId(req.params.shareId, 'share');
-  await ShareToken.updateOne({ _id: req.params.shareId }, { $set: { revoked: true } });
+  await ShareToken.updateOne(
+    { _id: req.params.shareId, userId: req.userId },
+    { $set: { revoked: true } }
+  );
   res.status(200).json({ success: true });
 });
 

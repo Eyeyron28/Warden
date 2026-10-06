@@ -28,8 +28,12 @@ function formatCountdown(msRemaining) {
  * component only ever holds `recoveryToken` (which IS the credential,
  * same trust model as PairDevicePanel's pairingToken).
  */
-function PhoneRecoveryModal({ onClose, onRecovered }) {
-  const [status, setStatus] = useState('loading'); // loading | waiting | fulfilled | expired | error
+function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
+  // 'email' first - multi-account now, so there's no implicit "the" vault
+  // to start a request against; the owner confirms/edits whatever they'd
+  // already typed on the login form (initialEmail) before this proceeds.
+  const [status, setStatus] = useState('email'); // email | loading | waiting | fulfilled | expired | error
+  const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState('');
   const [recoveryToken, setRecoveryToken] = useState(null);
   const [recoverUrl, setRecoverUrl] = useState(null);
@@ -52,14 +56,14 @@ function PhoneRecoveryModal({ onClose, onRecovered }) {
     countdownRef.current = null;
   };
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (forEmail) => {
     stopTimers();
     setStatus('loading');
     setError('');
     setQrDataUrl(null);
 
     try {
-      const result = await initPhoneRecovery();
+      const result = await initPhoneRecovery(forEmail);
       setRecoveryToken(result.recoveryToken);
       setRecoverUrl(result.recoverUrl);
       setExpiresAt(result.expiresAt);
@@ -70,10 +74,13 @@ function PhoneRecoveryModal({ onClose, onRecovered }) {
     }
   }, []);
 
-  useEffect(() => {
-    start();
-    return stopTimers;
-  }, [start]);
+  const handleEmailSubmit = (event) => {
+    event.preventDefault();
+    if (!email.trim()) return;
+    start(email.trim());
+  };
+
+  useEffect(() => stopTimers, []);
 
   // QR encodes recoverUrl (the phone's camera opens straight into
   // PhoneVault with the token pre-filled) when the server could
@@ -164,6 +171,34 @@ function PhoneRecoveryModal({ onClose, onRecovered }) {
   return (
     <Modal title="Recover with paired phone" onClose={onClose}>
       <div className={styles.panel}>
+        {status === 'email' && (
+          <form className={styles.form} onSubmit={handleEmailSubmit} noValidate>
+            <p className={styles.instructions}>
+              Confirm the email for the account you're recovering - the request is sent to that
+              account's already-paired phone.
+            </p>
+            <div className={styles.field}>
+              <label htmlFor="phone-recovery-email" className={styles.fieldLabel}>
+                Account email
+              </label>
+              <input
+                id="phone-recovery-email"
+                type="email"
+                className={styles.textInput}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoFocus
+                autoComplete="email"
+              />
+            </div>
+            <button type="submit" className={styles.submitButton} disabled={!email.trim()}>
+              <span>Continue</span>
+              <ArrowRight size={18} weight="bold" />
+            </button>
+          </form>
+        )}
+
         {status === 'loading' && <p className={styles.hint}>Generating recovery code...</p>}
 
         {status === 'error' && (
@@ -175,7 +210,7 @@ function PhoneRecoveryModal({ onClose, onRecovered }) {
               <button type="button" className={styles.cancelButton} onClick={onClose}>
                 Cancel
               </button>
-              <button type="button" className={styles.submitButton} onClick={start}>
+              <button type="button" className={styles.submitButton} onClick={() => start(email)}>
                 Try again
               </button>
             </div>

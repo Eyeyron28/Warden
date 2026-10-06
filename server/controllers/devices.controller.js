@@ -27,7 +27,7 @@ function assertValidId(id, label = 'device') {
  * to hold its key material or sync credential.
  */
 const listDevices = asyncHandler(async (req, res) => {
-  const devices = await PairedDevice.find().sort({ pairedAt: -1 });
+  const devices = await PairedDevice.find({ userId: req.userId }).sort({ pairedAt: -1 });
   res.status(200).json(
     devices.map((device) => ({
       id: device._id,
@@ -53,7 +53,10 @@ const listDevices = asyncHandler(async (req, res) => {
  */
 const revokeDevice = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
-  await PairedDevice.updateOne({ _id: req.params.id }, { $set: { revoked: true } });
+  await PairedDevice.updateOne(
+    { _id: req.params.id, userId: req.userId },
+    { $set: { revoked: true } }
+  );
   res.status(200).json({ success: true });
 });
 

@@ -4,6 +4,17 @@ const mongoose = require('mongoose');
 // flow confirms the master password against the vault and the phone
 // commits to storing its own wrapped copy of the DEK locally.
 const pairedDeviceSchema = new mongoose.Schema({
+  // Whose account this device is paired with. requireDeviceAuth
+  // (middleware/requireDeviceAuth.js) resolves this to req.userId on every
+  // sync request, same as a PC session resolves req.userId from its own
+  // Session document - a deviceToken is just a much longer-lived,
+  // device-specific credential for the same account.
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  },
   // Set during pairing, e.g. "Josh's Phone" - purely a label for the
   // owner's benefit, never used for auth.
   deviceName: {

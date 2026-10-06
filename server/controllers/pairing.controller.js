@@ -76,7 +76,7 @@ const initPairing = asyncHandler(async (req, res) => {
   const token = crypto.randomBytes(PAIRING_TOKEN_BYTES).toString('hex');
   const expiresAt = new Date(Date.now() + PAIRING_TOKEN_TTL_MS);
 
-  await PairingToken.create({ token, expiresAt });
+  await PairingToken.create({ userId: req.userId, token, expiresAt });
 
   res.status(201).json({ pairingToken: token, apiBase, expiresAt });
 });
@@ -92,7 +92,7 @@ const initPairing = asyncHandler(async (req, res) => {
  * not usable anymore.
  */
 const getPairingStatus = asyncHandler(async (req, res) => {
-  const pairingToken = await PairingToken.findOne({ token: req.params.token });
+  const pairingToken = await PairingToken.findOne({ token: req.params.token, userId: req.userId });
 
   if (!pairingToken) {
     return res.status(200).json({ used: false, expired: true });
@@ -135,11 +135,15 @@ const completePairing = asyncHandler(async (req, res) => {
     throw invalidPairingToken();
   }
 
-  const user = await User.findOne();
+  // Resolved from the token's own userId (set at POST /api/pair/init,
+  // already requireSession-gated there) - never a singleton lookup, since
+  // there's no longer exactly one account to fall back to.
+  const user = await User.findById(token.userId);
   if (!user) {
-    // No vault to pair against - same generic response as a dead token,
-    // rather than a distinguishable "vault not set up" that leaks state
-    // to an unauthenticated caller.
+    // Extremely unlikely (the account would have to be deleted between
+    // init and complete) - same generic response as a dead token, rather
+    // than a distinguishable error that leaks state to an unauthenticated
+    // caller.
     throw invalidPairingToken();
   }
 
@@ -171,6 +175,7 @@ const completePairing = asyncHandler(async (req, res) => {
   const deviceToken = crypto.randomBytes(DEVICE_TOKEN_BYTES).toString('hex');
 
   const device = await PairedDevice.create({
+    userId: user._id,
     deviceName: typeof deviceName === 'string' && deviceName.trim() ? deviceName.trim() : undefined,
     deviceToken,
     wrappedDEKPhonePin: wrappedPin.wrappedKey,

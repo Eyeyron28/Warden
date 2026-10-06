@@ -10,9 +10,12 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
  * deviceToken - issued once, at pairing time, by POST /api/pair/complete -
  * and resolves it against PairedDevice, same shape as requireSession but
  * a different credential and a different store: a device token is
- * long-lived (until the owner revokes it) rather than an in-memory
- * session, since the phone has no equivalent of "unlocking" the PC's
- * vault each time it wants to sync.
+ * long-lived (until the owner revokes it) rather than a session, since
+ * the phone has no equivalent of "logging in" each time it wants to sync.
+ *
+ * Sets req.userId from the paired device's own `userId` field - a device
+ * token is scoped to exactly the account it was paired under, the same
+ * way a session token is scoped to the account that logged in.
  *
  * A missing/unknown/revoked token is treated identically - all three mean
  * "this device cannot sync" - so this never leaks which case applies.
@@ -35,6 +38,7 @@ const requireDeviceAuth = asyncHandler(async (req, res, next) => {
   }
 
   req.pairedDevice = device;
+  req.userId = device.userId;
   next();
 });
 

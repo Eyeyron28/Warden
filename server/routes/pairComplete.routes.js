@@ -16,6 +16,10 @@ const router = express.Router();
 // credential can be guessed repeatedly without anything else stopping
 // it. scrypt itself is already slow per attempt; this is defense in
 // depth on top of that, not a substitute for it.
-router.post('/complete', createRateLimiter({ max: 10, windowMs: 60 * 1000 }), completePairing);
+router.post(
+  '/complete',
+  createRateLimiter({ name: 'pair-complete', max: 10, windowMs: 60 * 1000 }),
+  completePairing
+);
 
 module.exports = router;
