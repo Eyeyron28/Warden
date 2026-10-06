@@ -92,6 +92,7 @@
 }
 
 .editButton,
+.moveButton,
 .shareButton,
 .deleteButton {
   display: grid;
@@ -103,7 +104,8 @@
     background var(--duration-fast) var(--ease-standard);
 }
 
-.editButton:hover {
+.editButton:hover,
+.moveButton:hover {
   color: var(--color-text);
   background: var(--color-surface-raised);
 }

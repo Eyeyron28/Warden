@@ -10,7 +10,9 @@ const {
   listExpiringDocuments,
   listFolders,
   createFolder,
+  renameFolder,
   deleteFolder,
+  moveItems,
   updateDocument,
   viewDocument,
   deleteDocument,
@@ -61,6 +63,9 @@ router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
 router.get('/folders', listFolders);
 router.post('/folders', createFolder);
+// Registered before PATCH /:id so "folders" is never captured as an id.
+router.patch('/folders', renameFolder);
+router.post('/move', moveItems);
 router.get('/:id/view', viewDocument);
 router.patch('/:id', updateDocument);
 

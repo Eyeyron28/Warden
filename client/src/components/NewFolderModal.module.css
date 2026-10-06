@@ -32,6 +32,15 @@
   box-shadow: 0 0 0 3px var(--color-accent-wash);
 }
 
+.textInputError {
+  border-color: var(--color-danger);
+}
+
+.textInputError:focus-visible {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px var(--color-danger-wash);
+}
+
 .helper {
   font-size: var(--fs-xs);
   color: var(--color-text-faint);

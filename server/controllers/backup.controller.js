@@ -6,6 +6,7 @@ const Document = require('../models/Document');
 const User = require('../models/User');
 const BackupLog = require('../models/BackupLog');
 const { generateSalt, deriveEncryptionKey, wrapKey, fingerprintDEK } = require('../utils/crypto');
+const { ensureFolderPath, toDocumentFolder } = require('../utils/folders');
 
 const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 
@@ -373,7 +374,7 @@ const importBackup = asyncHandler(async (req, res) => {
     await Document.create({
       userId: req.userId,
       filename: record.filename,
-      folder: record.folder,
+      folder: toDocumentFolder(await ensureFolderPath(req.userId, record.folder)),
       encryptedBlob: Buffer.from(record.encryptedBlob, 'base64'),
       iv: record.iv,
       authTag: record.authTag,

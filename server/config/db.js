@@ -29,8 +29,19 @@ function connectDB() {
 
   connectionPromise = mongoose
     .connect(mongoUri, { serverSelectionTimeoutMS: 5000 })
-    .then((conn) => {
+    .then(async (conn) => {
       console.log('MongoDB connected.');
+      // Required lazily - utils/migrateFolders pulls in models, which
+      // shouldn't load before mongoose is configured here.
+      // eslint-disable-next-line global-require
+      const migrateFolders = require('../utils/migrateFolders');
+      try {
+        await migrateFolders();
+      } catch (err) {
+        // A failed migration must not take the whole API down; it'll be
+        // retried on the next connection since its marker isn't written.
+        console.error(`Folder migration failed: ${err.message}`);
+      }
       return conn;
     })
     .catch((err) => {

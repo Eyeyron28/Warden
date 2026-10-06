@@ -1,13 +1,24 @@
 const mongoose = require('mongoose');
 
-// Lets an owner create an empty folder (Drive-style "New folder") before
-// any document is filed into it. Document.folder (a flat string, see
-// models/Document.js) is still the source of truth for which folder a
-// document actually lives in - this collection exists ONLY so a folder
-// name can exist with zero documents in it and still show up in
-// GET /api/documents/folders. The moment a document is filed into a name
-// that also exists here, both sources agree and nothing conflicts; there
-// is no foreign key between them to keep in sync.
+// The authoritative record of every folder in an account - one document
+// per folder, whether or not anything is filed in it yet. Document.folder
+// still holds the full slash-delimited path string a document lives in
+// (e.g. "Taxes/2024"), and every such path is guaranteed to have a Folder
+// record for each of its segments: every code path that files a document
+// somewhere goes through utils/folders.js ensureFolderPath, which resolves
+// each segment case-insensitively to the existing folder and creates only
+// what's missing.
+//
+// A folder's own full path is `${parentPath}/${name}` ("" parentPath means
+// top level). nameKey is the trimmed, lowercased name - the unique index
+// below is what makes "Josh", "josh" and " Josh " the same folder within
+// one parent, race-safe, rather than relying on a check-then-insert alone.
+//
+// autoIndex is off: the old { userId, name } index has to be dropped and
+// the old records rewritten into this shape BEFORE the new unique index
+// can be built (two legacy records with no nameKey would otherwise collide
+// on null). utils/migrateFolders.js does both, then builds the index with
+// syncIndexes(), once per database.
 const folderSchema = new mongoose.Schema(
   {
     userId: {
@@ -15,20 +26,26 @@ const folderSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    parentPath: {
+      type: String,
+      default: '',
+    },
     name: {
       type: String,
       required: true,
       trim: true,
     },
+    nameKey: {
+      type: String,
+      required: true,
+    },
   },
   {
-    timestamps: { createdAt: true, updatedAt: false },
+    timestamps: true,
+    autoIndex: false,
   }
 );
 
-// `name` used to be globally unique; now a folder name only has to be
-// unique within one account - two different accounts can both have a
-// "Taxes" folder.
-folderSchema.index({ userId: 1, name: 1 }, { unique: true });
+folderSchema.index({ userId: 1, parentPath: 1, nameKey: 1 }, { unique: true });
 
 module.exports = mongoose.model('Folder', folderSchema);

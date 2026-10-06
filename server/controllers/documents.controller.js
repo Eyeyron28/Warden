@@ -2,8 +2,23 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
-const Folder = require('../models/Folder');
 const { encryptFile, decryptFile } = require('../utils/crypto');
+const {
+  httpError,
+  parentOf,
+  lastSegment,
+  toDocumentFolder,
+  normalizeDocumentFolder,
+  isSameOrDescendant,
+  validateFolderName,
+  resolveFolderPath,
+  ensureFolderPath,
+  createFolderExplicit,
+  moveFolder,
+  runInTransaction,
+  listFolderPaths,
+  deleteFolderTree,
+} = require('../utils/folders');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -119,10 +134,15 @@ const createDocument = asyncHandler(async (req, res) => {
 
   const { ciphertext, iv, authTag } = encryptFile(buffer, req.dek);
 
+  // Implicit folder creation: "josh/2024" files into an existing
+  // "Josh/2024" rather than creating a second, differently-cased folder
+  // (see utils/folders.js ensureFolderPath). Never errors on a collision.
+  const canonicalFolder = await ensureFolderPath(req.userId, folder || '');
+
   const document = await Document.create({
     userId: req.userId,
     filename: originalname,
-    folder: folder || undefined, // let the schema default ("root") apply
+    folder: toDocumentFolder(canonicalFolder),
     encryptedBlob: Buffer.from(ciphertext, 'base64'),
     iv,
     authTag,
@@ -176,81 +196,84 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/documents/folders
- * Distinct folder names currently in use across all documents, PLUS any
- * empty folders created via POST /api/documents/folders (the Folder
- * collection - see models/Folder.js) that don't have a document in them
- * yet, plus "root" even if nothing is explicitly filed there - every
- * uncategorized document already defaults to "root" via the schema, so
- * the frontend can always offer it as a destination even in a freshly-
- * emptied vault. "root" is sorted first since it's the default/catch-all
- * rather than a folder the owner named; everything else is alphabetical.
+ * Every folder path in the account (canonical spelling - see
+ * models/Folder.js), plus "root" even if nothing is explicitly filed there,
+ * so the frontend can always offer the top level. "root" is sorted first;
+ * everything else is alphabetical.
  */
 const listFolders = asyncHandler(async (req, res) => {
-  const [documentFolders, emptyFolders] = await Promise.all([
-    Document.distinct('folder', { userId: req.userId }),
-    Folder.distinct('name', { userId: req.userId }),
-  ]);
-  const folderSet = new Set([...documentFolders, ...emptyFolders].filter(Boolean));
-  folderSet.add(FOLDER_ROOT);
-
-  const sorted = [...folderSet].sort((a, b) => {
-    if (a === FOLDER_ROOT) return -1;
-    if (b === FOLDER_ROOT) return 1;
-    return a.localeCompare(b);
-  });
-
-  res.status(200).json(sorted);
+  const paths = await listFolderPaths(req.userId);
+  const sorted = paths.sort((a, b) => a.localeCompare(b));
+  res.status(200).json([FOLDER_ROOT, ...sorted]);
 });
 
 /**
  * POST /api/documents/folders
- * Body: { name }
- * Creates an empty folder - "New folder" from the frontend's "+ New"
- * menu. Nothing references this record directly; it exists purely so
- * GET /api/documents/folders can list a folder that has zero documents
- * in it yet (see models/Folder.js). Filing a document into this name
- * later works exactly like filing one into any other folder string -
- * Document.folder doesn't know or care whether a Folder record exists.
+ * Body: { name } - the new folder's full path, e.g. "Taxes/2024" for a
+ * "2024" folder created while viewing "Taxes" (what the New folder dialog
+ * sends). Optionally { parentPath, name } instead.
  *
- * Idempotent-ish: creating a folder that already has documents in it (or
- * an empty Folder record with the same name) is treated as success
- * rather than a conflict - the caller asked for a folder with this name
- * to exist, and after this request, it does.
+ * Explicit creation, so unlike every implicit path (uploads, sync) a name
+ * that already exists in that parent - compared trimmed and
+ * case-insensitively - is a 409 with code FOLDER_EXISTS, not a silent
+ * success. The parent folders themselves resolve/create implicitly.
  */
 const createFolder = asyncHandler(async (req, res) => {
-  const { name } = req.body;
+  const { name, parentPath } = req.body;
 
-  if (!name || typeof name !== 'string' || !name.trim()) {
+  if (typeof name !== 'string' || (parentPath !== undefined && typeof parentPath !== 'string')) {
     throw badRequest('A folder name is required.');
   }
 
-  const trimmed = name.trim();
-  if (trimmed === FOLDER_ROOT) {
-    throw badRequest('"root" is reserved for uncategorized documents.');
+  let parent;
+  let leaf;
+  if (parentPath !== undefined) {
+    parent = parentPath;
+    leaf = name;
+  } else {
+    // Full-path form: everything before the last "/" is the parent. A
+    // "\" in the leaf is rejected by validateFolderName.
+    const lastSlash = name.lastIndexOf('/');
+    parent = lastSlash === -1 ? '' : name.slice(0, lastSlash);
+    leaf = lastSlash === -1 ? name : name.slice(lastSlash + 1);
   }
 
-  const alreadyHasDocuments = await Document.exists({ userId: req.userId, folder: trimmed });
-  if (!alreadyHasDocuments) {
-    // upsert rather than a plain create: a second "create this folder"
-    // call for a name that already exists as an empty Folder record
-    // should succeed quietly, not throw a duplicate-key error.
-    await Folder.updateOne(
-      { userId: req.userId, name: trimmed },
-      { $setOnInsert: { userId: req.userId, name: trimmed } },
-      { upsert: true }
-    );
+  const created = await createFolderExplicit(req.userId, parent, leaf);
+  res.status(201).json({ name: created });
+});
+
+/**
+ * PATCH /api/documents/folders
+ * Body: { path, name }
+ * Renames a folder in place. Same validation and uniqueness rule as
+ * creation (409 FOLDER_EXISTS on a clash with a sibling), and the same
+ * transactional prefix rewrite as Move, so every nested folder and
+ * document follows the new name.
+ */
+const renameFolder = asyncHandler(async (req, res) => {
+  const { path: folderPath, name } = req.body;
+  if (typeof folderPath !== 'string' || !folderPath.trim()) {
+    throw badRequest('A folder path is required.');
   }
 
-  res.status(201).json({ name: trimmed });
+  const srcPath = await resolveFolderPath(req.userId, folderPath);
+  if (!srcPath) throw httpError(404, 'Folder not found.');
+
+  const parent = parentOf(srcPath);
+  const newName = validateFolderName(name, { atRoot: !parent });
+
+  const { newPath } = await runInTransaction((session) =>
+    moveFolder(req.userId, srcPath, parent, newName, session)
+  );
+  res.status(200).json({ path: newPath });
 });
 
 /**
  * DELETE /api/documents/folders?path=<folder path>
- * Removes the empty-folder records (models/Folder.js) for this folder and
- * everything nested under it, so a folder deleted from the UI stops showing
- * up as an empty tile. Deliberately does NOT touch documents - the client
- * deletes those through the ordinary per-document delete first; this only
- * cleans up the folder markers. Idempotent.
+ * Removes this folder's record and every nested folder record. Documents
+ * are deleted by the client first, one by one; anything still filed under
+ * the path keeps its folders (see utils/folders.js deleteFolderTree).
+ * Idempotent.
  */
 const deleteFolder = asyncHandler(async (req, res) => {
   const { path: folderPath } = req.query;
@@ -258,18 +281,171 @@ const deleteFolder = asyncHandler(async (req, res) => {
   if (!folderPath || typeof folderPath !== 'string' || !folderPath.trim()) {
     throw badRequest('A folder path is required.');
   }
-  const trimmed = folderPath.trim();
-  if (trimmed === FOLDER_ROOT) {
+  if (folderPath.trim() === FOLDER_ROOT) {
     throw badRequest('"root" cannot be deleted.');
   }
 
-  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  await Folder.deleteMany({
-    userId: req.userId,
-    $or: [{ name: trimmed }, { name: { $regex: `^${escaped}/` } }],
-  });
-
+  await deleteFolderTree(req.userId, folderPath.trim());
   res.status(204).send();
+});
+
+const MAX_MOVE_ITEMS = 500;
+
+/**
+ * POST /api/documents/move
+ * Body: { items: [{ type: 'file', id } | { type: 'folder', path }], destination }
+ * `destination` is a folder path, "" for the top level.
+ *
+ * Moves each item independently and reports per item:
+ *   { ..., status: 'moved' | 'unchanged' | 'conflict' | 'invalid' | 'not_found', message? }
+ * A conflict (an item with the same name already in the destination) is
+ * never overwritten - it's reported and the rest still move. Folders are
+ * referenced by path because that's how the client's tree identifies them
+ * (folders have no client-facing ids); both are resolved within this
+ * account only, so another account's items are simply "not_found".
+ *
+ * Each folder move is its own transaction (see utils/folders.js
+ * moveFolder): the folder, its subfolders and everything inside move
+ * together or not at all.
+ */
+const moveItems = asyncHandler(async (req, res) => {
+  const { items, destination } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_MOVE_ITEMS) {
+    throw badRequest(`items must be a list of 1 to ${MAX_MOVE_ITEMS} files or folders.`);
+  }
+  if (typeof destination !== 'string') {
+    throw badRequest('destination must be a folder path ("" for the top level).');
+  }
+  for (const item of items) {
+    const validFile = item?.type === 'file' && typeof item.id === 'string';
+    const validFolder = item?.type === 'folder' && typeof item.path === 'string';
+    if (!validFile && !validFolder) {
+      throw badRequest('Each item must be { type: "file", id } or { type: "folder", path }.');
+    }
+  }
+
+  const destPath = await resolveFolderPath(req.userId, destination);
+  if (destPath === null) {
+    throw httpError(404, 'Destination folder not found.');
+  }
+
+
+  const results = new Array(items.length);
+  const describe = (item) =>
+    item.type === 'file' ? { type: 'file', id: item.id } : { type: 'folder', path: item.path };
+
+  // Snapshot everything up front, before anything moves: each selected
+  // folder's canonical path, and each selected file's ORIGINAL folder - a
+  // file (or subfolder) that sits inside another selected folder moves
+  // along with that folder rather than being pulled out of it into the
+  // destination, and whether it "moved" depends on whether that folder did.
+  const folderPaths = new Map(); // item index -> canonical path (or null)
+  const documents = new Map(); // item index -> document (or null)
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.type === 'folder') {
+      // eslint-disable-next-line no-await-in-loop
+      folderPaths.set(index, await resolveFolderPath(req.userId, item.path));
+    } else {
+      documents.set(
+        index,
+        mongoose.Types.ObjectId.isValid(item.id)
+          ? // eslint-disable-next-line no-await-in-loop
+            await Document.findOne({ _id: item.id, userId: req.userId })
+          : null
+      );
+    }
+  }
+  const selected = [...folderPaths.values()].filter(Boolean);
+  const enclosingSelected = (path, self) =>
+    selected.find((folder) => folder !== self && isSameOrDescendant(path, folder));
+
+  const errorStatus = (err) =>
+    ({ 409: 'conflict', 404: 'not_found', 400: 'invalid' })[err.status] || null;
+
+  // 1. Folders that aren't inside another selected folder.
+  const movedFolders = new Set();
+  for (const [index, srcPath] of folderPaths) {
+    const base = describe(items[index]);
+    if (!srcPath) {
+      results[index] = { ...base, status: 'not_found', message: 'Folder not found.' };
+      continue;
+    }
+    if (enclosingSelected(srcPath, srcPath)) continue; // handled in step 2
+    const name = lastSegment(srcPath);
+    if (parentOf(srcPath) === destPath) {
+      results[index] = { ...base, name, status: 'unchanged', message: 'Already in this folder.' };
+      continue;
+    }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const { newPath } = await runInTransaction((session) =>
+        moveFolder(req.userId, srcPath, destPath, name, session)
+      );
+      movedFolders.add(srcPath);
+      results[index] = { ...base, name, status: 'moved', newPath };
+    } catch (err) {
+      const status = errorStatus(err);
+      if (!status) throw err;
+      results[index] = { ...base, name, status, message: err.message };
+    }
+  }
+
+  const alongWith = (path, self) => {
+    const enclosing = enclosingSelected(path, self);
+    if (!enclosing) return null;
+    return movedFolders.has(enclosing)
+      ? { status: 'moved', message: `Moved along with "${lastSegment(enclosing)}".` }
+      : { status: 'invalid', message: `Not moved - its folder "${lastSegment(enclosing)}" couldn't be moved.` };
+  };
+
+  // 2. Folders nested inside another selected folder.
+  for (const [index, srcPath] of folderPaths) {
+    if (!srcPath || results[index]) continue;
+    results[index] = { ...describe(items[index]), name: lastSegment(srcPath), ...alongWith(srcPath, srcPath) };
+  }
+
+  // 3. Files.
+  for (const [index, document] of documents) {
+    const base = describe(items[index]);
+    if (!document) {
+      results[index] = { ...base, status: 'not_found', message: 'File not found.' };
+      continue;
+    }
+    const name = document.filename;
+    const original = normalizeDocumentFolder(document.folder);
+    const along = alongWith(original, null);
+    if (along) {
+      results[index] = { ...base, name, ...along };
+      continue;
+    }
+    if (original === destPath) {
+      results[index] = { ...base, name, status: 'unchanged', message: 'Already in this folder.' };
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const clash = await Document.exists({
+      userId: req.userId,
+      folder: toDocumentFolder(destPath),
+      filename: name,
+      _id: { $ne: document._id },
+    });
+    if (clash) {
+      results[index] = { ...base, name, status: 'conflict', message: `A file named "${name}" is already there.` };
+      continue;
+    }
+    document.folder = toDocumentFolder(destPath);
+    // eslint-disable-next-line no-await-in-loop
+    await document.save(); // bumps updatedAt (timestamps) for phone sync
+    results[index] = { ...base, name, status: 'moved' };
+  }
+
+  res.status(200).json({
+    destination: destPath,
+    movedCount: results.filter((result) => result.status === 'moved').length,
+    results,
+  });
 });
 
 /**
@@ -304,11 +480,11 @@ const updateDocument = asyncHandler(async (req, res) => {
     document.filename = filename.trim();
   }
 
+  // Changing a document's folder only happens through POST
+  // /api/documents/move, which enforces the folder rules and name-conflict
+  // checks - never as a side effect of a metadata edit.
   if (folder !== undefined) {
-    if (typeof folder !== 'string') {
-      throw badRequest('folder must be a string.');
-    }
-    document.folder = folder.trim() || FOLDER_ROOT;
+    throw badRequest('Use Move to change which folder a document is in.');
   }
 
   if (expiryDate !== undefined) {
@@ -396,7 +572,9 @@ module.exports = {
   listExpiringDocuments,
   listFolders,
   createFolder,
+  renameFolder,
   deleteFolder,
+  moveItems,
   updateDocument,
   viewDocument,
   deleteDocument,

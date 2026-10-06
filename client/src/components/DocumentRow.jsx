@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { FileText, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
+import { ArrowsOutCardinal, FileText, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
 
 import StatusBadge from './StatusBadge.jsx';
 import { formatDate } from '../utils/formatDate.js';
+import { DRAG_MIME, canDragDocuments } from '../utils/dragAndDrop.js';
 import styles from './DocumentRow.module.css';
 
 function expiryBadgeLabel(daysUntilExpiry) {
@@ -21,6 +22,7 @@ function DocumentRow({
   onDelete,
   onShare,
   onEdit,
+  onMove,
   isViewing,
   isDeleting,
   selectMode,
@@ -28,6 +30,8 @@ function DocumentRow({
   onToggleSelect,
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Desktop drag source for dropping onto a folder tile (utils/dragAndDrop.js).
+  const [draggable] = useState(canDragDocuments);
 
   const handleDeleteClick = () => {
     if (confirmingDelete) {
@@ -39,7 +43,14 @@ function DocumentRow({
   };
 
   return (
-    <li className={styles.row}>
+    <li
+      className={styles.row}
+      draggable={draggable && !selectMode && !confirmingDelete}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(DRAG_MIME, document.id);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+    >
       {selectMode && (
         <input
           type="checkbox"
@@ -86,6 +97,16 @@ function DocumentRow({
             >
               <PencilSimple size={16} />
             </button>
+            {onMove && (
+              <button
+                type="button"
+                className={styles.moveButton}
+                onClick={() => onMove(document)}
+                aria-label={`Move ${document.filename}`}
+              >
+                <ArrowsOutCardinal size={16} />
+              </button>
+            )}
             <button
               type="button"
               className={styles.shareButton}

@@ -417,13 +417,21 @@ function PhoneVault() {
     const leftoverPaths = documents
       .filter((doc) => !planIds.has(doc.id) || failedIds.has(doc.id))
       .map((doc) => normalizeFolderPath(doc.folder));
+    let failedFolderCount = 0;
     for (const folderPath of plan.folderPaths) {
       const hasLeftovers = leftoverPaths.some(
         (path) => path === folderPath || path.startsWith(`${folderPath}/`)
       );
       if (hasLeftovers) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await deleteFolderOnPC(deviceAuth.apiBase, deviceAuth.deviceToken, folderPath).catch(() => {});
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await deleteFolderOnPC(deviceAuth.apiBase, deviceAuth.deviceToken, folderPath);
+      } catch {
+        // Used to be swallowed silently. The local copy still goes (the
+        // documents inside are already deleted), but say so - the folder
+        // will reappear on the next sync if the PC still has it.
+        failedFolderCount += 1;
+      }
       for (const record of localFolders) {
         if (record.name === folderPath || record.name.startsWith(`${folderPath}/`)) {
           // eslint-disable-next-line no-await-in-loop
@@ -433,11 +441,18 @@ function PhoneVault() {
     }
 
     await loadDocuments();
+    const problems = [];
     if (failed.length > 0) {
-      setViewError(
-        `Could not delete ${failed.length} of ${plan.docs.length} document${plan.docs.length === 1 ? '' : 's'}. Is the PC reachable?`
+      problems.push(
+        `Could not delete ${failed.length} of ${plan.docs.length} document${plan.docs.length === 1 ? '' : 's'}.`
       );
     }
+    if (failedFolderCount > 0) {
+      problems.push(
+        `Could not remove ${failedFolderCount} folder${failedFolderCount === 1 ? '' : 's'} on the PC - it may come back on the next sync.`
+      );
+    }
+    if (problems.length > 0) setViewError(`${problems.join(' ')} Is the PC reachable?`);
     setBulkDeleting(false);
     exitSelectMode();
   };
@@ -608,6 +623,29 @@ function PhoneVault() {
     const folderNames = localFolders.map((record) => normalizeFolderPath(record.name));
     if (!pathStillExists(currentPath, docFolders, folderNames)) setCurrentPath('');
   }, [phase, docsLoading, documents, localFolders, currentPath]);
+
+  // The phone creates folders locally (pushed on the next sync), so it
+  // checks the same rule the server enforces - same parent, compared
+  // trimmed and case-insensitively - instead of letting "josh" sit next to
+  // "Josh" until a sync quietly merges them.
+  const createLocalFolder = async (fullPath) => {
+    const key = fullPath.trim().toLowerCase();
+    // Every known path plus all of its ancestors - a folder only implied by
+    // a deeper path ("Josh" from "Josh/2024") counts too.
+    const known = new Set();
+    for (const path of [
+      ...documents.map((doc) => normalizeFolderPath(doc.folder)),
+      ...localFolders.map((record) => normalizeFolderPath(record.name)),
+    ]) {
+      const parts = splitPath(path);
+      for (let index = 1; index <= parts.length; index += 1) known.add(joinPath(parts.slice(0, index)));
+    }
+    const existing = [...known].find((path) => path.toLowerCase() === key);
+    if (existing) {
+      throw new Error(`A folder named "${existing.split('/').pop()}" already exists here.`);
+    }
+    await saveLocalFolder({ name: fullPath, syncStatus: 'pending' });
+  };
 
   return (
     <div className={styles.page}>
@@ -934,7 +972,7 @@ function PhoneVault() {
           currentPath={currentPath}
           onClose={() => setNewFolderOpen(false)}
           onCreated={() => loadDocuments()}
-          createFolderFn={(fullPath) => saveLocalFolder({ name: fullPath, syncStatus: 'pending' })}
+          createFolderFn={createLocalFolder}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckSquare, FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
+import { ArrowsOutCardinal, CheckSquare, FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
 import SideNav from '../components/SideNav.jsx';
@@ -17,6 +17,9 @@ import ShareModal from '../components/ShareModal.jsx';
 import EditDocumentModal from '../components/EditDocumentModal.jsx';
 import FolderBreadcrumb from '../components/FolderBreadcrumb.jsx';
 import FolderTile from '../components/FolderTile.jsx';
+import MoveModal from '../components/MoveModal.jsx';
+import RenameFolderModal from '../components/RenameFolderModal.jsx';
+import ToastRegion from '../components/Toast.jsx';
 import {
   listDocuments,
   uploadDocument,
@@ -25,6 +28,7 @@ import {
   deleteDocument,
   deleteFolder,
   listFolders,
+  moveItems,
 } from '../services/documentsService.js';
 import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -77,6 +81,14 @@ function VaultShell({ onLocked }) {
   const [actionError, setActionError] = useState('');
 
   const [editingDocument, setEditingDocument] = useState(null);
+
+  // Move picker: { items, title, currentLocation, movingFolders, fromSelection }.
+  const [moveState, setMoveState] = useState(null);
+  const [renamingPath, setRenamingPath] = useState(null);
+  // Success toasts only; errors keep using the actionError banner.
+  const [toast, setToast] = useState(null);
+  const showToast = useCallback((message) => setToast({ id: Date.now(), message }), []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -378,13 +390,20 @@ function VaultShell({ onLocked }) {
     const remainingPaths = documents
       .filter((doc) => !deletedIds.has(doc.id))
       .map((doc) => normalizeFolderPath(doc.folder));
+    let failedFolders = 0;
     for (const folderPath of plan.folderPaths) {
       const hasLeftovers = remainingPaths.some(
         (path) => path === folderPath || path.startsWith(`${folderPath}/`)
       );
       if (!hasLeftovers) {
-        // eslint-disable-next-line no-await-in-loop
-        await deleteFolder(folderPath).catch(() => {});
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await deleteFolder(folderPath);
+        } catch {
+          // Used to be swallowed silently - the folder then just stayed on
+          // screen with no explanation.
+          failedFolders += 1;
+        }
       }
     }
 
@@ -392,11 +411,14 @@ function VaultShell({ onLocked }) {
       setDocuments((prev) => prev.filter((doc) => !deletedIds.has(doc.id)));
     }
     refreshFolders();
+    const problems = [];
     if (failedCount > 0) {
-      setActionError(
-        `Could not delete ${failedCount} of ${ids.length} document${ids.length === 1 ? '' : 's'}.`
-      );
+      problems.push(`Could not delete ${failedCount} of ${ids.length} document${ids.length === 1 ? '' : 's'}.`);
     }
+    if (failedFolders > 0) {
+      problems.push(`Could not remove ${failedFolders} folder${failedFolders === 1 ? '' : 's'}.`);
+    }
+    if (problems.length > 0) setActionError(problems.join(' '));
 
     setBulkDeleting(false);
     exitSelectMode();
@@ -416,6 +438,115 @@ function VaultShell({ onLocked }) {
       documentIds: plan.documentIds,
       title: `Share ${plan.documentIds.length} files`,
     });
+  };
+
+  // A folder the person is currently inside (or above) was moved/renamed:
+  // follow it to its new path instead of bouncing back to the top level.
+  const followRenamedPath = (oldPath, newPath) => {
+    setCurrentPath((current) => {
+      if (current === oldPath) return newPath;
+      if (current.startsWith(`${oldPath}/`)) return newPath + current.slice(oldPath.length);
+      return current;
+    });
+  };
+
+  const openMoveForDocument = (doc) => {
+    setEditingDocument(null);
+    setMoveState({
+      items: [{ type: 'file', id: doc.id }],
+      title: `Move "${doc.filename}"`,
+      currentLocation: normalizeFolderPath(doc.folder),
+      movingFolders: [],
+      fromSelection: false,
+    });
+  };
+
+  const openMoveForFolder = (path) => {
+    setMoveState({
+      items: [{ type: 'folder', path }],
+      title: `Move "${path.split('/').pop()}"`,
+      currentLocation: splitPath(path).slice(0, -1).join('/'),
+      movingFolders: [path],
+      fromSelection: false,
+    });
+  };
+
+  const openMoveForSelection = () => {
+    const folderPaths = [...selectedFolders];
+    const files = documents.filter((doc) => selectedIds.has(doc.id));
+    const total = folderPaths.length + files.length;
+    if (total === 0) return;
+    // "Current location" is only meaningful when every selected item lives
+    // in the same folder (the usual case - Select works within one view).
+    const parents = new Set([
+      ...files.map((doc) => normalizeFolderPath(doc.folder)),
+      ...folderPaths.map((path) => splitPath(path).slice(0, -1).join('/')),
+    ]);
+    setMoveState({
+      items: [
+        ...files.map((doc) => ({ type: 'file', id: doc.id })),
+        ...folderPaths.map((path) => ({ type: 'folder', path })),
+      ],
+      title: `Move ${total} item${total === 1 ? '' : 's'}`,
+      currentLocation: parents.size === 1 ? [...parents][0] : null,
+      movingFolders: folderPaths,
+      fromSelection: true,
+    });
+  };
+
+  const describeDestination = (destination) => destination || 'My Vault';
+
+  const handleMoved = async (response, { close }) => {
+    for (const entry of response.results) {
+      if (entry.type === 'folder' && entry.status === 'moved' && entry.newPath) {
+        followRenamedPath(entry.path, entry.newPath);
+      }
+    }
+    if (response.movedCount > 0) {
+      showToast(
+        `Moved ${response.movedCount} item${response.movedCount === 1 ? '' : 's'} to ${describeDestination(response.destination)}`
+      );
+    }
+    if (close) {
+      if (moveState?.fromSelection) exitSelectMode();
+      setMoveState(null);
+    }
+    await refresh();
+    refreshFolders();
+  };
+
+  const closeMoveModal = () => {
+    // Closing after a partial result still clears the selection - whatever
+    // could move has moved, and the list underneath is already refreshed.
+    if (moveState?.fromSelection) exitSelectMode();
+    setMoveState(null);
+  };
+
+  const handleRenamed = async (oldPath, newPath) => {
+    followRenamedPath(oldPath, newPath);
+    showToast(`Renamed to "${newPath.split('/').pop()}"`);
+    await refresh();
+    refreshFolders();
+  };
+
+  // Desktop drag-and-drop of a document onto a folder tile.
+  const handleDropDocument = async (documentId, folderPath) => {
+    setActionError('');
+    try {
+      const response = await moveItems([{ type: 'file', id: documentId }], folderPath);
+      const entry = response.results[0];
+      if (entry.status === 'moved') {
+        showToast(`Moved "${entry.name}" to ${describeDestination(response.destination)}`);
+        await refresh();
+        refreshFolders();
+      } else if (entry.status !== 'unchanged') {
+        setActionError(entry.message || 'Could not move this document.');
+      }
+    } catch (err) {
+      if (!isSessionExpired(err)) {
+        setActionError(extractErrorMessage(err, 'Could not move this document.'));
+      }
+    }
   };
 
   const handleEditSaved = (updatedDocument) => {
@@ -679,6 +810,11 @@ function VaultShell({ onLocked }) {
                     onToggleSelect={() =>
                       toggleFolderSelected(joinPath([...splitPath(currentPath), name]))
                     }
+                    onRename={() => setRenamingPath(joinPath([...splitPath(currentPath), name]))}
+                    onMove={() => openMoveForFolder(joinPath([...splitPath(currentPath), name]))}
+                    onDropDocument={(id) =>
+                      handleDropDocument(id, joinPath([...splitPath(currentPath), name]))
+                    }
                   />
                 ))}
               </ul>
@@ -716,6 +852,16 @@ function VaultShell({ onLocked }) {
                   <button
                     type="button"
                     className={styles.bulkShareButton}
+                    onClick={openMoveForSelection}
+                    disabled={selectedIds.size + selectedFolders.size === 0 || bulkDeleting}
+                  >
+                    <ArrowsOutCardinal size={16} weight="bold" />
+                    <span>Move</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={styles.bulkShareButton}
                     onClick={handleBulkShare}
                     disabled={selectedIds.size + selectedFolders.size === 0 || bulkDeleting}
                   >
@@ -740,6 +886,7 @@ function VaultShell({ onLocked }) {
                     onDelete={handleDelete}
                     onShare={(doc) => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
                     onEdit={setEditingDocument}
+                    onMove={openMoveForDocument}
                     isViewing={viewingId === doc.id}
                     isDeleting={deletingId === doc.id}
                     selectMode={selectMode}
@@ -760,6 +907,7 @@ function VaultShell({ onLocked }) {
                     onDelete={handleDelete}
                     onShare={(doc) => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
                     onEdit={setEditingDocument}
+                    onMove={openMoveForDocument}
                     isViewing={viewingId === doc.id}
                     isDeleting={deletingId === doc.id}
                     selectMode={selectMode}
@@ -923,8 +1071,34 @@ function VaultShell({ onLocked }) {
           document={editingDocument}
           onClose={() => setEditingDocument(null)}
           onSaved={handleEditSaved}
+          onMove={openMoveForDocument}
         />
       )}
+
+      {moveState && (
+        <MoveModal
+          key={moveState.title}
+          items={moveState.items}
+          title={moveState.title}
+          folderPaths={[...folders, ...documents.map((doc) => normalizeFolderPath(doc.folder))]}
+          startPath={currentPath}
+          currentLocation={moveState.currentLocation}
+          movingFolders={moveState.movingFolders}
+          onClose={closeMoveModal}
+          onMoved={handleMoved}
+          onFolderCreated={refreshFolders}
+        />
+      )}
+
+      {renamingPath && (
+        <RenameFolderModal
+          path={renamingPath}
+          onClose={() => setRenamingPath(null)}
+          onRenamed={handleRenamed}
+        />
+      )}
+
+      <ToastRegion toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

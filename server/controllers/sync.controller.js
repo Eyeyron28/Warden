@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
-const Folder = require('../models/Folder');
+const { ensureFolderPath, listFolderPaths, toDocumentFolder } = require('../utils/folders');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -61,7 +61,7 @@ const pullDocuments = asyncHandler(async (req, res) => {
     (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)
   );
 
-  const [newDocuments, index, documentFolders, emptyFolders] = await Promise.all([
+  const [newDocuments, index, folderPaths] = await Promise.all([
     Document.find({ userId: req.userId, _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
     // Metadata-only listing of EVERY document on this account - this is
     // what lets the phone notice PC-side deletes (an id it holds that's
@@ -69,13 +69,10 @@ const pullDocuments = asyncHandler(async (req, res) => {
     // folder/expiryDate), which the "new to you" list above can never
     // express.
     Document.find({ userId: req.userId }, 'filename folder expiryDate'),
-    Document.distinct('folder', { userId: req.userId }),
-    Folder.distinct('name', { userId: req.userId }),
+    listFolderPaths(req.userId),
   ]);
 
-  const folders = [...new Set([...documentFolders, ...emptyFolders].filter(Boolean))].filter(
-    (name) => name !== 'root'
-  );
+  const folders = folderPaths.filter((name) => name !== 'root');
 
   res.status(200).json({
     documents: newDocuments.map(toSyncPayload),
@@ -116,21 +113,13 @@ const pushDocuments = asyncHandler(async (req, res) => {
     throw badRequest('Nothing to push.');
   }
 
-  // Empty folders created on the phone - same idempotent upsert as
-  // documents.controller's createFolder (no marker needed if documents
-  // already live at that exact path).
+  // Empty folders created on the phone. Same implicit-creation rule as
+  // every other path (utils/folders.js ensureFolderPath): a phone can't
+  // create "josh" next to an existing "Josh" - it resolves into it.
   for (const name of newFolders) {
-    const trimmed = typeof name === 'string' ? name.trim() : '';
-    if (!trimmed || trimmed === 'root') continue;
-    // eslint-disable-next-line no-await-in-loop -- small batches
-    if (!(await Document.exists({ userId: req.userId, folder: trimmed }))) {
-      // eslint-disable-next-line no-await-in-loop
-      await Folder.updateOne(
-        { userId: req.userId, name: trimmed },
-        { $setOnInsert: { userId: req.userId, name: trimmed } },
-        { upsert: true }
-      );
-    }
+    if (typeof name !== 'string') continue;
+    // eslint-disable-next-line no-await-in-loop
+    await ensureFolderPath(req.userId, name);
   }
 
   const idMap = [];
@@ -168,7 +157,8 @@ const pushDocuments = asyncHandler(async (req, res) => {
     const document = await Document.create({
       userId: req.userId,
       filename,
-      folder: folder || undefined, // let the schema default ("root") apply
+      // eslint-disable-next-line no-await-in-loop
+      folder: toDocumentFolder(await ensureFolderPath(req.userId, folder || '')),
       encryptedBlob: Buffer.from(encryptedBlob, 'base64'),
       iv,
       authTag,

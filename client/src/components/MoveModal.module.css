@@ -1,0 +1,267 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.crumbGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 14ch;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb:hover {
+  color: var(--color-text);
+  background: var(--color-bg-raised);
+}
+
+.crumb[aria-current] {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.separator {
+  color: var(--color-text-faint);
+}
+
+.folderList {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+}
+
+.emptyHint {
+  padding: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--color-text-faint);
+}
+
+.folderButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--color-text);
+  font-size: var(--fs-sm);
+}
+
+.folderButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.folderButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.folderIcon {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+.folderName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderCaret {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+}
+
+.folderNote {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}
+
+.newFolderButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.newFolderButton:hover {
+  background: var(--color-accent-wash);
+}
+
+.newFolderForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.textInput {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-size: var(--fs-sm);
+}
+
+.textInput:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
+}
+
+.textInput[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.newFolderButtons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.error {
+  flex-basis: 100%;
+  min-height: 1.1em;
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-danger);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.locationNote {
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.footerButtons {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.summary {
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.resultList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
+  font-size: var(--fs-sm);
+}
+
+.resultItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.resultIconBad {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-danger);
+}
+
+.resultIconGood {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-accent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -45,6 +45,32 @@
   color: var(--color-text);
 }
 
+.dropActive .tile {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+
+.menu {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  z-index: 2;
+}
+
+.menuButton {
+  display: grid;
+  place-items: center;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+}
+
+.menuButton:hover,
+.menuButton[aria-expanded='true'] {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
 .count {
   font-size: var(--fs-xs);
   color: var(--color-text-faint);

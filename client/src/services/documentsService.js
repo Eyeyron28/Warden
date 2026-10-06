@@ -43,8 +43,38 @@ export async function createFolder(name) {
 }
 
 /**
+ * PATCH /api/documents/folders - renames a folder in place; everything
+ * nested inside follows. 409 with error.code "FOLDER_EXISTS" if a sibling
+ * already has that name (compared case-insensitively).
+ * @param {string} path - the folder's current full path
+ * @param {string} name - the new name (one segment, no "/" or "\")
+ * @returns {Promise<{ path: string }>} the folder's new full path
+ */
+export async function renameFolder(path, name) {
+  const { data } = await api.patch('/documents/folders', { path, name });
+  return data;
+}
+
+/**
+ * POST /api/documents/move
+ * @param {Array<{ type: 'file', id: string } | { type: 'folder', path: string }>} items
+ * @param {string} destination - folder path, "" for the top level
+ * @returns {Promise<{
+ *   destination: string,
+ *   movedCount: number,
+ *   results: Array<{ type: string, id?: string, path?: string, name?: string,
+ *     status: 'moved'|'unchanged'|'conflict'|'invalid'|'not_found', message?: string, newPath?: string }>,
+ * }>} per-item outcome - a name clash is reported, never overwritten
+ */
+export async function moveItems(items, destination) {
+  const { data } = await api.post('/documents/move', { items, destination });
+  return data;
+}
+
+/**
  * PATCH /api/documents/:id
- * Metadata-only edit - filename, folder, and/or expiryDate. Callers
+ * Metadata-only edit - filename and/or expiryDate (changing a document's
+ * folder only happens through moveItems). Callers
  * should only include the fields that actually changed; the backend
  * leaves anything omitted untouched.
  * @param {string} id

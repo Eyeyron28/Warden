@@ -6,6 +6,8 @@ const notFound = (req, res, next) => {
   next(error);
 };
 
+const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS']);
+
 const errorHandler = (err, req, res, next) => {
   const status = err.status || (res.statusCode !== 200 ? res.statusCode : 500);
 
@@ -32,6 +34,14 @@ const errorHandler = (err, req, res, next) => {
   // "incorrect email or password."
   if (err.emailVerificationRequired) {
     errorBody.emailVerificationRequired = true;
+  }
+  // Optional: a stable, machine-readable code for errors the client
+  // branches on (e.g. FOLDER_EXISTS from folder create/rename/move).
+  // Allowlisted rather than forwarding err.code wholesale - Node and the
+  // Mongo driver put their own codes there (ENOENT, 11000) that shouldn't
+  // leak to the client.
+  if (PUBLIC_ERROR_CODES.has(err.code)) {
+    errorBody.code = err.code;
   }
 
   res.status(status).json({
