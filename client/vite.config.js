@@ -56,7 +56,19 @@ function stampServiceWorker() {
   };
 }
 
-export default defineConfig({
+// The local mkcert certificate, or undefined when it is not there. The certs/
+// folder is git-ignored, so it does not exist on Vercel (or any fresh clone):
+// it is only read for `vite` (serve), and only if both files exist. Paths are
+// relative to this file, not the working directory.
+function localHttps(command) {
+  if (command !== 'serve') return undefined;
+  const keyPath = path.resolve(__dirname, '..', 'certs', 'localhost+3-key.pem');
+  const certPath = path.resolve(__dirname, '..', 'certs', 'localhost+3.pem');
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) return undefined;
+  return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+}
+
+export default defineConfig(({ command }) => ({
   plugins: [react(), shareViewerHeaders(), stampServiceWorker()],
   server: {
     port: 5173,
@@ -65,10 +77,7 @@ export default defineConfig({
     // frontend itself served over HTTPS, not just the API. Same
     // mkcert cert as the backend (see server/server.js) - tied to
     // localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172.
-    https: {
-      key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
-      cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
-    },
+    https: localHttps(command),
     // Lets the frontend call a relative "/api" path (see services/api.js)
     // instead of an absolute URL baked in at build time - Vite forwards
     // it to the backend server-side, so it works identically whether the
@@ -85,4 +94,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
