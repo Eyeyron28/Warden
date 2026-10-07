@@ -91,7 +91,15 @@ function MenuPanel({ placement, onClose, returnFocus, label, align, children }) 
       aria-orientation="vertical"
       data-align={align}
       onKeyDown={onKeyDown}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      // The panel is portaled to <body>, but React events still bubble through the component tree:
+      // without this, choosing an item in a row's "..." menu would also "click" the row (opening it).
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
       style={
         box
           ? { left: box.left, top: box.top, maxHeight: box.maxHeight, visibility: 'visible' }

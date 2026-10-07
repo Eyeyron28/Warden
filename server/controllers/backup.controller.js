@@ -4,6 +4,7 @@ const crypto = require('crypto');
 
 const Document = require('../models/Document');
 const { assertCanStore } = require('../utils/storage');
+const { cleanStoredName } = require('../utils/fileNames');
 const User = require('../models/User');
 const BackupLog = require('../models/BackupLog');
 const { serializeThumbnail, restoreThumbnail } = require('../utils/thumbnails');
@@ -379,7 +380,7 @@ const importBackup = asyncHandler(async (req, res) => {
     await assertCanStore(req.userId, Math.floor((record.encryptedBlob.length * 3) / 4));
     await Document.create({
       userId: req.userId,
-      filename: record.filename,
+      filename: cleanStoredName(record.filename),
       folder: toDocumentFolder(await ensureFolderPath(req.userId, record.folder)),
       encryptedBlob: Buffer.from(record.encryptedBlob, 'base64'),
       iv: record.iv,

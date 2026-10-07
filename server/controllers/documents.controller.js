@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
+const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
 const { encryptFile, decryptFile } = require('../utils/crypto');
 const { encryptThumbnail, decryptThumbnail, hasThumbnail } = require('../utils/thumbnails');
 const {
@@ -175,7 +176,7 @@ const createDocument = asyncHandler(async (req, res) => {
 
   const document = await Document.create({
     userId: req.userId,
-    filename: originalname,
+    filename: cleanStoredName(originalname),
     folder: toDocumentFolder(canonicalFolder),
     encryptedBlob: Buffer.from(ciphertext, 'base64'),
     iv,
@@ -611,7 +612,7 @@ const updateDocument = asyncHandler(async (req, res) => {
     if (typeof filename !== 'string' || !filename.trim()) {
       throw badRequest('filename cannot be empty.');
     }
-    document.filename = filename.trim();
+    document.filename = cleanStoredName(filename);
   }
 
   // Changing a document's folder only happens through POST
@@ -682,7 +683,9 @@ const viewDocument = asyncHandler(async (req, res) => {
   // claimed, never inline. The browser decides what the file is by sniffing the
   // bytes themselves (client/src/utils/previewType.js) and builds its own Blob.
   res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(document.filename)}`);
+  // The stored name is never changed; the DOWNLOAD name is sanitised and, for a name with no
+  // extension whose bytes are a known type, gains that type's extension (utils/fileNames.js).
+  res.setHeader('Content-Disposition', contentDisposition(downloadName(document.filename, plaintext)));
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).send(plaintext);

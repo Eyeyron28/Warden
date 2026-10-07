@@ -28,7 +28,21 @@ function FolderTree({ current, active, version, onNavigate }) {
     try {
       const data = await listFolderChildren(path);
       setNodes((state) => ({ ...state, [path]: { folders: data.folders, loading: false, error: false } }));
-    } catch {
+    } catch (err) {
+      if (err?.response?.status === 404 && path !== '') {
+        // The folder is gone (trashed or moved): forget it rather than keep asking.
+        setNodes((state) => {
+          const next = { ...state };
+          delete next[path];
+          return next;
+        });
+        setExpanded((state) => {
+          const next = new Set(state);
+          next.delete(path);
+          return next;
+        });
+        return;
+      }
       setNodes((state) => ({ ...state, [path]: { folders: state[path]?.folders ?? [], loading: false, error: true } }));
     }
   }, []);

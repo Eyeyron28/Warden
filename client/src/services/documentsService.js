@@ -1,5 +1,6 @@
 import api from './api.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
+import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileNames.js';
 
 /**
  * GET /api/documents
@@ -135,9 +136,7 @@ export async function putThumbnail(id, thumb) {
 export async function fetchDocumentBlob(id) {
   const response = await api.get(`/documents/${id}/view`, { responseType: 'blob' });
 
-  const disposition = response.headers['content-disposition'] || '';
-  const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match ? decodeURIComponent(match[1]) : 'document';
+  const filename = filenameFromDisposition(response.headers['content-disposition']);
 
   return {
     blob: response.data,
@@ -155,16 +154,7 @@ export async function fetchDocumentBlob(id) {
  */
 export async function fetchDocumentBytes(id, { signal } = {}) {
   const response = await api.get(`/documents/${id}/view`, { responseType: 'arraybuffer', signal });
-  const disposition = response.headers['content-disposition'] || '';
-  const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/);
-  let filename = 'document';
-  if (match) {
-    try {
-      filename = decodeURIComponent(match[1] || match[2]);
-    } catch {
-      filename = match[2] || 'document';
-    }
-  }
+  const filename = filenameFromDisposition(response.headers['content-disposition']);
   return { bytes: new Uint8Array(response.data), filename };
 }
 
@@ -177,7 +167,7 @@ export function downloadBytes(bytes, filename) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = sanitizeDownloadName(filename);
   link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();

@@ -70,3 +70,9 @@ test('downloading is reachable only from explicit Download controls', () => {
     }
   }
 });
+
+test('a menu portaled out of a row cannot click the row (React events bubble through portals)', () => {
+  const panel = fs.readFileSync(path.join(src, 'components', 'MenuPanel.jsx'), 'utf8');
+  assert.match(panel, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
+  assert.match(panel, /createPortal/);
+});

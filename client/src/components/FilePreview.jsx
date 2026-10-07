@@ -83,6 +83,7 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
   const doc = files[index];
   const overlayRef = useRef(null);
   const bytesRef = useRef(null);
+  const nameRef = useRef(null);
   const [state, setState] = useState({ status: 'loading' });
   const [viewerFailed, setViewerFailed] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(
@@ -121,6 +122,7 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
     setViewerFailed(false);
     setActionError('');
     bytesRef.current = null;
+    nameRef.current = null;
     if (typeof doc.size === 'number' && doc.size > MAX_PREVIEW_BYTES) {
       setState({ status: 'toolarge' });
       return undefined;
@@ -128,8 +130,9 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
     setState({ status: 'loading' });
     const controller = new AbortController();
     fetchDocumentBytes(doc.id, { signal: controller.signal })
-      .then(({ bytes }) => {
+      .then(({ bytes, filename }) => {
         bytesRef.current = bytes;
+        nameRef.current = filename;
         const sniff = sniffPreviewType(bytes);
         setState({ status: 'ready', bytes, sniff });
         onLoaded?.(doc, bytes, sniff);
@@ -178,8 +181,12 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
     setDownloading(true);
     setActionError('');
     try {
-      const bytes = bytesRef.current ?? (await fetchDocumentBytes(doc.id)).bytes;
-      downloadBytes(bytes, doc.filename);
+      let bytes = bytesRef.current;
+      let name = nameRef.current;
+      if (!bytes) {
+        ({ bytes, filename: name } = await fetchDocumentBytes(doc.id));
+      }
+      downloadBytes(bytes, name ?? doc.filename);
     } catch {
       setActionError('Download failed. Please try again.');
     } finally {

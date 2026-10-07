@@ -94,11 +94,12 @@ test('only real png, jpeg, gif, webp and pdf bytes are previewable; html and svg
 });
 
 test('download names cannot carry paths or control characters', () => {
-  assert.equal(safeDownloadName('../../etc/passwd'), '_.._etc_passwd');
+  assert.equal(safeDownloadName('../../etc/passwd'), '.._.._etc_passwd');
   assert.equal(safeDownloadName('a/b\\c:d.txt'), 'a_b_c_d.txt');
   assert.equal(safeDownloadName('line\r\nbreak.txt'), 'line__break.txt');
   assert.equal(safeDownloadName('   '), 'file');
-  assert.equal(safeDownloadName('.hidden'), 'hidden');
+  assert.equal(safeDownloadName('.env'), '.env', 'a dotfile keeps its leading dot');
+  assert.equal(safeDownloadName('..'), 'file');
   assert.equal(safeDownloadName('x'.repeat(500)).length, 120);
 });
 

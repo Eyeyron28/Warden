@@ -135,8 +135,8 @@ function PhotosPage() {
     try {
       for (const doc of docs) {
         // eslint-disable-next-line no-await-in-loop
-        const { bytes } = await fetchDocumentBytes(doc.id);
-        downloadBytes(bytes, doc.filename);
+        const { bytes, filename } = await fetchDocumentBytes(doc.id);
+        downloadBytes(bytes, filename);
         // eslint-disable-next-line no-await-in-loop
         if (docs.length > 1) await new Promise((resolve) => setTimeout(resolve, 250));
       }

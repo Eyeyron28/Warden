@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowCounterClockwise, ArrowsOutCardinal, Folder } from '@phosphor-icons/react';
 
 import Modal from './Modal.jsx';
 import { updateDocument } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
+import { keepExtension, splitName } from '../utils/fileNames.js';
 import styles from './EditDocumentModal.module.css';
 
 // document.expiryDate arrives as an ISO string (e.g.
@@ -29,6 +30,17 @@ function toDateInputValue(isoExpiryDate) {
  */
 function EditDocumentModal({ document, onClose, onSaved, onMove }) {
   const [filename, setFilename] = useState(document.filename);
+  const nameRef = useRef(null);
+  const originalExt = splitName(document.filename).ext;
+  const previewName = keepExtension(document.filename, filename);
+
+  // Opens with only the base name selected, so typing replaces "mod12" and leaves ".pdf" alone.
+  useEffect(() => {
+    const input = nameRef.current;
+    if (!input) return;
+    const { base } = splitName(document.filename);
+    input.setSelectionRange(0, base.length);
+  }, [document.filename]);
   const [expiryDate, setExpiryDate] = useState(toDateInputValue(document.expiryDate));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -38,7 +50,8 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
     event.preventDefault();
     if (submitting) return;
 
-    const trimmedFilename = filename.trim();
+    // The extension stays unless a different one was typed on purpose (see utils/fileNames.js).
+    const trimmedFilename = keepExtension(document.filename, filename);
     if (!trimmedFilename) {
       setError('Filename cannot be empty.');
       return;
@@ -85,8 +98,19 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
             value={filename}
             onChange={(event) => setFilename(event.target.value)}
             disabled={submitting}
+            ref={nameRef}
             autoFocus
+            aria-describedby="edit-filename-hint"
           />
+          <p id="edit-filename-hint" className={styles.hint}>
+            {originalExt
+              ? previewName === filename.trim()
+                ? `Extension: .${originalExt}. Type a different extension to change it, or end the name with a dot to remove it.`
+                : filename.trim().endsWith('.')
+                  ? `Will be saved as “${previewName}”, without an extension.`
+                  : `Will be saved as “${previewName}” (the .${originalExt} extension is kept).`
+              : 'This file has no extension.'}
+          </p>
         </div>
 
         <div className={styles.field}>

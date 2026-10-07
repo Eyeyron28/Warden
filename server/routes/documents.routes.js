@@ -35,6 +35,8 @@ const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  // Browsers send file names as UTF-8; the default (latin1) turns "Résumé 履歴.pdf" into mojibake.
+  defParamCharset: 'utf8',
 });
 
 // An upload carries the document under "file" and, optionally, a small

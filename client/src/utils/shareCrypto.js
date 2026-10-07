@@ -115,14 +115,5 @@ export function previewKind(mime, bytes) {
   return mime === 'application/pdf' ? 'pdf' : 'image';
 }
 
-/** A file name safe to hand to a download attribute. */
-export function safeDownloadName(name) {
-  let cleaned = '';
-  for (const char of String(name)) {
-    const code = char.codePointAt(0);
-    const control = code < 32 || code === 127;
-    cleaned += control || '/\\:*?"<>|'.includes(char) ? '_' : char;
-  }
-  cleaned = cleaned.trim().replace(/^\.+/, '').slice(0, 120);
-  return cleaned || 'file';
-}
+/** A file name safe to hand to a download attribute (the one shared implementation: utils/fileNames.js). */
+export { sanitizeDownloadName as safeDownloadName } from './fileNames.js';

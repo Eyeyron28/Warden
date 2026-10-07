@@ -20,9 +20,9 @@ import {
   importShareKeyBytes,
   previewKind,
   readKeyFromHash,
-  safeDownloadName,
   base64ToBytes,
 } from '../utils/shareCrypto.js';
+import { downloadName, sanitizeDownloadName } from '../utils/fileNames.js';
 import { deriveShareSecrets, unwrapShareKey } from '../utils/sharePassword.js';
 import site from '../components/site/site.module.css';
 import forms from '../components/site/forms.module.css';
@@ -49,7 +49,7 @@ function getFileTypeLabel(filename) {
 function saveBlobAs(url, filename) {
   const link = document.createElement('a');
   link.href = url;
-  link.download = safeDownloadName(filename);
+  link.download = sanitizeDownloadName(filename);
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -84,7 +84,8 @@ async function openSharedFile({ shareId, key, entry, accessToken }) {
   const plain = await decryptBlob(key, shareId, entry.id, encrypted);
   const kind = previewKind(entry.mime, new Uint8Array(plain, 0, Math.min(16, plain.byteLength)));
   const blob = new Blob([plain], { type: kind ? entry.mime : 'application/octet-stream' });
-  return { blob, kind, url: URL.createObjectURL(blob) };
+  // Named exactly as the vault names a download: sanitised, extension recovered from the bytes.
+  return { blob, kind, url: URL.createObjectURL(blob), fileName: downloadName(entry.name, new Uint8Array(plain)) };
 }
 
 /**
@@ -146,7 +147,7 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
   const handleDownload = async () => {
     const loaded = await load();
     if (!loaded) return;
-    saveBlobAs(loaded.url, entry.name);
+    saveBlobAs(loaded.url, loaded.fileName);
     // In-memory only, on purpose: a share page is a public view with no
     // account behind it.
     setDownloaded(true);
@@ -375,7 +376,7 @@ function SharedDocumentPage() {
       for (const entry of entries) {
         // eslint-disable-next-line no-await-in-loop
         const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken: access.accessToken });
-        saveBlobAs(opened.url, entry.name);
+        saveBlobAs(opened.url, opened.fileName);
         setTimeout(() => URL.revokeObjectURL(opened.url), 60_000);
       }
     } catch {
