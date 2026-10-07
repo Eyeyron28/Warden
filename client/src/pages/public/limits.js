@@ -25,6 +25,11 @@ export const LIMITS = [
       'Your password is what locks the vault key. Failed log-ins are limited to 3 attempts, then a 5-minute lockout, but that does not slow someone trying guesses against a stolen copy of the database. Use a long, unique password.',
   },
   {
+    title: 'Your email account',
+    body:
+      'Login codes and password-reset links are sent to your email address. Whoever can read your mailbox can receive them, so keep your email account as well protected as your vault.',
+  },
+  {
     title: 'Share links',
     body:
       "A share link contains a key after the # symbol. Anyone who has the full link can open the shared files until it expires or you revoke it. The server stores only encrypted copies of the shared files and never stores the link's key. A share is a snapshot: deleting or editing the original file does not change or remove existing shared copies; revoke the share to remove them.",

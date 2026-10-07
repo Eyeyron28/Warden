@@ -46,6 +46,11 @@ export const SECTIONS = [
             itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
           </li>
           <li>
+            <strong>Login codes</strong>: when you log in, a 6-digit code is emailed to you and expires after a
+            few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
+            expires.
+          </li>
+          <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per
             email (to slow down password guessing), sign-in sessions that expire after 30 minutes of inactivity,
             and ordinary server logs.

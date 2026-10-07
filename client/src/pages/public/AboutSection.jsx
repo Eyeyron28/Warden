@@ -26,6 +26,10 @@ const DESIGN_POINTS = [
     body: 'It is saved twice, each copy locked: once with a key derived from your password (scrypt), once with a key derived from your recovery key. Your password itself is never stored, only a salted hash used to check it.',
   },
   {
+    title: 'Logging in needs your password and an emailed code',
+    body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime.',
+  },
+  {
     title: 'Sessions hold the key only while you use it',
     body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in browser memory, so reloading the page signs you out. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity.',
   },

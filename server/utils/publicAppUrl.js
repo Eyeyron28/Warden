@@ -1,4 +1,5 @@
 const { resolveLanIp } = require('./network');
+const { isProduction } = require('./runtimeEnv');
 
 /**
  * The one place the app decides which origin links it hands out (share
@@ -15,10 +16,6 @@ const { resolveLanIp } = require('./network');
  */
 
 const DEV_FRONTEND_PORT = 5173;
-
-function isProduction() {
-  return process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
-}
 
 /** Returns the validated origin for a raw PUBLIC_APP_URL, or throws. */
 function parsePublicAppUrl(raw) {

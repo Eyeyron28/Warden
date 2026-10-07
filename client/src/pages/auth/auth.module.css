@@ -72,6 +72,29 @@
   color: var(--color-accent);
 }
 
+/* The same link look, on a real <button> (e.g. "Back" on the code step). */
+button.inlineLink {
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.inlineLink:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Login code step: "Resend code" and "Back" side by side, wrapping on narrow screens. */
+.otpActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 /* ---- Recovery key ---- */
 
 .keyBox {

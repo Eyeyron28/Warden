@@ -35,6 +35,11 @@ const errorHandler = (err, req, res, next) => {
   if (err.emailVerificationRequired) {
     errorBody.emailVerificationRequired = true;
   }
+  // Optional: how long until a rate-limited action (e.g. resending a login
+  // code) is allowed again, so the client can show a countdown.
+  if (Number.isFinite(err.retryAfterSeconds)) {
+    errorBody.retryAfterSeconds = err.retryAfterSeconds;
+  }
   // Optional: a stable, machine-readable code for errors the client
   // branches on (e.g. FOLDER_EXISTS from folder create/rename/move).
   // Allowlisted rather than forwarding err.code wholesale - Node and the

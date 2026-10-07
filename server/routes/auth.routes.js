@@ -7,6 +7,8 @@ const {
   resendVerification,
   getPublicConfig,
   unlock,
+  verifyOtp,
+  resendOtp,
   getMe,
   forgotPassword,
   resetPassword,
@@ -54,6 +56,18 @@ router.post(
   '/unlock',
   createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),
   unlock
+);
+// The code step shares the SAME per-IP bucket as the password step ("login"),
+// so every code guess - right or wrong - counts toward the per-IP limit.
+router.post(
+  '/verify-otp',
+  createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),
+  verifyOtp
+);
+router.post(
+  '/resend-otp',
+  createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),
+  resendOtp
 );
 router.get('/me', requireSession, getMe);
 router.post(

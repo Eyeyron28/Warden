@@ -13,6 +13,7 @@ const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const { detectLanIp } = require('./utils/lanIp');
 const { assertPublicAppUrlConfig, describePublicAppUrl } = require('./utils/publicAppUrl');
+const { assertOtpConfig, otpEnabled, otpTtlMinutes } = require('./utils/otpConfig');
 
 const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
@@ -29,6 +30,9 @@ const app = express();
 // Fail at startup, not on the first share, if PUBLIC_APP_URL is missing in
 // production or malformed anywhere (https origin only: no path, no userinfo).
 assertPublicAppUrlConfig();
+// The emailed login code cannot be turned off in production, and its lifetime
+// must be a sane number: refuse to start otherwise.
+assertOtpConfig();
 
 // Fired at module load (not inside the require.main guard below) so a
 // Vercel serverless instance starts warming up its connection the moment
@@ -162,6 +166,11 @@ if (require.main === module) {
       https.createServer(httpsOptions, app).listen(PORT, () => {
         console.log(`Warden server running on port ${PORT} (https)`);
         console.log(describePublicAppUrl());
+        console.log(
+          otpEnabled()
+            ? `Login: email one-time code required (expires after ${otpTtlMinutes()} min)`
+            : 'Login: email one-time code is DISABLED (OTP_ENABLED=false, development only)'
+        );
 
         // Diagnostic only - pairing/sharing resolve this fresh per-request
         // (resolveLanIp), not from this snapshot. Logged once here so a

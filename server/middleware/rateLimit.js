@@ -22,6 +22,37 @@ const RateLimit = require('../models/RateLimit');
  * same key land on two different serverless instances at nearly the same
  * moment.
  */
+async function incrementWindow(bucket, key, windowMs) {
+  const now = new Date();
+  return RateLimit.findOneAndUpdate(
+    { bucket, key },
+    [
+      {
+        $set: {
+          count: {
+            $cond: [{ $lte: ['$windowExpiresAt', now] }, 1, { $add: ['$count', 1] }],
+          },
+          windowExpiresAt: {
+            $cond: [{ $lte: ['$windowExpiresAt', now] }, new Date(now.getTime() + windowMs), '$windowExpiresAt'],
+          },
+        },
+      },
+    ],
+    { upsert: true, new: true }
+  );
+}
+
+/**
+ * Spends one unit of a named budget (e.g. "5 OTP emails per hour for this
+ * account") outside of any request middleware. Same atomic window as the
+ * limiter. Returns true if the unit was available, false if the budget is
+ * already used up.
+ */
+async function consumeBudget({ name, key, max, windowMs }) {
+  const doc = await incrementWindow(name, key, windowMs);
+  return doc.count <= max;
+}
+
 function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
   if (!name || typeof name !== 'string') {
     throw new Error('createRateLimiter requires a `name`.');
@@ -39,27 +70,7 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
       // after, so there's nothing useful to rate-limit yet.
       if (!key) return next();
 
-      const now = new Date();
-      const doc = await RateLimit.findOneAndUpdate(
-        { bucket: name, key },
-        [
-          {
-            $set: {
-              count: {
-                $cond: [{ $lte: ['$windowExpiresAt', now] }, 1, { $add: ['$count', 1] }],
-              },
-              windowExpiresAt: {
-                $cond: [
-                  { $lte: ['$windowExpiresAt', now] },
-                  new Date(now.getTime() + windowMs),
-                  '$windowExpiresAt',
-                ],
-              },
-            },
-          },
-        ],
-        { upsert: true, new: true }
-      );
+      const doc = await incrementWindow(name, key, windowMs);
 
       if (doc.count > max) {
         const error = new Error('Too many requests. Please try again shortly.');
@@ -75,3 +86,4 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 }
 
 module.exports = createRateLimiter;
+module.exports.consumeBudget = consumeBudget;

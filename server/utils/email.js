@@ -1,5 +1,7 @@
 const nodemailer = require('nodemailer');
 
+const { isProduction } = require('./runtimeEnv');
+
 /**
  * Thin Nodemailer wrapper, configured entirely from env (SMTP_HOST,
  * SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM). The transporter is built
@@ -131,9 +133,15 @@ async function sendEmail({ to, subject, text, html }) {
   }
 
   if (!smtpConfigured()) {
-    // Dev fallback - the full email, verification/reset link included, so
-    // local development never needs a real mailbox. Never logs SMTP_*
-    // (there's nothing to log here, by construction: this branch only
+    if (isProduction()) {
+      // Never print an email body in production: it can carry a login code or
+      // a reset link, which are credentials. Say only that nothing was sent.
+      console.error('SMTP is not configured in production; an email was not sent.');
+      return false;
+    }
+    // Dev fallback - the full email, verification/reset link or login code
+    // included, so local development never needs a real mailbox. Never logs
+    // SMTP_* (there's nothing to log here, by construction: this branch only
     // runs when none of them are usably set).
     console.log(
       `\n--- DEV EMAIL (SMTP not configured, logging instead of sending) ---\nTo: ${to}\nSubject: ${subject}\n\n${text}\n--- END DEV EMAIL ---\n`
