@@ -44,7 +44,7 @@ const matches = (doc, filter) =>
 
 const NAMES = [
   'users', 'documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens',
-  'recoveryrequesttokens', 'shares', 'sharedfiles', 'sessions', 'otpchallenges', 'ratelimits',
+  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -95,7 +95,7 @@ function fakeModel(name) {
 const models = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
-  SharedFile: 'sharedfiles', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits',
+  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
@@ -170,8 +170,18 @@ function populate(user) {
   t.paireddevices.push({ _id: oid(), userId: user._id, deviceToken: 'dev' });
   t.pairingtokens.push({ _id: oid(), userId: user._id });
   t.recoveryrequesttokens.push({ _id: oid(), userId: user._id });
-  t.shares.push({ _id: oid(), ownerUserId: user._id, shareId, sourceDocumentIds: [] });
+  // A share with every protection on, and everything that hangs off it.
+  t.shares.push({
+    _id: oid(), ownerUserId: user._id, shareId, sourceDocumentIds: [],
+    recipientEmail: 'recipient@example.com', downloadCount: 2, maxDownloads: 5,
+    passwordSalt: 'c2FsdA==', passwordWrappedKey: 'd3JhcHBlZA==', passwordVerifierHash: 'ab'.repeat(32),
+  });
   t.sharedfiles.push({ _id: oid(), shareId, fileId: 'f1' });
+  t.shareaccess.push({ _id: oid(), shareId, tokenHash: 'cd'.repeat(32), emailOk: true, passwordOk: true });
+  // The emailed-code challenge for a visitor of that share (userId is the share's owner).
+  t.otpchallenges.push({ _id: oid(), userId: user._id, purpose: 'share-email', shareId, accessId: 'a1' });
+  t.ratelimits.push({ _id: oid(), bucket: 'share-password', key: shareId });
+  t.ratelimits.push({ _id: oid(), bucket: 'share-email', key: shareId });
   t.sessions.push({ _id: oid(), userId: user._id });
   t.ratelimits.push({ _id: oid(), bucket: 'otp-email-account', key: String(user._id) });
   t.ratelimits.push({ _id: oid(), bucket: 'signup-email', key: user.email });
@@ -182,8 +192,10 @@ const countsFor = () => Object.fromEntries(NAMES.map((n) => [n, world.tables[n].
 const rowsOwnedBy = (user) => {
   const id = String(user._id);
   const json = JSON.stringify(world.tables, (key, value) => (value && value.type === 'Buffer' ? '[bytes]' : value));
+  const shareIds = world.tables.shares.filter((r) => String(r.ownerUserId) === id).map((r) => r.shareId);
   return {
-    stringHits: json.includes(id) || json.includes(user.email),
+    // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
+    stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
     byOwner: ['documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
       + world.tables.shares.filter((r) => String(r.ownerUserId) === id).length,
@@ -288,7 +300,7 @@ test("another account's delete challenge cannot be used, even with the right cod
   });
   assert.equal(attack.error.status, 401);
   assert.equal(world.tables.users.length, 2);
-  assert.equal(rowsOwnedBy(ben).byOwner, 9, 'ben untouched');
+  assert.equal(rowsOwnedBy(ben).byOwner, 10, 'ben untouched');
 });
 
 test('wrong password, wrong code and wrong email confirmation each fail and delete nothing', async () => {
@@ -303,7 +315,7 @@ test('wrong password, wrong code and wrong email confirmation each fail and dele
   const { token, code } = await readyToDelete(user);
   const wrongEmail = await call(deleteAccount, { userId: user._id, body: { challengeToken: token, code, emailConfirmation: 'ben@example.com' } });
   assert.equal(wrongEmail.error.status, 400);
-  assert.equal(world.tables.otpchallenges[0].attempts, 0, 'a typo in the email does not burn a code attempt');
+  assert.equal(world.tables.otpchallenges.find((c) => c.purpose === 'delete-account').attempts, 0, 'a typo in the email does not burn a code attempt');
   const wrongCode = await call(deleteAccount, {
     userId: user._id,
     body: { challengeToken: token, code: code === '000000' ? '000001' : '000000', emailConfirmation: 'ana@example.com' },
@@ -341,7 +353,7 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(world.tables.users.length, 1);
   assert.equal(world.tables.ratelimits.filter((r) => r.key === '203.0.113.7').length, 2, 'IP-keyed rows are not about a person and stay');
   // Ben's rows are exactly as before (compare after removing the rows that were ana's).
-  assert.equal(rowsOwnedBy(ben).byOwner, 9);
+  assert.equal(rowsOwnedBy(ben).byOwner, 10);
   assert.ok(world.tables.sharedfiles.length === 1 && world.tables.shares.length === 1, "only ben's share and its copy remain");
   assert.ok(benBefore.length > 0 && anaBefore.documents === 4);
 
@@ -470,5 +482,20 @@ test('no route can issue a session without the emailed code', () => {
       if (name === 'auth.controller.js') continue;
       assert.doesNotMatch(strip(fs.readFileSync(path.join(dir, folder, name), 'utf8')), /createSession\(/, `${folder}/${name}`);
     }
+  }
+});
+
+test('a vault wipe and an account deletion clean shares through the same routine', () => {
+  const dir = path.join(__dirname, '..');
+  const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const auth = strip(fs.readFileSync(path.join(dir, 'controllers', 'auth.controller.js'), 'utf8'));
+  const wipe = auth.slice(auth.indexOf('confirmWipe !== true'), auth.indexOf('await finalizeReset(user, dek, newPassword, { newRecoveryKey })'));
+  assert.match(wipe, /removeShares\(\{ ownerUserId: user\._id \}\)/, 'the wipe removes shares, their wrapped keys, verifiers, recipient emails, counters and code challenges');
+  assert.doesNotMatch(wipe, /SharedFile|Share\.deleteMany/, 'no ad-hoc partial cleanup left in the wipe');
+  const deletion = strip(fs.readFileSync(path.join(dir, 'utils', 'accountDeletion.js'), 'utf8'));
+  assert.match(deletion, /removeShares\(\{ ownerUserId: userId \}/);
+  const cleanup = strip(fs.readFileSync(path.join(dir, 'utils', 'shareCleanup.js'), 'utf8'));
+  for (const model of ['SharedFile', 'ShareAccess', 'OtpChallenge', 'RateLimit', 'Share']) {
+    assert.match(cleanup, new RegExp(model), `${model} is cleaned with the share`);
   }
 });

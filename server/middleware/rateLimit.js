@@ -53,6 +53,17 @@ async function consumeBudget({ name, key, max, windowMs }) {
   return doc.count <= max;
 }
 
+/**
+ * Whether a budget is already used up, WITHOUT spending anything: true when the
+ * current window holds `max` or more. Lets a caller block further attempts
+ * (even correct ones) once a number of failures has been counted with
+ * consumeBudget.
+ */
+async function isBudgetExhausted({ name, key, max }) {
+  const doc = await RateLimit.findOne({ bucket: name, key });
+  return Boolean(doc && doc.windowExpiresAt.getTime() > Date.now() && doc.count >= max);
+}
+
 function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
   if (!name || typeof name !== 'string') {
     throw new Error('createRateLimiter requires a `name`.');
@@ -87,3 +98,4 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 
 module.exports = createRateLimiter;
 module.exports.consumeBudget = consumeBudget;
+module.exports.isBudgetExhausted = isBudgetExhausted;

@@ -5,19 +5,20 @@ const BackupLog = require('../models/BackupLog');
 const PairedDevice = require('../models/PairedDevice');
 const PairingToken = require('../models/PairingToken');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
-const Share = require('../models/Share');
-const SharedFile = require('../models/SharedFile');
 const Session = require('../models/Session');
 const OtpChallenge = require('../models/OtpChallenge');
 const RateLimit = require('../models/RateLimit');
 const { runInTransaction } = require('./folders');
+const { removeShares } = require('./shareCleanup');
 
 /**
  * Permanently removes everything the server holds for one account.
  *
  * What goes (the `deleted` counts it returns are by collection):
- *   - Shares and their encrypted file copies (SharedFile has no user id; it is
- *     found through the user's shares first);
+ *   - Shares and everything that hangs off them (utils/shareCleanup.js): the
+ *     encrypted file copies, visitors' gate progress, emailed-code challenges,
+ *     the wrapped keys, verifier hashes, recipient emails and counters inside
+ *     the share records, and the rate-limit rows keyed by share id;
  *   - paired devices, pairing and phone-recovery tokens, pending code challenges;
  *   - Documents - which are the stored ciphertext and thumbnails - Folders and
  *     backup log rows;
@@ -47,15 +48,10 @@ async function deleteAccountData(userId, { email = null, transaction = true } = 
       deleted[label] = result?.deletedCount ?? 0;
     };
 
-    // The user's shares (inside the transaction, so a share created a moment
-    // ago is included), then the ciphertext copies that hang off them.
-    const shareQuery = Share.find({ ownerUserId: userId }).select('shareId');
-    const shares = await (session ? shareQuery.session(session) : shareQuery);
-    const shareIds = shares.map((share) => share.shareId);
-
-    // 1. Anything that grants access to the data.
-    await del('sharedfiles', SharedFile, { shareId: { $in: shareIds } });
-    await del('shares', Share, { ownerUserId: userId });
+    // 1. Anything that grants access to the data. Shares first, with everything
+    // attached to them (inside the transaction, so a share created a moment ago
+    // is included).
+    Object.assign(deleted, await removeShares({ ownerUserId: userId }, { session }));
     await del('paireddevices', PairedDevice, { userId });
     await del('pairingtokens', PairingToken, { userId });
     await del('recoveryrequesttokens', RecoveryRequestToken, { userId });

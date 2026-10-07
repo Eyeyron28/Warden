@@ -133,6 +133,18 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: 'Can I protect a share link?',
+    answer: (
+      <p>
+        Yes, with any of three optional settings: a password, a limit of 1 to 100 downloads (after which the share is
+        deleted), or restricting it to one email address that must enter a code we email. They control who our server
+        will give the encrypted files to. A password also locks the link&apos;s key in your browser, so we never see
+        it. The link itself is still a secret, and none of this makes Warden end-to-end encrypted. You can change or
+        stop any share from Shared in the vault, but we can&apos;t show you a link again: we don&apos;t keep it.
+      </p>
+    ),
+  },
+  {
     question: 'Can I delete my account?',
     answer: (
       <p>

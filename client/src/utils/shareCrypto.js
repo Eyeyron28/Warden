@@ -19,7 +19,7 @@ export function readKeyFromHash(hash) {
   return match ? match[1] : null;
 }
 
-function base64UrlToBytes(text) {
+export function base64UrlToBytes(text) {
   const base64 = text.replace(/-/g, '+').replace(/_/g, '/');
   return base64ToBytes(base64 + '='.repeat((4 - (base64.length % 4)) % 4));
 }
@@ -34,6 +34,11 @@ export function base64ToBytes(base64) {
 /** A decrypt-only, non-extractable AES-GCM key from the fragment's key text. */
 export function importShareKey(keyText) {
   return crypto.subtle.importKey('raw', base64UrlToBytes(keyText), 'AES-GCM', false, ['decrypt']);
+}
+
+/** The same key from raw bytes (a password share: unwrapped from the wrapped key). */
+export function importShareKeyBytes(bytes) {
+  return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['decrypt']);
 }
 
 /**

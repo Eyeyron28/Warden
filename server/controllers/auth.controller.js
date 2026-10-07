@@ -3,8 +3,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const Folder = require('../models/Folder');
-const Share = require('../models/Share');
-const SharedFile = require('../models/SharedFile');
+const { removeShares } = require('../utils/shareCleanup');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
   generateSalt,
@@ -732,10 +731,9 @@ const resetPassword = asyncHandler(async (req, res) => {
     await Document.deleteMany({ userId: user._id });
     await Folder.deleteMany({ userId: user._id });
     // Shares are snapshots of the old vault; a wipe should not leave copies
-    // reachable by link.
-    const shareIdsToDrop = (await Share.find({ ownerUserId: user._id }).select('shareId')).map((share) => share.shareId);
-    await Share.deleteMany({ ownerUserId: user._id });
-    await SharedFile.deleteMany({ shareId: { $in: shareIdsToDrop } });
+    // reachable by link, nor any of their wrapped keys, verifiers, recipient
+    // emails, counters, access sessions or code challenges.
+    await removeShares({ ownerUserId: user._id });
 
     await finalizeReset(user, dek, newPassword, { newRecoveryKey });
     responseExtra = { recoveryKey: newRecoveryKey, documentsWiped: true };

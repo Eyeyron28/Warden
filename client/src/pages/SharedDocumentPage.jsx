@@ -3,15 +3,29 @@ import { useParams } from 'react-router-dom';
 import { ArrowSquareOut, CheckCircle, DownloadSimple, FileText, LinkBreak } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
-import { fetchSharedManifest, fetchSharedFile } from '../services/sharedService.js';
+import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
+import PasswordInput from './auth/PasswordInput.jsx';
+import {
+  fetchSharedManifest,
+  fetchSharedFile,
+  openAccess,
+  requestEmailCode,
+  unlockShare,
+  verifyEmailCode,
+} from '../services/sharedService.js';
 import {
   decryptBlob,
   decryptManifest,
   importShareKey,
+  importShareKeyBytes,
   previewKind,
   readKeyFromHash,
   safeDownloadName,
+  base64ToBytes,
 } from '../utils/shareCrypto.js';
+import { deriveShareSecrets, unwrapShareKey } from '../utils/sharePassword.js';
+import site from '../components/site/site.module.css';
+import forms from '../components/site/forms.module.css';
 import styles from './SharedDocumentPage.module.css';
 
 function formatFileSize(bytes) {
@@ -65,8 +79,8 @@ function openInNewTab(url) {
  *   - everything else - html, svg, scripts, unknown - is typed as opaque
  *     bytes and can only be downloaded, never rendered by this page.
  */
-async function openSharedFile({ shareId, key, entry }) {
-  const encrypted = await fetchSharedFile(shareId, entry.id);
+async function openSharedFile({ shareId, key, entry, accessToken }) {
+  const encrypted = await fetchSharedFile(shareId, entry.id, accessToken);
   const plain = await decryptBlob(key, shareId, entry.id, encrypted);
   const kind = previewKind(entry.mime, new Uint8Array(plain, 0, Math.min(16, plain.byteLength)));
   const blob = new Blob([plain], { type: kind ? entry.mime : 'application/octet-stream' });
@@ -79,7 +93,7 @@ async function openSharedFile({ shareId, key, entry }) {
  * is fetched and decrypted on demand, so opening a folder link doesn't pull
  * every file at once.
  */
-function SharedFile({ shareId, shareKey, entry, eager }) {
+function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
   // Named sharedFile, not "document" - this component needs the real global
   // `document` (document.createElement) for the click fallbacks above.
   const [sharedFile, setSharedFile] = useState(null); // { url, kind, size }
@@ -94,7 +108,7 @@ function SharedFile({ shareId, shareKey, entry, eager }) {
     setBusy(true);
     setFailed(false);
     try {
-      const opened = await openSharedFile({ shareId, key: shareKey, entry });
+      const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken });
       urlRef.current = opened.url;
       const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size };
       loadedRef.current = loaded;
@@ -106,7 +120,7 @@ function SharedFile({ shareId, shareKey, entry, eager }) {
     } finally {
       setBusy(false);
     }
-  }, [shareId, shareKey, entry]);
+  }, [shareId, shareKey, accessToken, entry]);
 
   useEffect(() => {
     if (eager) load();
@@ -190,14 +204,22 @@ function SharedFile({ shareId, shareKey, entry, eager }) {
 }
 
 /**
- * The recipient-facing page for a share link (/shared/:shareId#k=...).
+ * The recipient-facing page for a share link (/shared/:shareId[#k=...]).
  * Deliberately NOT nested under App's authenticated routing in any way - it
  * never reads the session token and never redirects to /login.
  *
- * The key after the # is read once, from the address the page was opened
- * with, then removed from the address bar and history with replaceState and
- * kept only in memory. It is never sent to any API. (Because it is removed,
- * reloading the page cannot decrypt anything: open the full link again.)
+ * What the visitor goes through depends on what the owner chose:
+ *   1. an emailed 6-digit code, if the link is restricted to an address;
+ *   2. the link's password, if it has one (the key is then NOT in the link:
+ *      it comes back wrapped, and only the password opens it);
+ *   3. otherwise the key is the one after the # in the address.
+ * Each step is checked by the server before it releases anything, but none of
+ * them is a key: the files are always decrypted here, in the browser.
+ *
+ * The #k key is read once, from the address the page was opened with, then
+ * removed from the address bar and history with replaceState and kept only in
+ * memory. It is never sent to any API. (Because it is removed, reloading the
+ * page cannot decrypt anything: open the full link again.)
  */
 function SharedDocumentPage() {
   const { shareId } = useParams();
@@ -206,10 +228,23 @@ function SharedDocumentPage() {
   // development) still sees it after the effect below has cleared it.
   const [keyText] = useState(() => readKeyFromHash(window.location.hash));
 
-  const [phase, setPhase] = useState('loading'); // loading | invalid | ready
+  // loading | invalid | email | password | ready
+  const [phase, setPhase] = useState('loading');
+  const [access, setAccess] = useState(null);
   const [shareKey, setShareKey] = useState(null);
   const [entries, setEntries] = useState([]);
   const [downloadingAll, setDownloadingAll] = useState(false);
+
+  // email step
+  const [emailStage, setEmailStage] = useState('send'); // send | code
+  const [codeChallenge, setCodeChallenge] = useState(null);
+  const [emailNote, setEmailNote] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  // password step
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
 
   useEffect(() => {
     // Take the key out of the address bar and the history entry.
@@ -225,47 +260,121 @@ function SharedDocumentPage() {
     return () => meta.remove();
   }, []);
 
+  /** Opens the manifest with a key and shows the files; any failure is the one generic page. */
+  const loadFiles = async (key, token) => {
+    try {
+      const manifest = await fetchSharedManifest(shareId, token);
+      const files = await decryptManifest(key, shareId, manifest.manifest);
+      // Only files the server actually holds, in manifest order.
+      const held = new Set(manifest.files.map((file) => file.id));
+      const usable = files.filter((file) => held.has(file.id));
+      if (usable.length === 0) throw new Error('empty');
+      setShareKey(key);
+      setEntries(usable);
+      setPhase('ready');
+    } catch {
+      setPhase('invalid');
+    }
+  };
+
+  /** Called when the gates that come before the key are done. */
+  const afterGates = async (current, extra = {}) => {
+    if (current.needsPassword && !extra.keyFromPassword) {
+      setPhase('password');
+      return;
+    }
+    if (extra.keyFromPassword) {
+      await loadFiles(extra.keyFromPassword, current.accessToken);
+      return;
+    }
+    if (!keyText) {
+      setPhase('invalid');
+      return;
+    }
+    try {
+      await loadFiles(await importShareKey(keyText), current.accessToken);
+    } catch {
+      setPhase('invalid');
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
-    const fail = () => {
-      if (!cancelled) setPhase('invalid');
-    };
-
-    if (!keyText) {
-      fail();
-      return undefined;
-    }
-
     (async () => {
       try {
-        const manifest = await fetchSharedManifest(shareId);
-        const key = await importShareKey(keyText);
-        const files = await decryptManifest(key, shareId, manifest.manifest);
-        // Only files the server actually holds, in manifest order.
-        const held = new Set(manifest.files.map((file) => file.id));
-        const usable = files.filter((file) => held.has(file.id));
-        if (usable.length === 0) throw new Error('empty');
+        const opened = await openAccess(shareId);
         if (cancelled) return;
-        setShareKey(key);
-        setEntries(usable);
-        setPhase('ready');
+        setAccess(opened);
+        if (opened.needsEmail) {
+          setPhase('email');
+          return;
+        }
+        await afterGates(opened);
       } catch {
-        // Missing, expired, revoked, or the wrong key: one answer for all.
-        fail();
+        // Missing, expired, revoked, limit reached: one answer for all.
+        if (!cancelled) setPhase('invalid');
       }
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [shareId, keyText]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareId]);
+
+  // ---- email step ----
+  const sendCode = async () => {
+    setEmailBusy(true);
+    setEmailNote('');
+    try {
+      const sent = await requestEmailCode(shareId, access.accessToken);
+      setCodeChallenge({ ...sent, challengeToken: access.accessToken });
+      setEmailStage('code');
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 429) setEmailNote('Too many codes have been requested for this link. Please try again later.');
+      else if (status === 404) setPhase('invalid');
+      else setEmailNote('We couldn’t send the code. Please try again in a moment.');
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const emailVerified = async () => {
+    if (access.needsPassword) setPhase('password');
+    else await afterGates(access);
+  };
+
+  // ---- password step ----
+  const submitPassword = async (event) => {
+    event.preventDefault();
+    if (passwordBusy || !password) return;
+    setPasswordBusy(true);
+    setPasswordError('');
+    try {
+      // The password never leaves this browser: it is turned into a verifier
+      // (for the server to check) and a separate wrap key (to open the key).
+      const salt = base64ToBytes(access.password.salt);
+      const { wrapKey, verifier } = await deriveShareSecrets(password, salt, access.password.kdf);
+      const released = await unlockShare(shareId, access.accessToken, verifier);
+      const keyBytes = await unwrapShareKey(released.wrappedKey, wrapKey, shareId);
+      setPassword('');
+      await afterGates(access, { keyFromPassword: await importShareKeyBytes(keyBytes) });
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 429) setPasswordError('Too many wrong passwords for this link. Please try again later.');
+      else if (status === 404) setPhase('invalid');
+      else setPasswordError('That password is incorrect.');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
 
   const handleDownloadAll = async () => {
     setDownloadingAll(true);
     try {
       for (const entry of entries) {
         // eslint-disable-next-line no-await-in-loop
-        const opened = await openSharedFile({ shareId, key: shareKey, entry });
+        const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken: access.accessToken });
         saveBlobAs(opened.url, entry.name);
         setTimeout(() => URL.revokeObjectURL(opened.url), 60_000);
       }
@@ -275,6 +384,10 @@ function SharedDocumentPage() {
       setDownloadingAll(false);
     }
   };
+
+  // A single-file link opens its preview straight away - unless the share has a
+  // download limit, where merely opening the page must not use one up.
+  const eagerSingle = entries.length === 1 && !access?.limited;
 
   return (
     <div className={styles.page}>
@@ -291,15 +404,92 @@ function SharedDocumentPage() {
             <LinkBreak size={40} weight="light" className={styles.invalidIcon} />
             <h1 className={styles.invalidTitle}>This link is no longer valid.</h1>
             <p className={styles.invalidBody}>
-              It may have expired, been revoked by the person who shared it, or be missing the end of the
-              address. If you reloaded this page, open the full link you were sent again.
+              It may have expired, been stopped by the person who shared it, used up its downloads, or be missing the
+              end of the address. If you reloaded this page, open the full link you were sent again.
             </p>
+          </div>
+        )}
+
+        {phase === 'email' && access && (
+          <div className={styles.documentPanel}>
+            <h1 className={styles.gateTitle}>Confirm it&apos;s you</h1>
+            {emailStage === 'send' ? (
+              <div className={forms.form}>
+                <p className={styles.gateText}>
+                  The person who shared this chose to share it with one email address. We&apos;ll email a 6-digit code
+                  to <strong>{access.maskedEmail}</strong>.
+                </p>
+                {emailNote && (
+                  <div className={forms.alert} role="alert">
+                    <p>{emailNote}</p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className={`${site.button} ${site.primary} ${site.block}`}
+                  onClick={sendCode}
+                  disabled={emailBusy}
+                >
+                  {emailBusy ? 'Sending…' : 'Email me a code'}
+                </button>
+              </div>
+            ) : (
+              <OtpChallengePanel
+                challenge={codeChallenge}
+                onSubmitCode={(code) => verifyEmailCode(shareId, access.accessToken, code)}
+                onResend={async () => ({ ...(await requestEmailCode(shareId, access.accessToken)), challengeToken: access.accessToken })}
+                onVerified={emailVerified}
+                onBack={() => setEmailStage('send')}
+                onDead={(message) => {
+                  setEmailNote(message);
+                  setEmailStage('send');
+                }}
+                submitLabel="Continue"
+              />
+            )}
+          </div>
+        )}
+
+        {phase === 'password' && access && (
+          <div className={styles.documentPanel}>
+            <h1 className={styles.gateTitle}>Enter the password</h1>
+            <form className={forms.form} onSubmit={submitPassword} noValidate>
+              <p className={styles.gateText}>The person who shared this protected it with a password.</p>
+              <div role="alert" aria-live="assertive">
+                {passwordError && (
+                  <div className={forms.alert}>
+                    <p>{passwordError}</p>
+                  </div>
+                )}
+              </div>
+              <PasswordInput
+                id="share-view-password"
+                label="Password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="off"
+                autoFocus
+              />
+              <button
+                type="submit"
+                className={`${site.button} ${site.primary} ${site.block}`}
+                disabled={passwordBusy || !password}
+              >
+                {passwordBusy ? 'Checking…' : 'Open'}
+              </button>
+            </form>
           </div>
         )}
 
         {phase === 'ready' && entries.length === 1 && (
           <div className={styles.documentPanel}>
-            <SharedFile shareId={shareId} shareKey={shareKey} entry={entries[0]} eager />
+            <SharedFile
+              shareId={shareId}
+              shareKey={shareKey}
+              accessToken={access.accessToken}
+              entry={entries[0]}
+              eager={eagerSingle}
+            />
           </div>
         )}
 
@@ -320,7 +510,13 @@ function SharedDocumentPage() {
             <ul className={styles.fileList}>
               {entries.map((entry) => (
                 <li key={entry.id}>
-                  <SharedFile shareId={shareId} shareKey={shareKey} entry={entry} eager={false} />
+                  <SharedFile
+                    shareId={shareId}
+                    shareKey={shareKey}
+                    accessToken={access.accessToken}
+                    entry={entry}
+                    eager={false}
+                  />
                 </li>
               ))}
             </ul>

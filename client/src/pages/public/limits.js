@@ -32,7 +32,7 @@ export const LIMITS = [
   {
     title: 'Share links',
     body:
-      "A share link contains a key after the # symbol. Anyone who has the full link can open the shared files until it expires or you revoke it. The server stores only encrypted copies of the shared files and never stores the link's key. A share is a snapshot: deleting or editing the original file does not change or remove existing shared copies; revoke the share to remove them.",
+      "A share link contains a key after the # symbol; if you add a password, the key is locked by the password instead. Anyone who has the full link, and any password or emailed code you asked for, can open the shared files until it expires, reaches its download limit or you stop sharing. The server stores only encrypted copies of the shared files and never stores the link's key or the password. A password, a download limit or an email restriction controls who the server will hand the encrypted copies to; it is not end-to-end encryption, and the link is still a secret to send over a trusted channel. A password is only as strong as you make it: someone who copied our database could try guesses against it offline. A share is a snapshot: deleting or editing the original file does not change or remove existing shared copies; stop sharing to remove them.",
   },
   {
     title: 'File names and sizes',

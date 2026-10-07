@@ -9,7 +9,10 @@ import {
   listShares,
   fetchShareUsage,
   revokeShareById,
+  setSharePassword,
 } from '../services/sharesService.js';
+import { base64UrlToBytes } from '../utils/shareCrypto.js';
+import { KDF_PARAMS, deriveShareSecrets, passwordProblem, randomSalt, toBase64, wrapShareKey } from '../utils/sharePassword.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
@@ -67,7 +70,12 @@ function ShareModal({ documentIds, title, onClose }) {
   const [isCustomExpiry, setIsCustomExpiry] = useState(false);
   const [customExpiry, setCustomExpiry] = useState('');
   const [creating, setCreating] = useState(false);
+  const [createStatus, setCreateStatus] = useState('');
   const [createError, setCreateError] = useState('');
+  // Optional protections (all off by default).
+  const [password, setPassword] = useState('');
+  const [maxDownloadsText, setMaxDownloadsText] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
   const [createdShare, setCreatedShare] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -146,7 +154,22 @@ function ShareModal({ documentIds, title, onClose }) {
     Number.isFinite(customExpiryMs) &&
     customExpiryMs > Date.now() &&
     customExpiryMs <= Date.now() + MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-  const canGenerate = !creating && (!isCustomExpiry || isCustomExpiryValid);
+  const maxDownloadsValue = maxDownloadsText.trim() === '' ? null : Number(maxDownloadsText);
+  const maxDownloadsProblem =
+    maxDownloadsValue !== null && (!Number.isInteger(maxDownloadsValue) || maxDownloadsValue < 1 || maxDownloadsValue > 100)
+      ? 'Enter a whole number from 1 to 100, or leave it empty for no limit.'
+      : '';
+  const emailProblem =
+    recipientEmail.trim() !== '' && !/^[^\s@,;<>()[\]"]+@[^\s@,;<>()[\]"]+\.[^\s@,;<>()[\]"]+$/.test(recipientEmail.trim())
+      ? 'Enter one email address.'
+      : '';
+  const pwProblem = password !== '' ? passwordProblem(password) : '';
+  const canGenerate =
+    !creating &&
+    (!isCustomExpiry || isCustomExpiryValid) &&
+    !maxDownloadsProblem &&
+    !emailProblem &&
+    !pwProblem;
 
   const handlePresetClick = (hours) => {
     setIsCustomExpiry(false);
@@ -164,20 +187,53 @@ function ShareModal({ documentIds, title, onClose }) {
     setCreateError('');
     try {
       const hours = isCustomExpiry ? (customExpiryMs - Date.now()) / (60 * 60 * 1000) : durationHours;
+      const options = {};
+      if (maxDownloadsValue !== null) options.maxDownloads = maxDownloadsValue;
+      if (recipientEmail.trim()) options.recipientEmail = recipientEmail.trim();
+      if (password) options.passwordProtected = true;
       const result = isSingle
-        ? await createShare(documentId, hours)
-        : await createBulkShare(documentIds, hours);
+        ? await createShare(documentId, hours, options)
+        : await createBulkShare(documentIds, hours, options);
+
+      // A password share: the server made the key and returned it in the link,
+      // hidden until now. THIS browser locks that key under the password
+      // (scrypt, in the browser; the password never leaves it), sends only the
+      // wrapped key, and shows a link WITHOUT the key. If anything fails the
+      // hidden share is deleted.
+      let shareUrl = result.shareUrl;
+      if (result.passwordPending) {
+        setCreateStatus('Locking the link with your password…');
+        try {
+          const keyText = new URL(result.shareUrl).hash.slice(3);
+          const salt = randomSalt();
+          const { wrapKey, verifier } = await deriveShareSecrets(password, salt);
+          const wrappedKey = await wrapShareKey(base64UrlToBytes(keyText), wrapKey, result.id);
+          await setSharePassword(result.id, { salt: toBase64(salt), kdf: KDF_PARAMS, wrappedKey, verifier });
+          const clean = new URL(result.shareUrl);
+          clean.hash = '';
+          shareUrl = clean.toString();
+        } catch (err) {
+          await revokeShareById(result.id).catch(() => {});
+          throw err;
+        }
+      }
       // result.shareUrl is built server-side from PUBLIC_APP_URL (or, in
       // development only, the PC's LAN address), never from this tab's own
       // address. Its #fragment is the share's key: it appears here, once,
       // and nowhere on the server. The localhost variant below is only a
       // same-machine convenience for the dev LAN-IP case, where localhost
       // is a secure context with no certificate warning.
-      const localUrl = new URL(result.shareUrl);
+      const localUrl = new URL(shareUrl);
       const devLanLink = /^\d+\.\d+\.\d+\.\d+$/.test(localUrl.hostname);
       localUrl.hostname = 'localhost';
 
-      setCreatedShare({ ...result, localShareUrl: devLanLink ? localUrl.toString() : null });
+      setCreatedShare({
+        ...result,
+        shareUrl,
+        passwordProtected: Boolean(result.passwordPending),
+        localShareUrl: devLanLink ? localUrl.toString() : null,
+      });
+      setPassword('');
       if (result.usage) setUsage(result.usage);
       setCopied(false);
       setBulkRevoked(false);
@@ -187,6 +243,7 @@ function ShareModal({ documentIds, title, onClose }) {
       setCreateError(extractErrorMessage(err, 'Could not generate a share link.'));
     } finally {
       setCreating(false);
+      setCreateStatus('');
     }
   };
 
@@ -301,12 +358,91 @@ function ShareModal({ documentIds, title, onClose }) {
             )}
           </div>
 
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="share-password">
+              Password (optional)
+            </label>
+            <input
+              id="share-password"
+              type="password"
+              className={styles.textInput}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              disabled={creating}
+              placeholder="No password"
+              aria-invalid={Boolean(pwProblem)}
+            />
+            {pwProblem ? (
+              <p className={styles.fieldError}>{pwProblem}</p>
+            ) : (
+              <p className={styles.hint}>
+                Whoever opens the link must type it. Your browser uses it to lock the link&apos;s key, and the password
+                itself never reaches us, so we can&apos;t reset it. Send it by a different route than the link.
+              </p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="share-max-downloads">
+              Limit downloads (optional)
+            </label>
+            <input
+              id="share-max-downloads"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="100"
+              step="1"
+              className={styles.textInput}
+              value={maxDownloadsText}
+              onChange={(event) => setMaxDownloadsText(event.target.value)}
+              disabled={creating}
+              placeholder="No limit"
+              aria-invalid={Boolean(maxDownloadsProblem)}
+            />
+            {maxDownloadsProblem ? (
+              <p className={styles.fieldError}>{maxDownloadsProblem}</p>
+            ) : (
+              <p className={styles.hint}>
+                After this many downloads (1 to 100) the share is deleted. Each file delivered to a viewer counts as one
+                download, and a single-file link counts when it is opened.
+              </p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="share-recipient">
+              Only this email address (optional)
+            </label>
+            <input
+              id="share-recipient"
+              type="email"
+              className={styles.textInput}
+              value={recipientEmail}
+              onChange={(event) => setRecipientEmail(event.target.value)}
+              disabled={creating}
+              autoComplete="off"
+              placeholder="Anyone with the link"
+              aria-invalid={Boolean(emailProblem)}
+            />
+            {emailProblem ? (
+              <p className={styles.fieldError}>{emailProblem}</p>
+            ) : (
+              <p className={styles.hint}>
+                Before the server hands over anything, the viewer must enter a 6-digit code we email to this address. This
+                controls who the server serves the encrypted copies to; the link itself is still a secret, so send it over
+                a trusted channel.
+              </p>
+            )}
+          </div>
+
           <p className={styles.error} role="alert">
             {createError || ' '}
           </p>
 
           <button type="button" className={styles.generateButton} onClick={handleGenerate} disabled={!canGenerate}>
-            {creating ? 'Generating...' : 'Generate share link'}
+            {creating ? createStatus || 'Generating...' : 'Generate share link'}
           </button>
           {usage && (
             <p className={styles.hint} data-testid="share-usage">
@@ -316,10 +452,12 @@ function ShareModal({ documentIds, title, onClose }) {
             </p>
           )}
           <p className={styles.demoNote}>
-            A share link contains a key after the # symbol. Anyone who has the full link can open the shared
-            files until it expires or you revoke it. The server stores only encrypted copies of the shared files
-            and never stores the link&apos;s key. A share is a snapshot: deleting or editing the original file
-            does not change or remove existing shared copies; revoke the share to remove them.
+            A share link contains a key after the # symbol (or, with a password, the key is locked by the password
+            instead). Anyone who has the full link, and any password or code you required, can open the shared files
+            until it expires or you revoke it. The server stores only encrypted copies of the shared files and never
+            stores the link&apos;s key. You can&apos;t get the link back later, so copy it when it appears. A share is a
+            snapshot: deleting or editing the original file does not change or remove existing shared copies; stop
+            sharing to remove them.
           </p>
         </div>
       ) : (
@@ -340,9 +478,14 @@ function ShareModal({ documentIds, title, onClose }) {
               </button>
             </div>
             <p className={styles.hint}>
-              Copy the whole link, including everything after the # - that part is the key, and this is the
-              only time you will see it. Anyone who has the full link can open the shared files until it
-              expires or you revoke it. The QR code below encodes the same link.
+              {createdShare.passwordProtected
+                ? 'This link has no key in it: whoever opens it needs the password you chose, and your browser locked the key with it. We never see the password and can’t reset it, so tell recipients the password by a different route. '
+                : 'Copy the whole link, including everything after the # - that part is the key, and this is the only time you will see it. '}
+              Anyone who has the full link{createdShare.passwordProtected ? ', the password' : ''}
+              {createdShare.recipientEmail ? ' and a code emailed to the recipient' : ''} can open the shared files until it
+              expires or you stop sharing.
+              {createdShare.maxDownloads ? ` It is deleted after ${createdShare.maxDownloads} download${createdShare.maxDownloads === 1 ? '' : 's'}.` : ''}
+              {' '}You can&apos;t get the link back later: we don&apos;t keep it. The QR code below encodes the same link.
             </p>
           </div>
 
@@ -422,7 +565,12 @@ function ShareModal({ documentIds, title, onClose }) {
           <ul className={styles.shareList}>
             {shares.map((share) => (
               <li key={share.id} className={styles.shareRow}>
-                <span className={styles.shareExpiry}>{describeExpiry(share.expiresAt)}</span>
+                <span className={styles.shareExpiry}>
+                  {describeExpiry(share.expiresAt)}
+                  {share.passwordProtected ? ' · password' : ''}
+                  {share.emailRestricted ? ' · email only' : ''}
+                  {share.maxDownloads ? ` · ${share.downloadCount}/${share.maxDownloads} downloads` : share.downloadCount ? ` · ${share.downloadCount} downloads` : ''}
+                </span>
 
                 {confirmingRevokeId !== share.id ? (
                   <button

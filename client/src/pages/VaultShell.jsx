@@ -760,6 +760,7 @@ function VaultShell({ onLocked }) {
           onOpenPreviews={openPreviewsPanel}
           onOpenPair={openPairPanel}
           onOpenDevices={openDevicesPanel}
+          onOpenShared={() => navigate('/shares')}
           onOpenAccount={() => navigate('/account')}
         />
 

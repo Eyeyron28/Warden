@@ -26,6 +26,10 @@ const DESIGN_POINTS = [
     body: 'It is saved twice, each copy locked: once with a key derived from your password (scrypt), once with a key derived from your recovery key. Your password itself is never stored, only a salted hash used to check it.',
   },
   {
+    title: 'Share links have their own key',
+    body: 'A share is a copy encrypted under a fresh random key that goes into the link and is never stored by the server. You can add a password (your browser locks the key with it), a download limit, or an email-code check; those decide who the server will serve the encrypted copy to. They are checks on our server, not a different kind of encryption.',
+  },
+  {
     title: 'Logging in needs your password and an emailed code',
     body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime.',
   },

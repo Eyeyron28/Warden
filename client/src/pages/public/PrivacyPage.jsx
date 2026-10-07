@@ -39,15 +39,19 @@ export const SECTIONS = [
           <li>
             <strong>Shared copies</strong>: when you create a share link, encrypted copies of the files you chose
             and an encrypted list of their names. We do not store the link&apos;s key, so we cannot open them. They
-            are deleted when the link expires (at most 30 days) or you revoke it.
+            are deleted when the link expires (at most 30 days), reaches its download limit, or you stop sharing. If
+            you use the extra options we also keep: how many times it was downloaded and its limit; the recipient
+            email address you entered (to send them a code); and, for a password, a random salt, the password-locked
+            copy of the link&apos;s key and a hash of a value made from the password. We never receive the password or
+            the plain key. For your own share list we keep the shared files&apos; names encrypted under your vault key.
           </li>
           <li>
             <strong>Paired devices</strong>: the name you give a paired phone and when it was paired. The phone
             itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
           </li>
           <li>
-            <strong>One-time codes</strong>: when you log in, recover access with a paired phone, or delete your
-            account, a 6-digit code is emailed to you and expires after a few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
+            <strong>One-time codes</strong>: when you log in, recover access with a paired phone, delete your
+            account, or open a share link restricted to your email address, a 6-digit code is emailed to you and expires after a few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
             expires.
           </li>
           <li>

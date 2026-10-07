@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowsClockwise, CaretDown, FileText, ShieldCheck, UserCircle } from '@phosphor-icons/react';
+import { ArrowsClockwise, CaretDown, FileText, ShareNetwork, ShieldCheck, UserCircle } from '@phosphor-icons/react';
 
 import styles from './SideNav.module.css';
 
@@ -48,6 +48,7 @@ function SideNav({
   onOpenPreviews,
   onOpenPair,
   onOpenDevices,
+  onOpenShared,
   onOpenAccount,
 }) {
   const [syncExpanded, setSyncExpanded] = useState(false);
@@ -96,6 +97,11 @@ function SideNav({
             Paired devices
           </button>
         </NavGroup>
+
+        <button type="button" className={styles.item} onClick={onOpenShared}>
+          <ShareNetwork size={18} weight="light" />
+          <span className={styles.itemLabel}>Shared</span>
+        </button>
 
         <button type="button" className={styles.item} onClick={onOpenAccount}>
           <UserCircle size={18} weight="light" />
