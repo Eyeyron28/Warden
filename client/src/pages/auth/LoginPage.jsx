@@ -144,7 +144,8 @@ function LoginPage() {
       >
         <OtpChallengePanel
           challenge={challenge}
-          onSubmitCode={(code, challengeToken) => verifyOtp(challengeToken, code)}
+          onSubmitCode={(code, challengeToken, trust) => verifyOtp(challengeToken, code, trust)}
+          trustOption
           onResend={resendOtp}
           onVerified={({ sessionToken }) => finishLogin(sessionToken)}
           onBack={() => leaveCodeStep()}

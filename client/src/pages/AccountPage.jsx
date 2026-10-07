@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import Icon from '../components/site/Icon.jsx';
 import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
+import TrustedBrowsers from '../components/TrustedBrowsers.jsx';
 import AuthLayout from './auth/AuthLayout.jsx';
 import PasswordInput from './auth/PasswordInput.jsx';
 import { getMe } from '../services/authService.js';
@@ -139,6 +140,8 @@ function AccountPage() {
           ← Back to your documents
         </Link>
 
+        <TrustedBrowsers />
+
         <section className={styles.danger} aria-labelledby="delete-account-title">
           <h2 id="delete-account-title" className={styles.dangerTitle}>
             <Icon name="alert" size={18} />
@@ -160,8 +163,8 @@ function AccountPage() {
               </p>
               <p className={styles.dangerBody}>
                 <strong>Deleted:</strong> your documents and their previews, your folders, every share link and its
-                encrypted copies, your paired devices&apos; access, your backup records, your login codes and
-                sessions, and the account itself (email, password hash and locked keys).
+                encrypted copies, your paired devices&apos; access, your backup records, your login codes, trusted
+                browsers and sessions, and the account itself (email, password hash and locked keys).
               </p>
               <p className={styles.dangerBody}>
                 <strong>Not deleted, because we don&apos;t hold it:</strong> emails we already sent you, files you

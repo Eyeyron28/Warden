@@ -2,7 +2,14 @@ const express = require('express');
 
 const requireSession = require('../middleware/requireSession');
 const createRateLimiter = require('../middleware/rateLimit');
-const { deleteChallenge, resendDeleteCode, deleteAccount } = require('../controllers/account.controller');
+const {
+  deleteChallenge,
+  resendDeleteCode,
+  deleteAccount,
+  listTrustedDevices,
+  removeTrustedDevice,
+  removeAllTrustedDevices,
+} = require('../controllers/account.controller');
 
 const router = express.Router();
 
@@ -21,5 +28,8 @@ router.use(byIp, requireSession, byAccount);
 router.post('/delete-challenge', deleteChallenge);
 router.post('/resend-delete-code', resendDeleteCode);
 router.delete('/', deleteAccount);
+router.get('/trusted-devices', listTrustedDevices);
+router.delete('/trusted-devices', removeAllTrustedDevices);
+router.delete('/trusted-devices/:id', removeTrustedDevice);
 
 module.exports = router;

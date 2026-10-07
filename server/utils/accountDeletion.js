@@ -6,6 +6,7 @@ const PairedDevice = require('../models/PairedDevice');
 const PairingToken = require('../models/PairingToken');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const Session = require('../models/Session');
+const TrustedDevice = require('../models/TrustedDevice');
 const OtpChallenge = require('../models/OtpChallenge');
 const RateLimit = require('../models/RateLimit');
 const { runInTransaction } = require('./folders');
@@ -57,6 +58,7 @@ async function deleteAccountData(userId, { email = null, transaction = true } = 
     await del('recoveryrequesttokens', RecoveryRequestToken, { userId });
     await del('otpchallenges', OtpChallenge, { userId });
     await del('sessions', Session, { userId });
+    await del('trusteddevices', TrustedDevice, { userId });
     // 2. The data itself.
     await del('documents', Document, { userId });
     await del('folders', Folder, { userId });

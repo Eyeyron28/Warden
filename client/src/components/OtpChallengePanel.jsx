@@ -39,6 +39,7 @@ export function readChallenge(data) {
  *   onBack: () => void,
  *   onDead: (message: string) => void,       // expired, or the server dropped it
  *   onStatus?: (status: 'idle' | 'unlocking' | 'error') => void,
+ *   trustOption?: boolean,                   // show "Trust this browser for 30 days" (login only)
  *   submitLabel?: string,
  *   busyLabel?: string,
  * }} props
@@ -51,6 +52,7 @@ function OtpChallengePanel({
   onBack,
   onDead,
   onStatus = () => {},
+  trustOption = false,
   submitLabel = 'Verify and continue',
   busyLabel = 'Checking…',
 }) {
@@ -60,6 +62,7 @@ function OtpChallengePanel({
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [trust, setTrust] = useState(false); // always starts unticked
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -83,7 +86,7 @@ function OtpChallengePanel({
     setMessage(null);
     onStatus('unlocking');
     try {
-      const result = await onSubmitCode(toCode(digits), challenge.token);
+      const result = await onSubmitCode(toCode(digits), challenge.token, trust);
       onVerified(result);
     } catch (err) {
       setSubmitting(false);
@@ -103,9 +106,11 @@ function OtpChallengePanel({
   };
 
   // The sixth digit submits, so a pasted or autofilled code is one step. A
-  // failed or resent code clears the boxes, so this cannot loop.
+  // failed or resent code clears the boxes, so this cannot loop. Not when the
+  // "Trust this browser" choice is on offer: it sits under the boxes, so the
+  // person must be able to tick it after typing the code and press the button.
   useEffect(() => {
-    if (!submitting && isComplete(digits)) handleSubmit();
+    if (!trustOption && !submitting && isComplete(digits)) handleSubmit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [digits]);
 
@@ -182,6 +187,15 @@ function OtpChallengePanel({
           Code expires in <strong>{formatClock(expiresInSeconds)}</strong>
         </p>
       </div>
+
+      {trustOption && (
+        <label className={forms.checkboxRow}>
+          <input type="checkbox" checked={trust} onChange={(event) => setTrust(event.target.checked)} disabled={submitting} />
+          <span>
+            Trust this browser for 30 days. <span className={forms.hint}>Only on your own device.</span>
+          </span>
+        </label>
+      )}
 
       <button
         type="submit"

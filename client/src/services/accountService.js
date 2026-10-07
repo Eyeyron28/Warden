@@ -41,3 +41,24 @@ export async function deleteAccount({ challengeToken, code, emailConfirmation })
   });
   return data;
 }
+
+/**
+ * GET /api/account/trusted-devices - the browsers that skip the emailed code
+ * at login: label, created, last used, and which one is this browser.
+ * @returns {Promise<{ devices: Array<{ id: string, label: string, createdAt: string, lastUsedAt: string, expiresAt: string, current: boolean }> }>}
+ */
+export async function listTrustedDevices() {
+  const { data } = await api.get('/account/trusted-devices');
+  return data;
+}
+
+/** DELETE /api/account/trusted-devices/:id - the next login on that browser asks for a code. */
+export async function removeTrustedDevice(id) {
+  await api.delete(`/account/trusted-devices/${encodeURIComponent(id)}`);
+}
+
+/** DELETE /api/account/trusted-devices - every trusted browser. */
+export async function removeAllTrustedDevices() {
+  const { data } = await api.delete('/account/trusted-devices');
+  return data;
+}

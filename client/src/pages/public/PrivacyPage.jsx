@@ -55,6 +55,14 @@ export const SECTIONS = [
             expires.
           </li>
           <li>
+            <strong>Trusted browsers</strong>: only if you tick &quot;Trust this browser for 30 days&quot; when
+            entering a login code. We keep a hash of a random token (the token itself stays in a cookie in that
+            browser), a short label such as &quot;Chrome on Windows&quot; from the browser&apos;s user-agent, and when
+            it was added and last used. No IP address is stored. It lets that browser skip the emailed code, never
+            the password, and expires after 30 days. You can remove one or all of them on the Account page; they
+            are also removed when you reset your password, wipe your vault or delete your account.
+          </li>
+          <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per
             email (to slow down password guessing), sign-in sessions that expire after 30 minutes of inactivity,
             and ordinary server logs.

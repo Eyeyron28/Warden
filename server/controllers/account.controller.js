@@ -2,6 +2,9 @@ const crypto = require('crypto');
 
 const User = require('../models/User');
 const Session = require('../models/Session');
+const TrustedDevice = require('../models/TrustedDevice');
+const mongoose = require('mongoose');
+const { currentTokenHash, clearTrustCookie } = require('../utils/trustedDevice');
 const { sendEmail } = require('../utils/email');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
 const { deleteAccountData } = require('../utils/accountDeletion');
@@ -127,4 +130,49 @@ const deleteAccount = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true });
 });
 
-module.exports = { deleteChallenge, resendDeleteCode, deleteAccount };
+/**
+ * GET /api/account/trusted-devices
+ * requireSession. The browsers that skip the emailed code at login: label,
+ * created, last used, and which one is THIS browser. Hashes never leave the server.
+ */
+const listTrustedDevices = asyncHandler(async (req, res) => {
+  const mine = currentTokenHash(req);
+  const rows = await TrustedDevice.find({ userId: req.userId, expiresAt: { $gt: new Date() } });
+  const devices = rows
+    .map((row) => ({
+      id: String(row._id),
+      label: row.label,
+      createdAt: row.createdAt,
+      lastUsedAt: row.lastUsedAt,
+      expiresAt: row.expiresAt,
+      current: mine !== null && row.tokenHash === mine,
+    }))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.status(200).json({ devices });
+});
+
+/** DELETE /api/account/trusted-devices/:id - one browser; the next login there asks for a code. */
+const removeTrustedDevice = asyncHandler(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw httpError(404, 'Not found.');
+  const row = await TrustedDevice.findOne({ _id: req.params.id, userId: req.userId });
+  if (!row) throw httpError(404, 'Not found.');
+  await TrustedDevice.deleteOne({ _id: row._id, userId: req.userId });
+  if (row.tokenHash === currentTokenHash(req)) clearTrustCookie(req, res);
+  res.status(204).send();
+});
+
+/** DELETE /api/account/trusted-devices - every trusted browser. */
+const removeAllTrustedDevices = asyncHandler(async (req, res) => {
+  const result = await TrustedDevice.deleteMany({ userId: req.userId });
+  clearTrustCookie(req, res);
+  res.status(200).json({ removed: result?.deletedCount ?? 0 });
+});
+
+module.exports = {
+  deleteChallenge,
+  resendDeleteCode,
+  deleteAccount,
+  listTrustedDevices,
+  removeTrustedDevice,
+  removeAllTrustedDevices,
+};

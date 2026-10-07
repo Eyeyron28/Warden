@@ -71,10 +71,13 @@ export async function loginVault(email, password) {
  * too many tries, already used) is the same 401.
  * @param {string} challengeToken
  * @param {string} code six digits
+ * @param {boolean} [trustDevice] remember this browser for 30 days
  * @returns {Promise<{ sessionToken: string }>}
  */
-export async function verifyOtp(challengeToken, code) {
-  const { data } = await api.post('/auth/verify-otp', { challengeToken, code });
+export async function verifyOtp(challengeToken, code, trustDevice = false) {
+  // `trustDevice: true` asks the server to remember this browser (an HttpOnly
+  // cookie it sets) so the next login here skips the code. Never the password.
+  const { data } = await api.post('/auth/verify-otp', { challengeToken, code, ...(trustDevice ? { trustDevice: true } : {}) });
   return data;
 }
 

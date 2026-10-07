@@ -31,7 +31,7 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Logging in needs your password and an emailed code',
-    body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime.',
+    body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime. If you tick "Trust this browser for 30 days" after a correct code, that browser keeps a random token in a cookie and later logins there skip the emailed code but still need your password. Deleting your account, recovering with a paired phone and restricting a share to an email address always ask for a fresh code. Remove trusted browsers any time from the Account page.',
   },
   {
     title: 'Sessions hold the key only while you use it',

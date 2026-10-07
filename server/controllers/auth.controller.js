@@ -19,6 +19,7 @@ const {
   verifyRecoveryKey,
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
+const { trustThisBrowser, isTrustedFor } = require('../utils/trustedDevice');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
@@ -493,6 +494,16 @@ const unlock = asyncHandler(async (req, res) => {
   user.lockedUntil = undefined;
   await user.save();
 
+  // A browser the owner trusted after an earlier code skips the code - but
+  // only here, AFTER the password has been proven. Phone recovery, deletion
+  // and share-email codes never consult it. Anything wrong with the cookie
+  // just means the normal flow below, indistinguishably.
+  if (otpEnabled() && (await isTrustedFor(req, user._id))) {
+    const sessionToken = await createSession(user._id, dek);
+    res.status(200).json({ sessionToken });
+    return;
+  }
+
   // Second factor: the password alone no longer gets a session. A 6-digit
   // code is emailed and the vault key is parked WRAPPED under a random key
   // that only the browser receives (utils/otpChallenge.js).
@@ -523,6 +534,8 @@ const verifyOtp = asyncHandler(async (req, res) => {
   }
 
   const sessionToken = await createSession(user._id, dek);
+  // The owner ticked "Trust this browser": only now, after a correct code.
+  if (req.body.trustDevice === true) await trustThisBrowser(req, res, user._id);
   res.status(200).json({ sessionToken });
 });
 

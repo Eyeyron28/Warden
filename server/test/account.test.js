@@ -44,7 +44,7 @@ const matches = (doc, filter) =>
 
 const NAMES = [
   'users', 'documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens',
-  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits',
+  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trusteddevices',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -95,7 +95,7 @@ function fakeModel(name) {
 const models = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
-  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits',
+  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrustedDevice: 'trusteddevices',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
@@ -183,6 +183,7 @@ function populate(user) {
   t.ratelimits.push({ _id: oid(), bucket: 'share-password', key: shareId });
   t.ratelimits.push({ _id: oid(), bucket: 'share-email', key: shareId });
   t.sessions.push({ _id: oid(), userId: user._id });
+  t.trusteddevices.push({ _id: oid(), userId: user._id, tokenHash: 'ef'.repeat(32), label: 'Chrome on Windows' });
   t.ratelimits.push({ _id: oid(), bucket: 'otp-email-account', key: String(user._id) });
   t.ratelimits.push({ _id: oid(), bucket: 'signup-email', key: user.email });
   t.ratelimits.push({ _id: oid(), bucket: 'login', key: '203.0.113.7' }); // an IP: cannot be tied to a person
@@ -196,7 +197,7 @@ const rowsOwnedBy = (user) => {
   return {
     // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
     stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
-    byOwner: ['documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges']
+    byOwner: ['documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges', 'trusteddevices']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
       + world.tables.shares.filter((r) => String(r.ownerUserId) === id).length,
   };
@@ -300,7 +301,7 @@ test("another account's delete challenge cannot be used, even with the right cod
   });
   assert.equal(attack.error.status, 401);
   assert.equal(world.tables.users.length, 2);
-  assert.equal(rowsOwnedBy(ben).byOwner, 10, 'ben untouched');
+  assert.equal(rowsOwnedBy(ben).byOwner, 11, 'ben untouched');
 });
 
 test('wrong password, wrong code and wrong email confirmation each fail and delete nothing', async () => {
@@ -353,7 +354,7 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(world.tables.users.length, 1);
   assert.equal(world.tables.ratelimits.filter((r) => r.key === '203.0.113.7').length, 2, 'IP-keyed rows are not about a person and stay');
   // Ben's rows are exactly as before (compare after removing the rows that were ana's).
-  assert.equal(rowsOwnedBy(ben).byOwner, 10);
+  assert.equal(rowsOwnedBy(ben).byOwner, 11);
   assert.ok(world.tables.sharedfiles.length === 1 && world.tables.shares.length === 1, "only ben's share and its copy remain");
   assert.ok(benBefore.length > 0 && anaBefore.documents === 4);
 
@@ -459,9 +460,10 @@ test('no route can issue a session without the emailed code', () => {
   const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const auth = strip(fs.readFileSync(path.join(dir, 'controllers', 'auth.controller.js'), 'utf8'));
 
-  // createSession appears exactly twice: after a verified code, and in the
-  // development-only OTP_ENABLED=false branch of the one shared login ending.
-  assert.equal((auth.match(/createSession\(/g) || []).length, 2);
+  // createSession appears exactly three times: after a verified code, in the
+  // development-only OTP_ENABLED=false branch of the one shared login ending,
+  // and for a TRUSTED browser in unlock - after the password is proven.
+  assert.equal((auth.match(/createSession\(/g) || []).length, 3);
   const verify = auth.slice(auth.indexOf('const verifyOtp'), auth.indexOf('const resendOtp'));
   assert.match(verify, /consumeChallenge\(/);
   assert.match(verify, /createSession\(/);
@@ -472,8 +474,10 @@ test('no route can issue a session without the emailed code', () => {
   const unlockBody = auth.slice(auth.indexOf('const unlock ='), auth.indexOf('const verifyOtp'));
   const phoneBody = auth.slice(auth.indexOf('const recoverViaPhoneComplete'), auth.indexOf('const logout'));
   assert.match(unlockBody, /respondWithLoginChallenge\(res, user, dek\)/);
+  assert.ok(unlockBody.indexOf('checkPasswordWithLockout') < unlockBody.indexOf('isTrustedFor'), 'trust is only consulted after the password');
   assert.match(phoneBody, /respondWithLoginChallenge\(res, user, dek\)/);
   assert.doesNotMatch(phoneBody, /createSession/);
+  assert.doesNotMatch(phoneBody, /isTrustedFor/, 'phone recovery always needs a fresh code');
   assert.doesNotMatch(phoneBody, /sessionToken/);
 
   // And nothing outside auth.controller creates a session either.

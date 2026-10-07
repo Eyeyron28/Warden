@@ -127,7 +127,7 @@ const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits',
+  RateLimit: 'ratelimits', TrustedDevice: 'trusteddevices',
 };
 
 function createWorld() {
@@ -167,15 +167,18 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {} } = {}) {
-  const out = { status: null, json: null, headers: {}, body: null, error: null };
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, secure = true } = {}) {
+  const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
     status(code) { out.status = code; return this; },
     json(payload) { out.json = payload; return this; },
     end(buffer) { out.body = buffer; return this; },
+    send(buffer) { out.body = buffer; return this; },
+    cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
+    clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, secure }, res, (err) => { out.error = err; });
   return out;
 }
 

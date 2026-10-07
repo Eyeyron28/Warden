@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const Session = require('../models/Session');
 const { wrapKey, unwrapKey } = require('./crypto');
+const { revokeAllTrustedDevices } = require('./trustedDevice');
 
 /**
  * DB-backed session store, replacing the old in-memory Map. A single
@@ -143,6 +144,9 @@ async function destroySession(token) {
  */
 async function destroyAllSessionsForUser(userId) {
   await Session.deleteMany({ userId });
+  // Trusted browsers go with the sessions: a password reset or vault wipe must
+  // not leave a device that still skips the emailed code.
+  await revokeAllTrustedDevices(userId);
 }
 
 module.exports = {
