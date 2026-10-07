@@ -30,6 +30,11 @@ export function selectRange(state, orderedKeys, key) {
   return { selected, anchor: key };
 }
 
+/** Right-clicking an item that is not selected selects just that item (the usual file-manager rule). */
+export function selectOnly(key) {
+  return { selected: new Set([key]), anchor: key };
+}
+
 export function selectAll(orderedKeys) {
   return { selected: new Set(orderedKeys), anchor: orderedKeys.length ? orderedKeys[orderedKeys.length - 1] : null };
 }

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const { assertCanStore } = require('../utils/storage');
 const { serializeThumbnail } = require('../utils/thumbnails');
 const { ensureFolderPath, listFolderPaths, toDocumentFolder } = require('../utils/folders');
 
@@ -157,6 +158,9 @@ const pushDocuments = asyncHandler(async (req, res) => {
         'Each document requires filename, encryptedBlob, iv, authTag, and checksum.'
       );
     }
+
+    // eslint-disable-next-line no-await-in-loop
+    await assertCanStore(req.userId, Math.floor((encryptedBlob.length * 3) / 4));
 
     // eslint-disable-next-line no-await-in-loop -- small batches, sequential writes are fine here
     const document = await Document.create({

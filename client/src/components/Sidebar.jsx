@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
   ArrowsClockwise,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   CaretDown,
   FolderSimple,
   Images,
@@ -16,16 +19,21 @@ import StorageMeter from './StorageMeter.jsx';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Sidebar.module.css';
 
+const ICON = 22;
 const navClass = ({ isActive }) => `${styles.item} ${isActive ? styles.itemActive : ''}`;
 
 /**
  * Persistent left navigation: My files (with a lazily loaded folder tree),
  * Photos, Shared, Trash, then Account and the storage meter at the bottom.
- * Under 768px it is a slide-in drawer opened from the header's menu button:
- * it closes on navigation (AppLayout) and on Esc, and keeps keyboard focus
- * inside while open.
+ *
+ * On desktop a button at the top collapses it to an icon rail (about 64px):
+ * every icon gets a tooltip with its label, the active item stays
+ * highlighted, the folder tree hides and the meter becomes a small ring. The
+ * state lives in AppLayout's memory only. Under 768px it is a slide-in
+ * drawer instead (never collapsed): it closes on navigation and Esc and keeps
+ * keyboard focus inside while open.
  */
-function Sidebar({ drawer, open, onClose, version }) {
+function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCollapsed }) {
   const location = useLocation();
   const [params] = useSearchParams();
   const navRef = useRef(null);
@@ -33,6 +41,9 @@ function Sidebar({ drawer, open, onClose, version }) {
   const currentFolder = onFiles ? params.get('path') || '' : '';
   const [treeOpen, setTreeOpen] = useState(true);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [tip, setTip] = useState(null); // { text, top, left }
+
+  const rail = collapsed && !drawer;
 
   useFocusTrap(navRef, drawer && open, { opener: 'activation' });
 
@@ -45,7 +56,30 @@ function Sidebar({ drawer, open, onClose, version }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawer, open, onClose]);
 
+  // A tooltip left behind by a collapse/expand would point at nothing.
+  useEffect(() => setTip(null), [rail]);
+
   const hidden = drawer && !open;
+  // Following a link closes the drawer even when it points at the page you are already on.
+  const closeDrawer = () => {
+    if (drawer) onClose();
+  };
+
+  // Tooltip props for an icon in the rail (nothing when the labels are showing).
+  const tipFor = (text) =>
+    rail
+      ? {
+          onMouseEnter: (event) => showTip(event.currentTarget, text),
+          onFocus: (event) => showTip(event.currentTarget, text),
+          onMouseLeave: () => setTip(null),
+          onBlur: () => setTip(null),
+        }
+      : {};
+  const showTip = (element, text) => {
+    const rect = element.getBoundingClientRect();
+    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 10 });
+  };
+  const label = (text) => <span className={rail ? styles.srOnly : styles.itemLabel}>{text}</span>;
 
   return (
     <>
@@ -53,75 +87,100 @@ function Sidebar({ drawer, open, onClose, version }) {
       <nav
         id="app-sidebar"
         ref={navRef}
-        className={`${styles.nav} ${drawer ? styles.drawer : ''} ${hidden ? styles.drawerClosed : ''}`}
+        className={`${styles.nav} ${drawer ? styles.drawer : ''} ${hidden ? styles.drawerClosed : ''} ${rail ? styles.rail : ''}`}
         aria-label="Main"
         aria-modal={drawer && open ? 'true' : undefined}
         role={drawer && open ? 'dialog' : undefined}
       >
-        <div className={styles.group}>
-          <div className={styles.filesRow}>
-            <NavLink to="/files" end={false} className={({ isActive }) => `${navClass({ isActive })} ${styles.grow}`}>
-              <FolderSimple size={18} weight="regular" aria-hidden="true" />
-              <span className={styles.itemLabel}>My files</span>
-            </NavLink>
-            <button
-              type="button"
-              className={styles.treeToggle}
-              onClick={() => setTreeOpen((value) => !value)}
-              aria-expanded={treeOpen}
-              aria-label={treeOpen ? 'Collapse folders' : 'Expand folders'}
-            >
-              <CaretDown size={14} weight="bold" className={treeOpen ? '' : styles.caretClosed} />
-            </button>
-          </div>
-          {treeOpen && <FolderTree current={currentFolder} active={onFiles} version={version} />}
-        </div>
-
-        <NavLink to="/photos" className={navClass}>
-          <Images size={18} weight="regular" aria-hidden="true" />
-          <span className={styles.itemLabel}>Photos</span>
-        </NavLink>
-        <NavLink to="/shared" className={navClass}>
-          <ShareNetwork size={18} weight="regular" aria-hidden="true" />
-          <span className={styles.itemLabel}>Shared</span>
-        </NavLink>
-        <NavLink to="/trash" className={navClass}>
-          <Trash size={18} weight="regular" aria-hidden="true" />
-          <span className={styles.itemLabel}>Trash</span>
-        </NavLink>
-
-        <div className={styles.group}>
+        {!drawer && (
           <button
             type="button"
-            className={styles.item}
-            onClick={() => setMoreOpen((value) => !value)}
-            aria-expanded={moreOpen}
+            className={styles.collapseButton}
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            {...tipFor(collapsed ? 'Expand sidebar' : 'Collapse sidebar')}
           >
-            <ArrowsClockwise size={18} weight="regular" aria-hidden="true" />
-            <span className={styles.itemLabel}>Backup &amp; devices</span>
-            <CaretDown size={14} weight="bold" className={moreOpen ? '' : styles.caretClosed} />
+            {collapsed ? <CaretDoubleRight size={20} weight="bold" /> : <CaretDoubleLeft size={20} weight="bold" />}
+            {!collapsed && <span className={styles.itemLabel}>Collapse</span>}
           </button>
-          {moreOpen && (
-            <div className={styles.children}>
-              <Link to="/files?panel=backup" className={styles.childItem}>Backup to USB</Link>
-              <Link to="/files?panel=restore" className={styles.childItem}>Restore from backup</Link>
-              <Link to="/files?panel=previews" className={styles.childItem}>Generate previews</Link>
-              <Link to="/files?panel=pair" className={styles.childItem}>
-                <DeviceMobile size={14} aria-hidden="true" /> Pair a device
-              </Link>
-              <Link to="/files?panel=devices" className={styles.childItem}>Paired devices</Link>
-            </div>
-          )}
+        )}
+
+        <div className={styles.group}>
+          <div className={styles.filesRow}>
+            <NavLink to="/files" end={false} className={({ isActive }) => `${navClass({ isActive })} ${styles.grow}`} onClick={closeDrawer} {...tipFor('My files')}>
+              <FolderSimple size={ICON} weight="regular" aria-hidden="true" />
+              {label('My files')}
+            </NavLink>
+            {!rail && (
+              <button
+                type="button"
+                className={styles.treeToggle}
+                onClick={() => setTreeOpen((value) => !value)}
+                aria-expanded={treeOpen}
+                aria-label={treeOpen ? 'Collapse folders' : 'Expand folders'}
+              >
+                <CaretDown size={14} weight="bold" className={treeOpen ? '' : styles.caretClosed} />
+              </button>
+            )}
+          </div>
+          {treeOpen && !rail && <FolderTree current={currentFolder} active={onFiles} version={version} onNavigate={closeDrawer} />}
         </div>
+
+        <NavLink to="/photos" className={navClass} onClick={closeDrawer} {...tipFor('Photos')}>
+          <Images size={ICON} weight="regular" aria-hidden="true" />
+          {label('Photos')}
+        </NavLink>
+        <NavLink to="/shared" className={navClass} onClick={closeDrawer} {...tipFor('Shared')}>
+          <ShareNetwork size={ICON} weight="regular" aria-hidden="true" />
+          {label('Shared')}
+        </NavLink>
+        <NavLink to="/trash" className={navClass} onClick={closeDrawer} {...tipFor('Trash')}>
+          <Trash size={ICON} weight="regular" aria-hidden="true" />
+          {label('Trash')}
+        </NavLink>
+
+        {rail ? (
+          <Link onClick={closeDrawer} to="/files?panel=backup" className={styles.item} {...tipFor('Backup & devices')}>
+            <ArrowsClockwise size={ICON} weight="regular" aria-hidden="true" />
+            <span className={styles.srOnly}>Backup &amp; devices</span>
+          </Link>
+        ) : (
+          <div className={styles.group}>
+            <button type="button" className={styles.item} onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}>
+              <ArrowsClockwise size={ICON} weight="regular" aria-hidden="true" />
+              <span className={styles.itemLabel}>Backup &amp; devices</span>
+              <CaretDown size={14} weight="bold" className={moreOpen ? '' : styles.caretClosed} />
+            </button>
+            {moreOpen && (
+              <div className={styles.children}>
+                <Link onClick={closeDrawer} to="/files?panel=backup" className={styles.childItem}>Backup to USB</Link>
+                <Link onClick={closeDrawer} to="/files?panel=restore" className={styles.childItem}>Restore from backup</Link>
+                <Link onClick={closeDrawer} to="/files?panel=previews" className={styles.childItem}>Generate previews</Link>
+                <Link onClick={closeDrawer} to="/files?panel=pair" className={styles.childItem}>
+                  <DeviceMobile size={14} aria-hidden="true" /> Pair a device
+                </Link>
+                <Link onClick={closeDrawer} to="/files?panel=devices" className={styles.childItem}>Paired devices</Link>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className={styles.spacer} />
 
-        <NavLink to="/account" className={navClass}>
-          <UserCircle size={18} weight="regular" aria-hidden="true" />
-          <span className={styles.itemLabel}>Account</span>
+        <NavLink to="/account" className={navClass} onClick={closeDrawer} {...tipFor('Account')}>
+          <UserCircle size={ICON} weight="regular" aria-hidden="true" />
+          {label('Account')}
         </NavLink>
-        <StorageMeter version={version} />
+        <StorageMeter version={version} compact={rail} onTip={rail ? { show: showTip, hide: () => setTip(null) } : null} />
       </nav>
+      {tip &&
+        createPortal(
+          <div className={styles.tip} role="tooltip" style={{ top: tip.top, left: tip.left }}>
+            {tip.text}
+          </div>,
+          document.body
+        )}
     </>
   );
 }

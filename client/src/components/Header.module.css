@@ -43,8 +43,8 @@
 }
 
 .mark {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-sm);
   object-fit: cover;
   flex-shrink: 0;
@@ -53,14 +53,14 @@
 .wordmark {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: var(--fs-base);
+  font-size: 22px;
   letter-spacing: 0.08em;
 }
 
 .searchWrap {
   position: relative;
   flex: 1;
-  max-width: 480px;
+  max-width: 960px;
   margin-inline: auto;
   display: flex;
   align-items: center;

@@ -70,8 +70,9 @@ function OtpCodeInput({ digits, onChange, disabled = false, invalid = false, aut
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          autoComplete={index === 0 ? 'one-time-code' : 'off'}
+          autoComplete="off"
           autoCapitalize="off"
+          autoCorrect="off"
           spellCheck={false}
           maxLength={index === 0 ? CODE_LENGTH : 2}
           value={digit}

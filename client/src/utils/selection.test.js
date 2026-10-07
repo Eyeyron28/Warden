@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  applyItemClick, emptySelection, headerState, pruneSelection, selectAll, selectRange, toggleItem,
+  applyItemClick, emptySelection, headerState, pruneSelection, selectAll, selectOnly, selectRange, toggleItem,
 } from './selection.js';
 
 const keys = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -64,4 +64,11 @@ test('items that disappear are dropped from the selection', () => {
   assert.deepEqual(set(pruned), ['a', 'b']);
   assert.equal(pruned.anchor, null, 'the anchor went with its item');
   assert.equal(pruneSelection(state, keys), state, 'nothing to drop: same object');
+});
+
+test('right-clicking an unselected item selects just that one', () => {
+  const state = selectOnly('c');
+  assert.deepEqual(set(state), ['c']);
+  assert.equal(state.anchor, 'c');
+  assert.deepEqual(set(selectOnly('a')), ['a'], 'replaces any earlier selection');
 });

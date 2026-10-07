@@ -1,45 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
+import MenuPanel from './MenuPanel.jsx';
+import { placeBelow } from '../utils/menuPosition.js';
 import styles from './DropdownMenu.module.css';
 
 /**
- * Shared trigger+panel dropdown shell - click-outside and Escape both
- * close it. Trigger and option list are render props so callers control
- * what they look like while sharing this open/close wiring.
+ * Trigger + panel dropdown. The panel is a MenuPanel: portal, fixed position
+ * and collision handling (flips above a button near the bottom, is pulled back
+ * inside near either side), so it can never overflow the screen. Trigger and
+ * option list are render props so callers control what they look like.
+ * Options should be `<button role="menuitem">`.
  */
-function DropdownMenu({ trigger, children, align = 'left' }) {
+function DropdownMenu({ trigger, children, align = 'left', label }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handleClickOutside = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  const close = () => setOpen(false);
+  const close = useCallback(() => setOpen(false), []);
+  const placement = useCallback(
+    (size, viewport) => {
+      const rect = rootRef.current?.getBoundingClientRect() ?? { left: 0, right: 0, top: 0, bottom: 0 };
+      return placeBelow(rect, size, viewport, { align: align === 'right' ? 'end' : 'start' });
+    },
+    [align]
+  );
 
   return (
     <div className={styles.root} ref={rootRef}>
       {trigger({ open, toggle: () => setOpen((prev) => !prev), close })}
       {open && (
-        <div className={`${styles.panel} ${align === 'right' ? styles.alignRight : ''}`} role="menu">
-          {children({ close })}
-        </div>
+        <MenuPanel placement={placement} onClose={close} returnFocus={rootRef.current?.querySelector('button')} label={label}>
+          {({ close: closeAndRestore }) => children({ close: closeAndRestore })}
+        </MenuPanel>
       )}
     </div>
   );

@@ -22,7 +22,8 @@ const END_TOLERANCE_PX = 24;
  * form instead of a separate page, so nobody loses what they typed.
  * "Read" means scrolled to the end of that document (or it fits without
  * scrolling) - the signup form keeps its agreement checkbox disabled until
- * both are read. Traps focus, closes on Escape or Back, locks page scroll.
+ * both are read. Only the two tabs, the text and the footer button: no header.
+ * Traps focus, closes on Escape, locks page scroll.
  *
  * Links inside the legal text point at the standalone pages; here they
  * would navigate away from the form, so they switch tabs (or open in a new
@@ -110,19 +111,9 @@ function LegalModal({ tab, onTabChange, read, onRead, onClose }) {
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="legal-modal-title"
+        aria-label="Terms of use and Privacy policy"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className={styles.header}>
-          <button type="button" className={`${site.button} ${site.ghost} ${styles.back}`} onClick={onClose}>
-            <Icon name="arrowLeft" size={18} />
-            Back
-          </button>
-          <h2 id="legal-modal-title" className={styles.title}>
-            Terms and privacy
-          </h2>
-        </div>
-
         <div className={styles.tabs} role="tablist" aria-label="Document" onKeyDown={handleTabKeyDown}>
           {Object.entries(DOCUMENTS).map(([key, doc]) => (
             <button

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
 const Share = require('../models/Share');
+const { getUsage, assertCanStore } = require('../utils/storage');
 const { encryptFile, decryptFile } = require('../utils/crypto');
 const { encryptThumbnail, decryptThumbnail, hasThumbnail } = require('../utils/thumbnails');
 const {
@@ -155,6 +156,9 @@ const createDocument = asyncHandler(async (req, res) => {
   // with in storage, this checksum proves the decrypted content still
   // matches what was originally uploaded - useful once sync/backup starts
   // copying files around.
+  // Refused before anything is encrypted or stored if it would pass the account's quota.
+  await assertCanStore(req.userId, buffer.length + (req.files?.thumb?.[0]?.buffer?.length ?? 0));
+
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
 
   const { ciphertext, iv, authTag } = encryptFile(buffer, req.dek);
@@ -271,24 +275,8 @@ const listPhotos = asyncHandler(async (req, res) => {
  * What this account stores: the vault, and what is waiting in Trash.
  */
 const getStorage = asyncHandler(async (req, res) => {
-  const rows = await Document.aggregate([
-    { $match: { userId: req.userId } },
-    {
-      $group: {
-        _id: { $ne: ['$deletedAt', null] },
-        bytes: { $sum: { $binarySize: '$encryptedBlob' } },
-        count: { $sum: 1 },
-      },
-    },
-  ]);
-  const live = rows.find((row) => row._id === false);
-  const trashed = rows.find((row) => row._id === true);
-  res.status(200).json({
-    fileBytes: live?.bytes ?? 0,
-    fileCount: live?.count ?? 0,
-    trashBytes: trashed?.bytes ?? 0,
-    trashCount: trashed?.count ?? 0,
-  });
+  // The same service the quota check uses, so the meter and the limit never disagree.
+  res.status(200).json(await getUsage(req.userId));
 });
 
 /**

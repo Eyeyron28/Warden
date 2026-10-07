@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
+import SensitiveInput from '../components/SensitiveInput.jsx';
 import Icon from '../components/site/Icon.jsx';
 import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
 import TrustedBrowsers from '../components/TrustedBrowsers.jsx';
@@ -192,7 +193,7 @@ function AccountPage() {
                 label="Master password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 autoFocus
               />
               <div className={styles.otpActions}>
@@ -244,14 +245,13 @@ function AccountPage() {
                 <label htmlFor="delete-email" className={forms.label}>
                   Your email
                 </label>
-                <input
+                <SensitiveInput
+                  fieldName="confirm-contact"
                   id="delete-email"
                   type="email"
                   className={forms.input}
                   value={typedEmail}
                   onChange={(event) => setTypedEmail(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
                   autoFocus
                 />
               </div>

@@ -19,6 +19,8 @@ function AppLayout({ onLocked }) {
   const navigate = useNavigate();
   const isDrawer = useMediaQuery('(max-width: 767px)');
   const [navOpen, setNavOpen] = useState(false);
+  // Collapsed icon rail (desktop). Kept in memory only: a reload starts expanded.
+  const [collapsed, setCollapsed] = useState(false);
   const [searchTerm, setSearchTermState] = useState('');
   const [sidebarVersion, setSidebarVersion] = useState(0);
   const [toast, setToast] = useState(null);
@@ -61,7 +63,14 @@ function AppLayout({ onLocked }) {
           onSearchChange={setSearchTerm}
         />
         <div className={styles.body}>
-          <Sidebar drawer={isDrawer} open={navOpen} onClose={() => setNavOpen(false)} version={sidebarVersion} />
+          <Sidebar
+            drawer={isDrawer}
+            open={navOpen}
+            onClose={() => setNavOpen(false)}
+            version={sidebarVersion}
+            collapsed={collapsed}
+            onToggleCollapsed={() => setCollapsed((value) => !value)}
+          />
           <main className={styles.content}>
             <Outlet />
           </main>

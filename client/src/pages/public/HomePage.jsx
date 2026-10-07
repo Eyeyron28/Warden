@@ -145,6 +145,17 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: 'How much can I store?',
+    answer: (
+      <p>
+        A single file can be up to 4 MB, and each account has 25 MB in total (the server operator can change this). The
+        total includes everything in Trash until it is removed. Uploads that would go over the limit are refused with a
+        clear message, and emptying Trash or deleting files frees the space. Share links have their own limits: 20 MB
+        per link, 60 MB across active links, and 20 active links.
+      </p>
+    ),
+  },
+  {
     question: 'What happens when I delete a file?',
     answer: (
       <p>

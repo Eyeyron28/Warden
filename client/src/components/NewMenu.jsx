@@ -39,6 +39,7 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, all
           <>
             <button
               type="button"
+              role="menuitem"
               className={dropdownStyles.option}
               onClick={() => {
                 close();
@@ -50,6 +51,7 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, all
             </button>
             <button
               type="button"
+              role="menuitem"
               className={dropdownStyles.option}
               onClick={() => {
                 close();
@@ -62,6 +64,7 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, all
             {allowFolderUpload && (
               <button
                 type="button"
+                role="menuitem"
                 className={dropdownStyles.option}
                 onClick={() => {
                   close();

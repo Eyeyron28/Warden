@@ -6,6 +6,7 @@ import {
   headerState,
   pruneSelection,
   selectAll as selectEvery,
+  selectOnly as selectJust,
   toggleItem,
 } from './selection.js';
 
@@ -39,6 +40,7 @@ export function useSelection(orderedKeys) {
   const toggle = useCallback((key) => setState((current) => toggleItem(current, key)), []);
   const selectAll = useCallback(() => setState(selectEvery(keysRef.current)), []);
   const clear = useCallback(() => setState(emptySelection()), []);
+  const setOnly = useCallback((key) => setState(selectJust(key)), []);
 
   const count = state.selected.size;
   const countRef = useRef(count);
@@ -69,8 +71,9 @@ export function useSelection(orderedKeys) {
       toggle,
       selectAll,
       clear,
+      setOnly,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, signature, click, toggle, selectAll, clear]
+    [state, signature, click, toggle, selectAll, clear, setOnly]
   );
 }

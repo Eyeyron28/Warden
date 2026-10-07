@@ -39,7 +39,10 @@ function PasswordInput({
           onBlur={onBlur}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
+          autoCapitalize="off"
+          autoCorrect="off"
           spellCheck={false}
+          data-lpignore="true"
           aria-invalid={Boolean(error)}
           aria-describedby={[errorId, describedBy].filter(Boolean).join(' ')}
         />

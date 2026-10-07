@@ -38,20 +38,8 @@ function runPipeline(rows, pipeline) {
         return out;
       });
     } else if (stage.$group) {
-      const { _id } = stage.$group;
-      if (_id === null) {
-        current = [{ _id: null, bytes: current.reduce((n, r) => n + r.encryptedBlob.length, 0) }];
-      } else {
-        const groups = new Map();
-        for (const r of current) {
-          const key = r.deletedAt !== null && r.deletedAt !== undefined;
-          const g = groups.get(key) || { _id: key, bytes: 0, count: 0 };
-          g.bytes += r.encryptedBlob.length;
-          g.count += 1;
-          groups.set(key, g);
-        }
-        current = [...groups.values()];
-      }
+      // Only the shape the code uses: one group over everything that matched, summing blob sizes.
+      current = [{ _id: null, bytes: current.reduce((n, r) => n + r.encryptedBlob.length, 0), count: current.length }];
     }
   }
   return current;
@@ -207,7 +195,11 @@ test('the document list hides Trash and carries size and type fields', async () 
   assert.equal(list.json[0].sniffedType, 'image/png');
   assert.ok(list.json[0].updatedAt);
   const storage = await call(D.getStorage, as(ALICE));
-  assert.deepEqual(storage.json, { fileBytes: keep.encryptedBlob.length, fileCount: 1, trashBytes: gone.encryptedBlob.length, trashCount: 1 });
+  assert.equal(storage.json.fileBytes, keep.encryptedBlob.length);
+  assert.equal(storage.json.fileCount, 1);
+  assert.equal(storage.json.trashBytes, gone.encryptedBlob.length);
+  assert.equal(storage.json.trashCount, 1);
+  assert.equal(storage.json.usedBytes, keep.encryptedBlob.length + gone.encryptedBlob.length);
 });
 
 // ---------- trashing a file ----------
@@ -543,4 +535,91 @@ test('the list marks files that are in an active share link', async () => {
   assert.deepEqual(list.json.map((d) => [d.filename, d.shared]).sort(), [['private.txt', false], ['shared.txt', true]]);
   world.tables.shares[0].expiresAt = new Date(Date.now() - 1000);
   assert.equal((await call(D.listDocuments, as(ALICE))).json.find((d) => d.filename === 'shared.txt').shared, false, 'an expired link does not count');
+});
+
+// ---------- the storage meter and the quota ----------
+const meter = async (userId = ALICE) => (await call(D.getStorage, as(userId))).json;
+const expectMeter = async (label, { files, trashed, trashItems }) => {
+  const m = await meter();
+  assert.equal(m.fileBytes, files.reduce((n, d) => n + d.encryptedBlob.length, 0), `${label}: file bytes`);
+  assert.equal(m.fileCount, files.length, `${label}: file count`);
+  assert.equal(m.trashBytes, trashed.reduce((n, d) => n + d.encryptedBlob.length, 0), `${label}: trash bytes`);
+  assert.equal(m.usedBytes, m.fileBytes + m.trashBytes, `${label}: used = files + trash`);
+  // The meter and the Trash page agree on what is in Trash.
+  const page = (await call(T.listTrash, as(ALICE))).json.items;
+  assert.equal(m.trashCount, page.length, `${label}: meter trash count equals the Trash page`);
+  assert.equal(page.length, trashItems, `${label}: trash items`);
+  assert.equal(page.reduce((n, i) => n + i.size, 0), m.trashBytes, `${label}: the Trash page sizes add up to the meter`);
+};
+
+test('the meter equals files + Trash after every create, trash, restore, delete and purge', async () => {
+  reset();
+  await addFolder(ALICE, 'F');
+  const a = addDoc({ filename: 'a.bin', content: Buffer.alloc(1000, 1) });
+  const b = addDoc({ filename: 'b.bin', content: Buffer.alloc(2000, 2), folder: 'F' });
+  const c = addDoc({ filename: 'c.bin', content: Buffer.alloc(3000, 3), folder: 'F' });
+  const d = addDoc({ filename: 'd.bin', content: Buffer.alloc(4000, 4) });
+  // A document from before Trash existed has no deletedAt field at all: it is live, not Trash.
+  const legacy = addDoc({ filename: 'legacy.bin', content: Buffer.alloc(500, 5) });
+  delete legacy.deletedAt;
+  delete legacy.purgeAt;
+  delete legacy.trashBatchId;
+  addDoc({ filename: 'bobs.bin', userId: BOB, content: Buffer.alloc(9999) });
+
+  await expectMeter('created', { files: [a, b, c, d, legacy], trashed: [], trashItems: 0 });
+  await trash.trashDocument(ALICE, a._id);
+  await expectMeter('file trashed', { files: [b, c, d, legacy], trashed: [a], trashItems: 1 });
+  await call(D.deleteFolder, { ...as(ALICE), query: { path: 'F' } });
+  await expectMeter('folder trashed', { files: [d, legacy], trashed: [a, b, c], trashItems: 2 });
+  const [folderItem] = (await call(T.listTrash, as(ALICE))).json.items.filter((i) => i.kind === 'folder');
+  await call(T.restoreItem, { ...as(ALICE), body: { kind: 'folder', id: folderItem.id } });
+  await expectMeter('folder restored', { files: [b, c, d, legacy], trashed: [a], trashItems: 1 });
+  await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(a._id) } });
+  await expectMeter('file restored', { files: [a, b, c, d, legacy], trashed: [], trashItems: 0 });
+  await trash.trashDocument(ALICE, d._id);
+  await trash.trashDocument(ALICE, legacy._id);
+  await expectMeter('two trashed', { files: [a, b, c], trashed: [d, legacy], trashItems: 2 });
+  await call(T.deleteItem, { ...as(ALICE), params: { kind: 'file', id: String(d._id) } });
+  await expectMeter('permanently deleted', { files: [a, b, c], trashed: [legacy], trashItems: 1 });
+  legacy.purgeAt = new Date(Date.now() - 1000);
+  await call(T.listTrash, as(ALICE)); // purge on request
+  await expectMeter('purged', { files: [a, b, c], trashed: [], trashItems: 0 });
+  await trash.trashDocument(ALICE, a._id);
+  await call(T.emptyTrash, as(ALICE));
+  await expectMeter('emptied', { files: [b, c], trashed: [], trashItems: 0 });
+  assert.equal((await meter(BOB)).fileBytes, 9999, "another account's files are not counted");
+});
+
+test('no aggregation tells live from trashed with a missing-field comparison', () => {
+  const root = path.join(__dirname, '..');
+  for (const file of ['controllers/documents.controller.js', 'utils/storage.js', 'utils/trash.js']) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(text, /\$ne:\s*\[\s*'\$deletedAt'/, `${file} compares $deletedAt inside an aggregation`);
+  }
+});
+
+test('the quota refuses what would not fit, before storing it, and Trash counts until it is emptied', async () => {
+  reset();
+  process.env.STORAGE_QUOTA_MB = '1';
+  try {
+    const { assertCanStore } = require('../utils/storage');
+    const big = addDoc({ filename: 'big.bin', content: Buffer.alloc(900 * 1024) });
+    await assertCanStore(ALICE, 100 * 1024); // fits
+    await assert.rejects(() => assertCanStore(ALICE, 200 * 1024), (err) => err.status === 413 && err.code === 'STORAGE_QUOTA' && /1 MB/.test(err.message));
+    await trash.trashDocument(ALICE, big._id);
+    await assert.rejects(() => assertCanStore(ALICE, 200 * 1024), (err) => err.code === 'STORAGE_QUOTA', 'Trash still counts');
+    await call(T.emptyTrash, as(ALICE));
+    await assertCanStore(ALICE, 200 * 1024);
+    assert.equal((await meter()).quotaBytes, 1024 * 1024);
+    // an upload through the real handler is refused and nothing is stored
+    const full = addDoc({ filename: 'full.bin', content: Buffer.alloc(1000 * 1024) });
+    const before = world.tables.documents.length;
+    const res = await call(D.createDocument, { ...as(ALICE), body: {}, files: { file: [{ buffer: Buffer.alloc(100 * 1024), originalname: 'x.bin', mimetype: 'application/octet-stream' }] } });
+    assert.equal(res.error.status, 413);
+    assert.equal(res.error.code, 'STORAGE_QUOTA');
+    assert.equal(world.tables.documents.length, before);
+    assert.ok(full);
+  } finally {
+    delete process.env.STORAGE_QUOTA_MB;
+  }
 });

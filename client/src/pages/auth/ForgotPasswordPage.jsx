@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import PhoneRecoveryModal from '../../components/PhoneRecoveryModal.jsx';
 import { forgotPassword } from '../../services/authService.js';
@@ -80,7 +81,8 @@ function ForgotPasswordPage() {
               <label htmlFor="forgot-email" className={forms.label}>
                 Email
               </label>
-              <input
+              <SensitiveInput
+                fieldName="forgot-contact"
                 id="forgot-email"
                 type="email"
                 className={forms.input}
@@ -89,7 +91,6 @@ function ForgotPasswordPage() {
                   setEmail(event.target.value);
                   setError('');
                 }}
-                autoComplete="email"
                 inputMode="email"
                 autoFocus
                 aria-invalid={Boolean(error)}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DownloadSimple, Images, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
+import { DownloadSimple, Eye, Images, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
 
 import FileBrowser, { SelectAllCheckbox, focusBrowserItem } from '../components/FileBrowser.jsx';
 import FilePreview from '../components/FilePreview.jsx';
+import ContextMenu from '../components/ContextMenu.jsx';
 import SelectionBar from '../components/SelectionBar.jsx';
 import { useShell } from '../components/ShellContext.js';
 import ShareModal from '../components/ShareModal.jsx';
@@ -41,6 +42,7 @@ function PhotosPage() {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [sharing, setSharing] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
 
   const load = useCallback(async (isCancelled = () => false) => {
     setError('');
@@ -152,6 +154,7 @@ function PhotosPage() {
 
   const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
   const menuFor = (item) => [
+    { label: 'Open / Preview', icon: icon(Eye), onSelect: () => openItem(item) },
     { label: 'Download', icon: icon(DownloadSimple), onSelect: () => handleDownloadPhotos([item.document]) },
     { label: 'Share', icon: icon(ShareNetwork), onSelect: () => setSharing({ documentIds: [item.id], title: `Share "${item.name}"` }) },
     { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setEditing(item.document) },
@@ -173,6 +176,24 @@ function PhotosPage() {
     },
     { key: 'trash', label: 'Move to trash', icon: <Trash size={18} />, onClick: () => trashDocs(selectedDocs), disabled: busy, danger: true },
   ];
+
+
+  // Right-click, long-press or Shift+F10 on an item. An unselected item becomes the selection;
+  // with several selected, the menu holds the actions that apply to the selection.
+  const handleItemContextMenu = (item, { x, y, opener }) => {
+    const wasSelected = selection.isSelected(item.key);
+    if (!wasSelected) selection.setOnly(item.key);
+    const multiple = wasSelected && selection.count > 1;
+    setContextMenu({
+      x,
+      y,
+      opener,
+      label: multiple ? `${selection.count} selected items` : item.name,
+      items: multiple
+        ? actions.map((action) => ({ label: action.label, icon: action.icon, onSelect: action.onClick, disabled: action.disabled, danger: action.danger }))
+        : menuFor(item),
+    });
+  };
 
   return (
     <div className={styles.page}>
@@ -218,7 +239,7 @@ function PhotosPage() {
       {groups.map((group) => (
         <section key={group.key} aria-label={group.label}>
           <h2 className={styles.monthHeading}>{group.label}</h2>
-          <FileBrowser items={group.items} view="grid" selection={selection} onOpen={openItem} menuFor={menuFor} label={group.label} />
+          <FileBrowser items={group.items} view="grid" selection={selection} onOpen={openItem} menuFor={menuFor} onItemContextMenu={handleItemContextMenu} label={group.label} />
         </section>
       ))}
 
@@ -231,6 +252,18 @@ function PhotosPage() {
           onShare={(doc) => setSharing({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
           onRename={setEditing}
           onTrash={handleTrashFromPreview}
+        />
+      )}
+
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          label={contextMenu.label}
+          returnFocus={contextMenu.opener}
+          onClose={() => setContextMenu(null)}
         />
       )}
 

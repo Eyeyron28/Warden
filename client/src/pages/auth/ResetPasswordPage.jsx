@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter.jsx';
 import { resetPassword } from '../../services/authService.js';
@@ -176,7 +177,8 @@ function ResetPasswordPage() {
             <label htmlFor="reset-recovery-key" className={forms.label}>
               Recovery key
             </label>
-            <input
+            <SensitiveInput
+              fieldName="recovery-secret"
               id="reset-recovery-key"
               className={`${forms.input} ${forms.mono}`}
               value={recoveryKey}
@@ -185,8 +187,6 @@ function ResetPasswordPage() {
                 setKeyError('');
               }}
               placeholder="XXXX-XXXX-XXXX-XXXX"
-              autoComplete="off"
-              spellCheck={false}
               aria-invalid={Boolean(keyError)}
               aria-describedby="reset-recovery-key-error"
             />
@@ -208,13 +208,12 @@ function ResetPasswordPage() {
               <label htmlFor="reset-wipe-confirm" className={forms.label}>
                 Type {WIPE_CONFIRMATION} to confirm
               </label>
-              <input
+              <SensitiveInput
+                fieldName="wipe-confirm"
                 id="reset-wipe-confirm"
                 className={`${forms.input} ${forms.mono}`}
                 value={wipeText}
                 onChange={(event) => setWipeText(event.target.value)}
-                autoComplete="off"
-                spellCheck={false}
               />
             </div>
           </div>

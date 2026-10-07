@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 
+import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter.jsx';
 import { getPublicConfig, signupVault } from '../../services/authService.js';
@@ -64,6 +65,8 @@ function SignupPage() {
   const [legalTab, setLegalTab] = useState(null); // null (closed) | 'terms' | 'privacy'
   const [legalRead, setLegalRead] = useState({ terms: false, privacy: false });
   const [agreed, setAgreed] = useState(false);
+  // Shown when someone tries to tick the box before reading both documents.
+  const [legalNotice, setLegalNotice] = useState(false);
   const legalOpenerRef = useRef(null);
 
   useEffect(() => {
@@ -164,7 +167,7 @@ function SignupPage() {
   if (step === 'email') {
     return (
       <AuthLayout
-        title="Check your email"
+        title="Check your email to continue"
         footer={
           <span>
             Verified already?{' '}
@@ -176,8 +179,9 @@ function SignupPage() {
       >
         <div className={styles.stack}>
           <p className={styles.subtitle} style={{ marginTop: 0 }}>
-            If <span className={styles.emailEcho}>{values.email.trim()}</span> can be registered, we&apos;ve sent it
-            a verification link. Open it to finish setting up your vault. You can&apos;t log in until you do.
+            We&apos;ve sent a message to <span className={styles.emailEcho}>{values.email.trim()}</span>. Open it and
+            follow the instructions to continue. If you already have a Warden account with this address, the message
+            will say so and tell you how to log in or reset your password.
           </p>
           <div className={forms.notice}>
             <Icon name="mail" />
@@ -216,14 +220,14 @@ function SignupPage() {
           <label htmlFor="signup-email" className={forms.label}>
             Email
           </label>
-          <input
+          <SensitiveInput
+            fieldName="signup-contact"
             id="signup-email"
             type="email"
             className={forms.input}
             value={values.email}
             onChange={update('email')}
             onBlur={blur('email')}
-            autoComplete="email"
             inputMode="email"
             maxLength={MAX_EMAIL_LENGTH}
             autoFocus
@@ -266,14 +270,13 @@ function SignupPage() {
             <label htmlFor="signup-invite" className={forms.label}>
               Invite code {!inviteRequired && <span className={forms.optional}>(if you have one)</span>}
             </label>
-            <input
+            <SensitiveInput
+              fieldName="signup-invite"
               id="signup-invite"
               className={`${forms.input} ${forms.mono}`}
               value={values.invite}
               onChange={update('invite')}
               onBlur={blur('invite')}
-              autoComplete="off"
-              spellCheck={false}
               aria-invalid={Boolean(visibleError('invite'))}
               aria-describedby="signup-invite-error"
             />
@@ -291,12 +294,19 @@ function SignupPage() {
           {submitting ? 'Creating your vault…' : 'Create vault'}
         </button>
         <div className={forms.field}>
-          <label className={forms.checkboxRow} style={legalAllRead ? undefined : { cursor: 'not-allowed' }}>
+          <label className={forms.checkboxRow}>
             <input
               type="checkbox"
               checked={agreed}
-              disabled={!legalAllRead}
-              onChange={(event) => setAgreed(event.target.checked)}
+              onChange={(event) => {
+                // Not disabled, so it looks and focuses like any checkbox: until both
+                // documents are read, a click or Space just explains why it did not tick.
+                if (!legalAllRead) {
+                  setLegalNotice(true);
+                  return;
+                }
+                setAgreed(event.target.checked);
+              }}
               aria-describedby="signup-legal-hint"
             />
             <span>
@@ -311,14 +321,21 @@ function SignupPage() {
               .
             </span>
           </label>
-          <p id="signup-legal-hint" className={forms.hint} aria-live="polite">
+          <p id="signup-legal-hint" className={legalNotice && !legalAllRead ? forms.error : forms.hint} aria-live="polite">
             {legalAllRead
               ? 'Thanks for reading. Tick the box to continue.'
-              : `Open and read both to enable this box${
-                  legalRead.terms || legalRead.privacy
-                    ? ` (still to read: ${legalRead.terms ? 'Privacy policy' : 'Terms of use'})`
-                    : ''
-                }.`}
+              : legalNotice
+                ? 'Please read the Terms of use and Privacy policy first. '
+                : `Read both documents to be able to tick this${
+                    legalRead.terms || legalRead.privacy
+                      ? ` (still to read: ${legalRead.terms ? 'Privacy policy' : 'Terms of use'})`
+                      : ''
+                  }.`}
+            {legalNotice && !legalAllRead && (
+              <button type="button" className={site.textLink} onClick={openLegal(legalRead.terms ? 'privacy' : 'terms')}>
+                Open the {legalRead.terms ? 'Privacy policy' : 'Terms of use'}
+              </button>
+            )}
           </p>
         </div>
       </form>

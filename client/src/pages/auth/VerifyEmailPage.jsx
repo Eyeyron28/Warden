@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import { verifyEmailToken } from '../../services/authService.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
@@ -79,13 +80,13 @@ function VerifyEmailPage() {
           <label htmlFor="verify-email" className={forms.label}>
             Email
           </label>
-          <input
+          <SensitiveInput
+            fieldName="verify-contact"
             id="verify-email"
             type="email"
             className={forms.input}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
             inputMode="email"
           />
         </div>

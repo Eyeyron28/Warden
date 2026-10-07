@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import Icon from '../../components/site/Icon.jsx';
+import SensitiveInput from '../../components/SensitiveInput.jsx';
 import OtpChallengePanel from '../../components/OtpChallengePanel.jsx';
 import { loginVault, resendOtp, verifyOtp } from '../../services/authService.js';
 import { extractErrorMessage } from '../../services/api.js';
@@ -209,13 +210,13 @@ function LoginPage() {
           <label htmlFor="login-email" className={forms.label}>
             Email
           </label>
-          <input
+          <SensitiveInput
+            fieldName="login-contact"
             id="login-email"
             type="email"
             className={forms.input}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
             inputMode="email"
             autoFocus
           />
@@ -226,7 +227,7 @@ function LoginPage() {
           label="Password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          autoComplete="current-password"
+          autoComplete="new-password"
         />
 
         <div className={styles.inlineLinkRow}>

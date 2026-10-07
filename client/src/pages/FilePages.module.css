@@ -7,6 +7,8 @@
   gap: var(--space-3);
   width: 100%;
   min-width: 0;
+  /* Fills the screen below the header, so there is always blank space to right-click. */
+  min-height: calc(100dvh - var(--header-height) - var(--space-5));
 }
 
 .toolbar {
@@ -250,4 +252,15 @@
   .selectAllLabel {
     display: none;
   }
+}
+
+/* The files area: stretches to the bottom of the screen so right-clicking empty
+   space anywhere below the list opens the New menu. */
+.area {
+  flex: 1 1 auto;
+  min-height: 40vh;
+  padding-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }

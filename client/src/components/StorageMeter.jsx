@@ -3,14 +3,16 @@ import { Link } from 'react-router-dom';
 
 import { getStorage } from '../services/documentsService.js';
 import { formatBytes } from '../utils/listing.js';
+import { describeUsage } from '../utils/storageUsage.js';
 import styles from './Sidebar.module.css';
 
 /**
- * What this account stores: files in the vault, and what is waiting in Trash
- * (still encrypted, removed for good after 30 days). There is no quota, so the
- * bar shows how the total splits between the two rather than a fill level.
+ * What this account stores against its quota: files in the vault plus what
+ * waits in Trash (still encrypted until removed for good), as a bar, used of
+ * quota. The numbers come from GET /api/documents/storage, the same service
+ * the server's quota check uses. Collapsed, it is a small ring with a tooltip.
  */
-function StorageMeter({ version }) {
+function StorageMeter({ version, compact = false, onTip }) {
   const [usage, setUsage] = useState(null);
 
   useEffect(() => {
@@ -23,23 +25,54 @@ function StorageMeter({ version }) {
     };
   }, [version]);
 
-  if (!usage) return <div className={styles.meter} aria-hidden="true" />;
-  const total = usage.fileBytes + usage.trashBytes;
-  const filesShare = total === 0 ? 0 : (usage.fileBytes / total) * 100;
+  if (!usage) return <div className={compact ? styles.meterCompact : styles.meter} aria-hidden="true" />;
+  const view = describeUsage(usage);
+
+  if (compact) {
+    const radius = 15;
+    const circumference = 2 * Math.PI * radius;
+    const tipProps = onTip
+      ? {
+          onMouseEnter: (event) => onTip.show(event.currentTarget, view.summary),
+          onFocus: (event) => onTip.show(event.currentTarget, view.summary),
+          onMouseLeave: onTip.hide,
+          onBlur: onTip.hide,
+        }
+      : {};
+    return (
+      <Link to="/trash" className={styles.meterCompact} aria-label={view.summary} {...tipProps}>
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r={radius} fill="none" className={styles.ringTrack} strokeWidth="5" />
+          <circle
+            cx="20"
+            cy="20"
+            r={radius}
+            fill="none"
+            className={view.nearlyFull ? styles.ringFull : styles.ringUsed}
+            strokeWidth="5"
+            strokeDasharray={`${(view.usedPercent / 100) * circumference} ${circumference}`}
+            strokeLinecap="round"
+            transform="rotate(-90 20 20)"
+          />
+        </svg>
+      </Link>
+    );
+  }
 
   return (
     <div className={styles.meter}>
       <p className={styles.meterTotal}>
-        {formatBytes(total)} <span className={styles.meterFaint}>stored</span>
+        {formatBytes(usage.usedBytes)} <span className={styles.meterFaint}>of {formatBytes(usage.quotaBytes)} used</span>
       </p>
       <div
-        className={styles.meterBar}
+        className={`${styles.meterBar} ${view.nearlyFull ? styles.meterBarFull : ''}`}
         role="img"
-        aria-label={`${formatBytes(usage.fileBytes)} in files, ${formatBytes(usage.trashBytes)} in Trash`}
+        aria-label={view.summary}
       >
-        <span className={styles.meterFiles} style={{ width: `${filesShare}%` }} />
-        <span className={styles.meterTrash} style={{ width: `${total === 0 ? 0 : 100 - filesShare}%` }} />
+        <span className={styles.meterFiles} style={{ width: `${view.filesPercent}%` }} />
+        <span className={styles.meterTrash} style={{ width: `${view.trashPercent}%` }} />
       </div>
+      {view.nearlyFull && <p className={styles.meterWarn}>{view.full ? 'Storage is full.' : 'Almost full.'} Empty Trash or delete files.</p>}
       <p className={styles.meterLine}>
         <span className={styles.dotFiles} aria-hidden="true" />
         {formatBytes(usage.fileBytes)} in {usage.fileCount} file{usage.fileCount === 1 ? '' : 's'}

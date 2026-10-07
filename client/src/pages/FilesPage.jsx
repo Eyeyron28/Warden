@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowsOutCardinal,
   DownloadSimple,
+  Eye,
   FolderLock,
+  FolderOpen,
+  FolderSimplePlus,
   PencilSimple,
   Rows,
   ShareNetwork,
@@ -13,6 +16,7 @@ import {
 } from '@phosphor-icons/react';
 
 import FileBrowser, { SelectAllCheckbox, focusBrowserItem } from '../components/FileBrowser.jsx';
+import ContextMenu from '../components/ContextMenu.jsx';
 import FilePreview from '../components/FilePreview.jsx';
 import SelectionBar from '../components/SelectionBar.jsx';
 import { useShell } from '../components/ShellContext.js';
@@ -40,6 +44,7 @@ import {
   deleteFolder,
   downloadBytes,
   fetchDocumentBytes,
+  getStorage,
   listFolders,
   moveItems,
 } from '../services/documentsService.js';
@@ -49,6 +54,7 @@ import { invalidateThumbnail } from '../services/thumbnailCache.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
 import { formatDate, formatDateTime } from '../utils/formatDate.js';
 import { SORT_OPTIONS, formatBytes, sortItems } from '../utils/listing.js';
+import { uploadFitsMessage } from '../utils/storageUsage.js';
 import { useSelection } from '../utils/useSelection.js';
 import { getViewPrefs, setViewPref } from '../utils/viewPrefs.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
@@ -71,10 +77,12 @@ const PANELS = ['backup', 'restore', 'previews', 'pair', 'devices'];
 
 const expiryLabel = (days) => (days === 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}`);
 
+// Name takes the rest; these are fixed but proportional to the screen, so wide
+// screens spread the content instead of leaving an empty band on the right.
 const FILE_COLUMNS = [
-  { id: 'modified', label: 'Modified', width: '120px' },
-  { id: 'size', label: 'Size', width: '76px', align: 'right' },
-  { id: 'shared', label: 'Shared', width: '64px' },
+  { id: 'modified', label: 'Modified', width: 'clamp(110px, 14vw, 380px)' },
+  { id: 'size', label: 'Size', width: 'clamp(84px, 9vw, 240px)', align: 'right' },
+  { id: 'shared', label: 'Shared', width: 'clamp(72px, 8vw, 220px)' },
 ];
 
 /**
@@ -115,6 +123,8 @@ function FilesPage() {
   const [renamingPath, setRenamingPath] = useState(null);
   const [sharingSelection, setSharingSelection] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
+  const folderInputRef = useRef(null);
 
   const [backupStatus, setBackupStatus] = useState(null);
   const [backupSubmitting, setBackupSubmitting] = useState(false);
@@ -263,6 +273,12 @@ function FilesPage() {
 
   // ---- uploads ----
   const handleUpload = async ({ file, expiryDate }) => {
+    // Refused before anything is sent when it cannot fit (the server checks again regardless).
+    const tooBig = uploadFitsMessage(await getStorage().catch(() => null), file.size);
+    if (tooBig) {
+      setUploadError(tooBig);
+      return;
+    }
     setUploading(true);
     setUploadProgress(0);
     setUploadError('');
@@ -283,6 +299,11 @@ function FilesPage() {
     if (files.length === 0) return;
     setUploadOpen(false);
     setFolderUploadOpen(true);
+    const tooBig = uploadFitsMessage(await getStorage().catch(() => null), files.reduce((sum, file) => sum + file.size, 0));
+    if (tooBig) {
+      setUploadError(tooBig);
+      return;
+    }
     setFolderUploadCount(0);
     setUploading(true);
     setUploadProgress(0);
@@ -586,22 +607,42 @@ function FilesPage() {
     }
   };
 
-  // ---- menus ----
+  // ---- menus: one set of actions for the "..." button, right-click, long-press and Shift+F10 ----
+  const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
+
+  const shareFolder = (item) => {
+    const prefix = `${item.path}/`;
+    const ids = documents
+      .filter((doc) => {
+        const path = normalizeFolderPath(doc.folder);
+        return path === item.path || path.startsWith(prefix);
+      })
+      .map((doc) => doc.id);
+    if (ids.length === 0) {
+      setActionError('This folder has no files to share yet.');
+      return;
+    }
+    setSharingSelection({ documentIds: ids, title: `Share folder "${item.name}"` });
+  };
+
   const menuFor = (item) => {
     if (item.kind === 'folder') {
       return [
-        { label: 'Rename', icon: <PencilSimple size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => setRenamingPath(item.path) },
-        { label: 'Move to…', icon: <ArrowsOutCardinal size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => openMoveForFolder(item.path) },
-        { label: 'Move to trash', danger: true, icon: <Trash size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => handleTrashFolderFromMenu(item) },
+        { label: 'Open', icon: icon(FolderOpen), onSelect: () => openItem(item) },
+        { label: 'Share', icon: icon(ShareNetwork), onSelect: () => shareFolder(item) },
+        { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setRenamingPath(item.path) },
+        { label: 'Move to…', icon: icon(ArrowsOutCardinal), onSelect: () => openMoveForFolder(item.path) },
+        { label: 'Move to trash', danger: true, icon: icon(Trash), onSelect: () => handleTrashFolderFromMenu(item) },
       ];
     }
     const doc = item.document;
     return [
-      { label: 'Download', icon: <DownloadSimple size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => handleDownloadFiles([doc]) },
-      { label: 'Share', icon: <ShareNetwork size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` }) },
-      { label: 'Rename', icon: <PencilSimple size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => setEditingDocument(doc) },
-      { label: 'Move to…', icon: <ArrowsOutCardinal size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => openMoveForDocument(doc) },
-      { label: 'Move to trash', danger: true, icon: <Trash size={18} weight="light" className={dropdownStyles.optionIcon} />, onSelect: () => handleTrashFromMenu(doc) },
+      { label: 'Open / Preview', icon: icon(Eye), onSelect: () => openItem(item) },
+      { label: 'Download', icon: icon(DownloadSimple), onSelect: () => handleDownloadFiles([doc]) },
+      { label: 'Share', icon: icon(ShareNetwork), onSelect: () => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` }) },
+      { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setEditingDocument(doc) },
+      { label: 'Move to…', icon: icon(ArrowsOutCardinal), onSelect: () => openMoveForDocument(doc) },
+      { label: 'Move to trash', danger: true, icon: icon(Trash), onSelect: () => handleTrashFromMenu(doc) },
     ];
   };
 
@@ -612,12 +653,52 @@ function FilesPage() {
       icon: <DownloadSimple size={18} />,
       onClick: () => handleDownloadFiles(selectedFiles),
       disabled: busy || selectedFiles.length === 0 || selectedFolderPaths.length > 0,
-      title: selectedFolderPaths.length > 0 ? 'Folders can’t be downloaded: select only files' : undefined,
+      title: selectedFolderPaths.length > 0 ? 'Folders cannot be downloaded: select only files' : undefined,
     },
     { key: 'share', label: 'Share', icon: <ShareNetwork size={18} />, onClick: handleBulkShare, disabled: busy },
-    { key: 'move', label: 'Move', icon: <ArrowsOutCardinal size={18} />, onClick: openMoveForSelection, disabled: busy },
+    { key: 'move', label: 'Move to…', icon: <ArrowsOutCardinal size={18} />, onClick: openMoveForSelection, disabled: busy },
     { key: 'trash', label: 'Move to trash', icon: <Trash size={18} />, onClick: handleBulkTrash, disabled: busy, danger: true },
   ];
+
+  const ACTION_ICONS = { download: DownloadSimple, share: ShareNetwork, move: ArrowsOutCardinal, trash: Trash };
+  const selectionMenuItems = () =>
+    selectionActions.map((action) => ({
+      label: action.label,
+      icon: icon(ACTION_ICONS[action.key]),
+      onSelect: action.onClick,
+      disabled: action.disabled,
+      title: action.title,
+      danger: action.danger,
+    }));
+
+  const backgroundMenuItems = () => [
+    { label: 'New folder', icon: icon(FolderSimplePlus), onSelect: () => setNewFolderOpen(true) },
+    { label: 'Upload file', icon: icon(UploadSimple), onSelect: () => setUploadOpen(true) },
+    { label: 'Upload folder', icon: icon(UploadSimple), onSelect: () => folderInputRef.current?.click() },
+  ];
+
+  // Right-click on an item: an unselected item becomes the selection first;
+  // several selected items get the actions that apply to a selection.
+  const handleItemContextMenu = (item, { x, y, opener }) => {
+    const wasSelected = selection.isSelected(item.key);
+    if (!wasSelected) selection.setOnly(item.key);
+    const multiple = wasSelected && selection.count > 1;
+    setContextMenu({
+      x,
+      y,
+      opener,
+      label: multiple ? `${selection.count} selected items` : item.name,
+      items: multiple ? selectionMenuItems() : menuFor(item),
+    });
+  };
+
+  // Right-click on empty space inside the files area (the browser menu is
+  // suppressed only here, not on the rest of the page).
+  const handleAreaContextMenu = (event) => {
+    if (event.target.closest('[data-file-key], a, input, select, button, textarea')) return;
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY, opener: null, label: 'New', items: backgroundMenuItems() });
+  };
 
   const backupStatusLine = backupStatus?.lastBackupAt
     ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
@@ -626,7 +707,7 @@ function FilesPage() {
   const emptyHere = !loading && !vaultIsEmpty && items.length === 0;
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} onContextMenu={handleAreaContextMenu}>
       {selection.count > 0 ? (
         <SelectionBar count={selection.count} actions={selectionActions} onClear={selection.clear} />
       ) : (
@@ -700,6 +781,7 @@ function FilesPage() {
         </div>
       )}
 
+      <div className={styles.area}>
       {items.length > 0 && (
         <FileBrowser
           items={items}
@@ -708,8 +790,34 @@ function FilesPage() {
           onOpen={openItem}
           columns={FILE_COLUMNS}
           menuFor={menuFor}
+          onItemContextMenu={handleItemContextMenu}
           onDropOnFolder={handleDropDocument}
           label="Files and folders"
+        />
+      )}
+      </div>
+
+      <input
+        ref={folderInputRef}
+        type="file"
+        hidden
+        // Whole-folder picking: non-standard attributes React passes straight through.
+        webkitdirectory=""
+        multiple
+        onChange={(event) => {
+          if (event.target.files?.length) handleUploadFolder(event.target.files);
+          event.target.value = '';
+        }}
+      />
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          label={contextMenu.label}
+          returnFocus={contextMenu.opener}
+          onClose={() => setContextMenu(null)}
         />
       )}
 

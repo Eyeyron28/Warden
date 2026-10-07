@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUUpLeft, Rows, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import FileBrowser, { SelectAllCheckbox } from '../components/FileBrowser.jsx';
+import ContextMenu from '../components/ContextMenu.jsx';
 import Modal from '../components/Modal.jsx';
 import SelectionBar from '../components/SelectionBar.jsx';
 import { useShell } from '../components/ShellContext.js';
@@ -18,10 +19,10 @@ import styles from './FilePages.module.css';
 const isSessionExpired = (err) => err?.response?.status === 401;
 
 const COLUMNS = [
-  { id: 'location', label: 'Original location', width: 'minmax(120px, 220px)' },
-  { id: 'deleted', label: 'Deleted', width: '110px' },
-  { id: 'daysLeft', label: 'Days left', width: '84px' },
-  { id: 'size', label: 'Size', width: '76px', align: 'right' },
+  { id: 'location', label: 'Original location', width: 'clamp(130px, 18vw, 480px)' },
+  { id: 'deleted', label: 'Deleted', width: 'clamp(100px, 11vw, 280px)' },
+  { id: 'daysLeft', label: 'Days left', width: 'clamp(84px, 9vw, 220px)' },
+  { id: 'size', label: 'Size', width: 'clamp(80px, 9vw, 240px)', align: 'right' },
 ];
 
 const placeLabel = (location) => (location ? `My files / ${location.split('/').join(' / ')}` : 'My files');
@@ -41,6 +42,7 @@ function TrashPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
   const [confirm, setConfirm] = useState(null); // { type: 'delete' | 'empty', items }
   const [view, setView] = useState(() => getViewPrefs().view);
   const [sort, setSort] = useState(() => getViewPrefs().sort);
@@ -171,6 +173,24 @@ function TrashPage() {
     },
   ];
 
+
+  // Right-click, long-press or Shift+F10 on an item. An unselected item becomes the selection;
+  // with several selected, the menu holds the actions that apply to the selection.
+  const handleItemContextMenu = (item, { x, y, opener }) => {
+    const wasSelected = selection.isSelected(item.key);
+    if (!wasSelected) selection.setOnly(item.key);
+    const multiple = wasSelected && selection.count > 1;
+    setContextMenu({
+      x,
+      y,
+      opener,
+      label: multiple ? `${selection.count} selected items` : item.name,
+      items: multiple
+        ? actions.map((action) => ({ label: action.label, icon: action.icon, onSelect: action.onClick, disabled: action.disabled, danger: action.danger }))
+        : menuFor(item),
+    });
+  };
+
   const loading = data === null;
   const total = items.length;
   const describe = (list) => (list.length === 1 ? `“${list[0].name}”` : `${list.length} items`);
@@ -230,7 +250,19 @@ function TrashPage() {
       )}
 
       {total > 0 && (
-        <FileBrowser items={items} view={view} selection={selection} onOpen={() => {}} columns={COLUMNS} menuFor={menuFor} label="Items in Trash" />
+        <FileBrowser items={items} view={view} selection={selection} onOpen={() => {}} columns={COLUMNS} menuFor={menuFor} onItemContextMenu={handleItemContextMenu} label="Items in Trash" />
+      )}
+
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          label={contextMenu.label}
+          returnFocus={contextMenu.opener}
+          onClose={() => setContextMenu(null)}
+        />
       )}
 
       {confirm && (

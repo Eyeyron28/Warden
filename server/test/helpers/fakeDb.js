@@ -188,7 +188,7 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true } = {}) {
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
@@ -199,7 +199,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, query, secure }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure, files }, res, (err) => { out.error = err; });
   return out;
 }
 

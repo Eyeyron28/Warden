@@ -1,0 +1,9 @@
+.separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
+}
+
+.danger {
+  color: var(--color-danger);
+}

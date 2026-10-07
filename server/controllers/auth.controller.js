@@ -256,9 +256,10 @@ const signup = asyncHandler(async (req, res) => {
       to: normalizedEmail,
       subject: 'Someone tried to create a Warden account with your email',
       text:
-        'Someone just tried to sign up for Warden using this email address, which already has an account. ' +
-        'If this was you, log in normally or use "Forgot password" instead. If it was not you, no action is ' +
-        'needed - no account was created or changed.',
+        'Hello,\n\nSomeone tried to register for Warden with this email address, which already has an account.\n\n' +
+        'Nothing was changed: your account, your documents and your password are exactly as they were, and no new account was created.\n\n' +
+        'If it was you, you can simply log in, or use "Forgot password" on the login page to reset your password. ' +
+        'If it was not you, you do not need to do anything.',
     });
     // Decoy recovery key - see function comment above for why this exists.
     res.status(200).json({ ...responseBody, recoveryKey: generateRecoveryKey() });
