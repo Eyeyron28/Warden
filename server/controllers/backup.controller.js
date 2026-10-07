@@ -193,7 +193,7 @@ const exportBackup = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const documents = await Document.find({ userId: req.userId });
+  const documents = await Document.find({ userId: req.userId, deletedAt: null });
 
   try {
     await Promise.all(
@@ -363,7 +363,7 @@ const importBackup = asyncHandler(async (req, res) => {
     backupRecords.push(record);
   }
 
-  const existingDocuments = await Document.find({ userId: req.userId }, 'checksum');
+  const existingDocuments = await Document.find({ userId: req.userId, deletedAt: null }, 'checksum');
   const existingChecksums = new Set(existingDocuments.map((doc) => doc.checksum));
 
   let documentsImported = 0;

@@ -88,6 +88,11 @@ export const SECTIONS = [
           the ones you open. Your session token is kept in browser memory only, and sessions end after 30 minutes
           without activity. A paired phone encrypts and decrypts on the phone itself.
         </p>
+        <p>
+          Previews work the same way: to show you a file, the server decrypts it for you and sends it to your browser
+          over HTTPS, and your browser then displays it. The preview is decrypted for you on the server, not
+          end-to-end, and the decrypted copy is not kept on the server.
+        </p>
       </>
     ),
   },
@@ -133,7 +138,11 @@ export const SECTIONS = [
     title: 'How long we keep it',
     content: (
       <p>
-        Your account and documents are kept until you delete them or delete your account. Sign-in sessions,
+        Your account and documents are kept until you delete them or delete your account. When you delete a file or
+        folder it moves to Trash, where it stays encrypted for 30 days and is then permanently removed, including its
+        preview image. You can restore it, delete it permanently sooner, or empty the Trash at any time. Share links
+        that include a file stop working the moment it is moved to Trash and are not brought back by restoring it.
+        Sign-in sessions,
         verification links and rate-limit records expire on their own, within minutes to a day, and are removed
         immediately if you delete your account.
       </p>
@@ -150,7 +159,7 @@ export const SECTIONS = [
           one-time code we email you, and by typing your account email.
         </p>
         <p>
-          Deleting is permanent and immediate. It removes your documents and their previews, your folders, every share
+          Deleting is permanent and immediate. It removes your documents (including anything in Trash) and their previews, your folders, every share
           link and its encrypted copies, your paired devices, your backup records, any pending login or deletion
           codes, your sessions, and the account itself (email, password hash and locked keys). We keep no copy and
           cannot recover any of it, and we send you an email confirming it. Our logs record only that an account was

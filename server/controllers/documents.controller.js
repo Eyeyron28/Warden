@@ -2,11 +2,13 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const Share = require('../models/Share');
 const { encryptFile, decryptFile } = require('../utils/crypto');
 const { encryptThumbnail, decryptThumbnail, hasThumbnail } = require('../utils/thumbnails');
 const {
   httpError,
   parentOf,
+  joinPath,
   lastSegment,
   toDocumentFolder,
   normalizeDocumentFolder,
@@ -20,6 +22,9 @@ const {
   listFolderPaths,
   deleteFolderTree,
 } = require('../utils/folders');
+const { sniffImageType, IMAGE_TYPES } = require('../utils/sniff');
+const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
+const Folder = require('../models/Folder');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -88,7 +93,7 @@ function computeExpiryInfo(expiryDate) {
  * Metadata-only view of a document for list responses. encryptedBlob, iv,
  * and authTag never need to leave the server for a list view.
  */
-function toListSummary(doc) {
+function toListSummary(doc, sharedIds = null) {
   const { daysUntilExpiry, expiryStatus } = computeExpiryInfo(doc.expiryDate);
   return {
     id: doc._id,
@@ -103,7 +108,21 @@ function toListSummary(doc) {
     // GET /api/documents/:id/thumbnail.
     hasThumb: hasThumbnail(doc),
     createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    // The file's size in bytes (AES-GCM ciphertext is exactly as long as the plaintext).
+    size: doc.size ?? (Buffer.isBuffer(doc.encryptedBlob) ? doc.encryptedBlob.length : null),
+    // What the bytes say (null until classified). The declared type is the client's claim only.
+    sniffedType: doc.sniffedType ?? null,
+    mimeType: doc.mimeType,
+    // Whether the file is in a link that is still active (for the list's shared indicator).
+    shared: sharedIds ? sharedIds.has(String(doc._id)) : false,
   };
+}
+
+/** Ids of this account's documents that are in an active share link. */
+async function activeSharedIds(userId) {
+  const ids = await Share.distinct('sourceDocumentIds', { ownerUserId: userId, expiresAt: { $gt: new Date() } });
+  return new Set(ids.map(String));
 }
 
 /**
@@ -159,6 +178,8 @@ const createDocument = asyncHandler(async (req, res) => {
     authTag,
     checksum,
     mimeType: mimetype,
+    // Classified from the bytes, not the name or the claimed type.
+    sniffedType: sniffImageType(buffer),
     originDevice: 'pc', // phone client is future work
     expiryDate: expiryDate || undefined,
     syncStatus: 'pending',
@@ -178,12 +199,118 @@ const createDocument = asyncHandler(async (req, res) => {
 /**
  * GET /api/documents
  */
+const LIST_PROJECTION = {
+  filename: 1,
+  folder: 1,
+  expiryDate: 1,
+  syncStatus: 1,
+  thumbMime: 1,
+  createdAt: 1,
+  updatedAt: 1,
+  mimeType: 1,
+  sniffedType: 1,
+  size: { $binarySize: '$encryptedBlob' },
+};
+
 const listDocuments = asyncHandler(async (req, res) => {
-  // The blobs are never part of a list response, so don't load them at all.
-  const documents = await Document.find({ userId: req.userId })
-    .select('-encryptedBlob -thumbCipher')
-    .sort({ createdAt: -1 });
-  res.status(200).json(documents.map(toListSummary));
+  // Anything past its Trash retention is removed on the account's own requests.
+  await purgeExpired(req.userId);
+  // The blobs are never part of a list response (the size is computed inside
+  // MongoDB), and trashed documents are not part of the vault.
+  const documents = await Document.aggregate([
+    { $match: { userId: req.userId, deletedAt: null } },
+    { $sort: { createdAt: -1 } },
+    { $project: LIST_PROJECTION },
+  ]);
+  const sharedIds = await activeSharedIds(req.userId);
+  res.status(200).json(documents.map((doc) => toListSummary(doc, sharedIds)));
+});
+
+const SNIFF_BATCH = 12;
+
+/**
+ * GET /api/documents/photos
+ * Every image in the vault (all folders), newest first - decided by SNIFFING
+ * the bytes (utils/sniff.js), never by the name or the type claimed at upload.
+ * Files uploaded before sniffing existed are classified here, a few per request
+ * (decrypting for this signed-in session and storing only the resulting type);
+ * `pending` says how many are still waiting, so the client asks again.
+ */
+const listPhotos = asyncHandler(async (req, res) => {
+  await purgeExpired(req.userId);
+
+  const unclassified = await Document.find({ userId: req.userId, deletedAt: null, sniffedType: null })
+    .select('_id encryptedBlob iv authTag')
+    .limit(SNIFF_BATCH);
+  for (const doc of unclassified) {
+    let type = 'none';
+    try {
+      const plaintext = decryptFile(doc.encryptedBlob.toString('base64'), req.dek, doc.iv, doc.authTag);
+      type = sniffImageType(plaintext);
+    } catch {
+      // A file that will not decrypt is simply not a photo.
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await Document.updateOne({ _id: doc._id }, { $set: { sniffedType: type } }, { timestamps: false });
+  }
+
+  const [photos, pending] = await Promise.all([
+    Document.aggregate([
+      { $match: { userId: req.userId, deletedAt: null, sniffedType: { $in: IMAGE_TYPES } } },
+      { $sort: { createdAt: -1 } },
+      { $project: LIST_PROJECTION },
+    ]),
+    Document.countDocuments({ userId: req.userId, deletedAt: null, sniffedType: null }),
+  ]);
+  const sharedIds = await activeSharedIds(req.userId);
+  res.status(200).json({ photos: photos.map((doc) => toListSummary(doc, sharedIds)), pending });
+});
+
+/**
+ * GET /api/documents/storage
+ * What this account stores: the vault, and what is waiting in Trash.
+ */
+const getStorage = asyncHandler(async (req, res) => {
+  const rows = await Document.aggregate([
+    { $match: { userId: req.userId } },
+    {
+      $group: {
+        _id: { $ne: ['$deletedAt', null] },
+        bytes: { $sum: { $binarySize: '$encryptedBlob' } },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+  const live = rows.find((row) => row._id === false);
+  const trashed = rows.find((row) => row._id === true);
+  res.status(200).json({
+    fileBytes: live?.bytes ?? 0,
+    fileCount: live?.count ?? 0,
+    trashBytes: trashed?.bytes ?? 0,
+    trashCount: trashed?.count ?? 0,
+  });
+});
+
+/**
+ * GET /api/documents/folders/children?path=
+ * The folders directly inside one folder ("" = top level), for the sidebar's
+ * lazily loaded tree. `hasChildren` says whether a folder can be expanded.
+ */
+const listFolderChildren = asyncHandler(async (req, res) => {
+  const requested = typeof req.query.path === 'string' ? req.query.path : '';
+  const canonical = await resolveFolderPath(req.userId, requested);
+  if (canonical === null) {
+    throw httpError(404, 'Folder not found.');
+  }
+  const children = await Folder.find({ userId: req.userId, parentPath: canonical }).select('name parentPath');
+  const paths = children.map((folder) => joinPath(canonical, folder.name));
+  const withChildren = new Set(
+    paths.length ? await Folder.distinct('parentPath', { userId: req.userId, parentPath: { $in: paths } }) : []
+  );
+  const folders = children
+    .map((folder, index) => ({ name: folder.name, path: paths[index], hasChildren: withChildren.has(paths[index]) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  res.status(200).json({ path: canonical, folders });
 });
 
 const URGENT_EXPIRY_STATUSES = new Set(['expired', 'expiring_soon']);
@@ -200,10 +327,10 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
   // expiryStatus depends on "today", so it can't be computed in the Mongo
   // query itself - fetch candidates that have a date at all, then filter
   // and sort in JS using the same computeExpiryInfo the list endpoint uses.
-  const documents = await Document.find({ userId: req.userId, expiryDate: { $ne: null } });
+  const documents = await Document.find({ userId: req.userId, deletedAt: null, expiryDate: { $ne: null } });
 
   const expiring = documents
-    .map(toListSummary)
+    .map((doc) => toListSummary(doc))
     .filter((doc) => URGENT_EXPIRY_STATUSES.has(doc.expiryStatus))
     .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
@@ -301,7 +428,9 @@ const deleteFolder = asyncHandler(async (req, res) => {
     throw badRequest('"root" cannot be deleted.');
   }
 
-  await deleteFolderTree(req.userId, folderPath.trim());
+  // Moves the folder and everything in it to Trash as one entry (restorable for
+  // 30 days). A folder that is not there is a success: this is idempotent.
+  await trashFolder(req.userId, folderPath.trim());
   res.status(204).send();
 });
 
@@ -368,7 +497,7 @@ const moveItems = asyncHandler(async (req, res) => {
         index,
         mongoose.Types.ObjectId.isValid(item.id)
           ? // eslint-disable-next-line no-await-in-loop
-            await Document.findOne({ _id: item.id, userId: req.userId })
+            await Document.findOne({ _id: item.id, userId: req.userId, deletedAt: null })
           : null
       );
     }
@@ -443,6 +572,7 @@ const moveItems = asyncHandler(async (req, res) => {
     // eslint-disable-next-line no-await-in-loop
     const clash = await Document.exists({
       userId: req.userId,
+      deletedAt: null,
       folder: toDocumentFolder(destPath),
       filename: name,
       _id: { $ne: document._id },
@@ -482,7 +612,7 @@ const moveItems = asyncHandler(async (req, res) => {
 const updateDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
   if (!document) {
     throw documentNotFound();
   }
@@ -538,7 +668,7 @@ const updateDocument = asyncHandler(async (req, res) => {
 const viewDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
   if (!document) {
     throw documentNotFound();
   }
@@ -560,11 +690,13 @@ const viewDocument = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
-  res.setHeader(
-    'Content-Disposition',
-    `inline; filename="${encodeURIComponent(document.filename)}"`
-  );
+  // The decrypted bytes go back as OPAQUE data: never the type the uploader
+  // claimed, never inline. The browser decides what the file is by sniffing the
+  // bytes themselves (client/src/utils/previewType.js) and builds its own Blob.
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(document.filename)}`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-store');
   res.status(200).send(plaintext);
 });
 
@@ -578,7 +710,7 @@ const viewDocument = asyncHandler(async (req, res) => {
 const getThumbnail = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
   if (!document || !hasThumbnail(document)) {
     throw documentNotFound();
   }
@@ -613,7 +745,7 @@ const putThumbnail = asyncHandler(async (req, res) => {
     throw badRequest('No thumbnail uploaded.');
   }
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
   if (!document) {
     throw documentNotFound();
   }
@@ -630,13 +762,15 @@ const putThumbnail = asyncHandler(async (req, res) => {
 });
 
 /**
- * DELETE /api/documents/:id
+ * DELETE /api/documents/:id - moves to Trash (see utils/trash.js)
  */
 const deleteDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOneAndDelete({ _id: req.params.id, userId: req.userId });
-  if (!document) {
+  // Moves the file to Trash (still encrypted, restorable for 30 days) and stops
+  // any share that includes it. Another account's id is a plain 404.
+  const trashed = await trashDocument(req.userId, req.params.id);
+  if (!trashed) {
     throw documentNotFound();
   }
 
@@ -657,4 +791,7 @@ module.exports = {
   getThumbnail,
   putThumbnail,
   deleteDocument,
+  listPhotos,
+  getStorage,
+  listFolderChildren,
 };

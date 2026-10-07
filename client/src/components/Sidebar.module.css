@@ -1,0 +1,312 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Desktop: a persistent column beside the page, scrolling on its own. */
+.nav {
+  position: sticky;
+  top: var(--header-height);
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 248px;
+  height: calc(100dvh - var(--header-height));
+  padding: var(--space-3);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Under 768px: a slide-in drawer over the page. */
+.drawer {
+  position: fixed;
+  top: var(--header-height);
+  bottom: 0;
+  left: 0;
+  z-index: 16;
+  width: min(300px, 86vw);
+  height: auto;
+  box-shadow: var(--shadow-elevated);
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+/* visibility removes the closed drawer from the tab order. */
+.drawerClosed {
+  transform: translateX(-100%);
+  visibility: hidden;
+  box-shadow: none;
+  transition: transform var(--duration-base) var(--ease-standard), visibility 0s linear var(--duration-base);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.item:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.itemActive {
+  background: var(--color-accent-wash);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.item:focus-visible,
+.treeLink:focus-visible,
+.caretButton:focus-visible,
+.treeToggle:focus-visible,
+.childItem:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filesRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.treeToggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+.treeToggle:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.caretClosed {
+  transform: rotate(-90deg);
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+/* ---- Folder tree ---- */
+
+.tree {
+  margin: 2px 0 var(--space-2) var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border);
+}
+
+.treeList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.treeRow:hover {
+  background: var(--color-surface-raised);
+}
+
+.treeCurrent {
+  background: var(--color-accent-wash);
+}
+
+.treeCurrent .treeLink {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.caretButton,
+.caretSpacer {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+}
+
+.caretButton .caretOpen {
+  transform: rotate(90deg);
+}
+
+.treeLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding-right: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  text-align: left;
+}
+
+.treeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeHint {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}
+
+/* ---- Backup & devices ---- */
+
+.children {
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--space-5);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border);
+}
+
+.childItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.childItem:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.spacer {
+  flex: 1;
+  min-height: var(--space-3);
+}
+
+/* ---- Storage meter ---- */
+
+.meter {
+  min-height: 92px;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.meterTotal {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.meterFaint {
+  font-weight: 400;
+  color: var(--color-text-faint);
+}
+
+.meterBar {
+  display: flex;
+  height: 6px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-raised);
+  overflow: hidden;
+}
+
+.meterFiles {
+  background: var(--color-accent);
+}
+
+.meterTrash {
+  background: var(--color-text-faint);
+}
+
+.meterLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 2px 0 0;
+}
+
+.dotFiles,
+.dotTrash {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotFiles {
+  background: var(--color-accent);
+}
+
+.dotTrash {
+  background: var(--color-text-faint);
+}
+
+.meterLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.meterLink:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .drawerClosed {
+    transition: none;
+  }
+}

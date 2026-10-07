@@ -23,7 +23,7 @@ function FolderBreadcrumb({ path, onNavigate }) {
         disabled={segments.length === 0}
       >
         <House size={14} weight="bold" />
-        <span>Documents</span>
+        <span>My files</span>
       </button>
 
       {segments.map((segment, index) => {

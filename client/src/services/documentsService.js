@@ -147,31 +147,77 @@ export async function fetchDocumentBlob(id) {
 }
 
 /**
- * Opens a decrypted blob in a new tab (browsers render viewable types like
- * PDFs/images inline; other types fall back to a download prompt). The
- * object URL is revoked after a delay rather than immediately, so the new
- * tab has time to actually load it.
+ * GET /api/documents/:id/view as raw bytes. The server answers with an opaque
+ * content type on purpose; what the bytes ARE is decided in the browser by
+ * sniffing them (utils/previewType.js), never from anything the response or the
+ * stored name claims. Pass `signal` to cancel (e.g. when moving to the next file).
+ * @returns {Promise<{ bytes: Uint8Array, filename: string }>}
  */
-export function openBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const opened = window.open(url, '_blank');
-
-  // Popup blocked or similar: fall back to a direct download instead of
-  // silently doing nothing.
-  if (!opened) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+export async function fetchDocumentBytes(id, { signal } = {}) {
+  const response = await api.get(`/documents/${id}/view`, { responseType: 'arraybuffer', signal });
+  const disposition = response.headers['content-disposition'] || '';
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/);
+  let filename = 'document';
+  if (match) {
+    try {
+      filename = decodeURIComponent(match[1] || match[2]);
+    } catch {
+      filename = match[2] || 'document';
+    }
   }
-
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return { bytes: new Uint8Array(response.data), filename };
 }
 
 /**
- * DELETE /api/documents/:id
+ * Saves bytes as a file. Only ever called from an explicit Download button or
+ * menu item - clicking a file opens its preview and never downloads. The Blob
+ * is typed application/octet-stream so the browser can't treat it as anything.
+ */
+export function downloadBytes(bytes, filename) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/**
+ * GET /api/documents/photos - every image (decided by sniffing the bytes, not
+ * the name), newest first. `pending` is how many older files are still waiting
+ * to be classified; ask again until it is 0.
+ * @returns {Promise<{ photos: object[], pending: number }>}
+ */
+export async function listPhotos() {
+  const { data } = await api.get('/documents/photos');
+  return data;
+}
+
+/**
+ * GET /api/documents/storage
+ * @returns {Promise<{ fileBytes: number, fileCount: number, trashBytes: number, trashCount: number }>}
+ */
+export async function getStorage() {
+  const { data } = await api.get('/documents/storage');
+  return data;
+}
+
+/**
+ * GET /api/documents/folders/children?path= - one level of the folder tree
+ * (for the sidebar), loaded when a folder is expanded.
+ * @returns {Promise<{ path: string, folders: Array<{ name: string, path: string, hasChildren: boolean }> }>}
+ */
+export async function listFolderChildren(path = '') {
+  const { data } = await api.get('/documents/folders/children', { params: { path } });
+  return data;
+}
+
+/**
+ * DELETE /api/documents/:id - moves the file to Trash (kept encrypted for 30
+ * days, its share links stop at once).
  */
 export async function deleteDocument(id) {
   await api.delete(`/documents/${id}`);
@@ -179,8 +225,8 @@ export async function deleteDocument(id) {
 
 /**
  * DELETE /api/documents/folders?path=...
- * Removes the empty-folder markers for a folder and everything nested under
- * it. Does NOT delete documents - delete those first with deleteDocument.
+ * Moves the folder, everything nested in it and every file inside to Trash as
+ * one item; restoring it from Trash brings them all back together.
  * @param {string} path
  */
 export async function deleteFolder(path) {

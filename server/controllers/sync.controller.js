@@ -67,13 +67,13 @@ const pullDocuments = asyncHandler(async (req, res) => {
   );
 
   const [newDocuments, index, folderPaths] = await Promise.all([
-    Document.find({ userId: req.userId, _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
+    Document.find({ userId: req.userId, deletedAt: null, _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
     // Metadata-only listing of EVERY document on this account - this is
     // what lets the phone notice PC-side deletes (an id it holds that's
     // missing here) and renames/moves (same id, different filename/
     // folder/expiryDate), which the "new to you" list above can never
     // express.
-    Document.find({ userId: req.userId }, 'filename folder expiryDate'),
+    Document.find({ userId: req.userId, deletedAt: null }, 'filename folder expiryDate'),
     listFolderPaths(req.userId),
   ]);
 

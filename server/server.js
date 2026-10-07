@@ -25,6 +25,7 @@ const pairingRoutes = require('./routes/pairing.routes');
 const pairCompleteRoutes = require('./routes/pairComplete.routes');
 const devicesRoutes = require('./routes/devices.routes');
 const accountRoutes = require('./routes/account.routes');
+const trashRoutes = require('./routes/trash.routes');
 
 const app = express();
 
@@ -120,6 +121,7 @@ app.use('/api/pair', pairingRoutes);
 app.use('/api/pair', pairCompleteRoutes);
 app.use('/api/devices', devicesRoutes);
 app.use('/api/account', accountRoutes);
+app.use('/api/trash', trashRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -104,7 +104,7 @@ function SiteHeader() {
   }, [drawerOpen, closeDrawer]);
 
   const authLinks = token ? (
-    <Link to="/vault" className={`${site.button} ${site.primary}`}>
+    <Link to="/files" className={`${site.button} ${site.primary}`}>
       Go to vault
     </Link>
   ) : (

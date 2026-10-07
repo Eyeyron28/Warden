@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import Icon from '../components/site/Icon.jsx';
 import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
@@ -136,10 +136,6 @@ function AccountPage() {
       wide
     >
       <div className={styles.stack}>
-        <Link to="/vault" className={site.textLink}>
-          ← Back to your documents
-        </Link>
-
         <TrustedBrowsers />
 
         <section className={styles.danger} aria-labelledby="delete-account-title">

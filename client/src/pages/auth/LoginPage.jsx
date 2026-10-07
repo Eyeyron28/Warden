@@ -29,7 +29,7 @@ const SETTLE_DELAY_MS = 350; // lets the vault dial finish its "unlocked" turn
 export function returnPathFrom(location) {
   const from = location.state?.from;
   const path = from ? `${from.pathname || ''}${from.search || ''}` : '';
-  return safeRedirectPath(path, '/vault');
+  return safeRedirectPath(path, '/files');
 }
 
 /**

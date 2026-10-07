@@ -89,7 +89,7 @@ function SignupPage() {
     setLegalTab(key);
   };
 
-  if (token) return <Navigate to="/vault" replace />;
+  if (token) return <Navigate to="/files" replace />;
 
   const inviteRequired = signupMode === 'invite';
   const showInvite = signupMode === 'invite' || signupMode === 'unknown';

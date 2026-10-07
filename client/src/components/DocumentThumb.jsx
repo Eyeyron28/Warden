@@ -88,7 +88,7 @@ function DocumentThumb({ document, variant = 'card' }) {
     };
   }, [id, hasThumb]);
 
-  const iconSize = variant === 'row' ? 22 : 34;
+  const iconSize = variant === 'row' ? 18 : variant === 'fill' ? 44 : 34;
 
   return (
     <span ref={boxRef} className={`${styles.box} ${styles[variant]}`} data-state={state}>

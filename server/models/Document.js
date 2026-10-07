@@ -91,6 +91,18 @@ const documentSchema = new mongoose.Schema(
       type: String,
       enum: ['image/webp', 'image/jpeg'],
     },
+    // What the bytes say the file is (utils/sniff.js), from the plaintext at
+    // upload: an image mime type, or 'none'. null means "not classified yet"
+    // (older files; the Photos endpoint classifies them on demand). This - not
+    // the file name or the mimeType the browser claimed - decides what shows in Photos.
+    sniffedType: { type: String, default: null },
+    // Trash (soft delete). A trashed document keeps its encrypted data until it
+    // is restored or purged. deletedAt marks it trashed; purgeAt is when it is
+    // removed for good (TTL index below); trashBatchId groups documents that were
+    // trashed together WITH a folder (null for a file trashed on its own).
+    deletedAt: { type: Date, default: null },
+    purgeAt: { type: Date, default: null },
+    trashBatchId: { type: String, default: null },
     // Whether this document has been synced between the PC backend and the
     // phone client yet.
     syncStatus: {
@@ -123,5 +135,10 @@ documentSchema.pre('validate', function requireEncryptedBlob(next) {
 // index covers all of them without a separate index per field.
 documentSchema.index({ userId: 1, folder: 1 });
 documentSchema.index({ userId: 1, checksum: 1 });
+documentSchema.index({ userId: 1, deletedAt: 1 });
+documentSchema.index({ trashBatchId: 1 }, { sparse: true });
+// MongoDB removes the whole document (ciphertext and thumbnail included) when
+// purgeAt passes. Documents that are not in Trash have no purgeAt, so never expire.
+documentSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Document', documentSchema);

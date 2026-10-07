@@ -18,6 +18,9 @@ const {
   getThumbnail,
   putThumbnail,
   deleteDocument,
+  listPhotos,
+  getStorage,
+  listFolderChildren,
 } = require('../controllers/documents.controller');
 
 // 4MB, down from the old local-only 20MB cap: Vercel Hobby caps a whole
@@ -74,6 +77,9 @@ router.post('/', handleUpload, createDocument);
 router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
 router.get('/folders', listFolders);
+router.get('/folders/children', listFolderChildren);
+router.get('/photos', listPhotos);
+router.get('/storage', getStorage);
 router.post('/folders', createFolder);
 // Registered before PATCH /:id so "folders" is never captured as an id.
 router.patch('/folders', renameFolder);

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const Folder = require('../models/Folder');
+const TrashFolder = require('../models/TrashFolder');
 const { removeShares } = require('../utils/shareCleanup');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
@@ -741,7 +742,10 @@ const resetPassword = asyncHandler(async (req, res) => {
     const dek = generateDEK();
     const newRecoveryKey = generateRecoveryKey();
 
+    // Everything in Trash goes too: trashed documents are documents, and the
+    // trashed-folder entries that group them are removed with them.
     await Document.deleteMany({ userId: user._id });
+    await TrashFolder.deleteMany({ userId: user._id });
     await Folder.deleteMany({ userId: user._id });
     // Shares are snapshots of the old vault; a wipe should not leave copies
     // reachable by link, nor any of their wrapped keys, verifiers, recipient

@@ -9,6 +9,7 @@ const Session = require('../models/Session');
 const TrustedDevice = require('../models/TrustedDevice');
 const OtpChallenge = require('../models/OtpChallenge');
 const RateLimit = require('../models/RateLimit');
+const TrashFolder = require('../models/TrashFolder');
 const { runInTransaction } = require('./folders');
 const { removeShares } = require('./shareCleanup');
 
@@ -60,7 +61,10 @@ async function deleteAccountData(userId, { email = null, transaction = true } = 
     await del('sessions', Session, { userId });
     await del('trusteddevices', TrustedDevice, { userId });
     // 2. The data itself.
+    // Documents include everything in Trash (ciphertext and thumbnails); the
+    // trashed-folder entries that group them go too.
     await del('documents', Document, { userId });
+    await del('trashfolders', TrashFolder, { userId });
     await del('folders', Folder, { userId });
     await del('backuplogs', BackupLog, { userId });
     // 3. Rate-limit rows that name this account.

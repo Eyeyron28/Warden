@@ -34,6 +34,14 @@ const DESIGN_POINTS = [
     body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime. If you tick "Trust this browser for 30 days" after a correct code, that browser keeps a random token in a cookie and later logins there skip the emailed code but still need your password. Deleting your account, recovering with a paired phone and restricting a share to an email address always ask for a fresh code. Remove trusted browsers any time from the Account page.',
   },
   {
+    title: 'Deleted files wait in Trash for 30 days',
+    body: 'Deleting a file or folder moves it to Trash. It stays encrypted there for 30 days, then it and its preview are permanently removed. You can restore it, delete it for good, or empty the Trash sooner, and any share links that included it stop working as soon as it is trashed.',
+  },
+  {
+    title: 'Previews are decrypted for you on the server',
+    body: 'To preview a file, the server decrypts it with your session and sends it to your browser over HTTPS, where it is displayed. This is not end-to-end encryption. Web pages and other markup are never shown inline, only downloaded.',
+  },
+  {
     title: 'Sessions hold the key only while you use it',
     body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in browser memory, so reloading the page signs you out. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity.',
   },

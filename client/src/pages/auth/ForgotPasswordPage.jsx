@@ -124,7 +124,7 @@ function ForgotPasswordPage() {
           onRecovered={(sessionToken) => {
             setPhoneOpen(false);
             setToken(sessionToken);
-            navigate('/vault', { replace: true });
+            navigate('/files', { replace: true });
           }}
         />
       )}

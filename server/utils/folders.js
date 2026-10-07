@@ -186,10 +186,11 @@ async function createFolderExplicit(userId, parentPathInput, rawName) {
  * updatedAt is bumped on everything touched (phone sync relies on moved
  * documents showing their new folder on the next pull).
  */
-async function rewritePrefix(collection, field, userId, oldPrefix, newPrefix, session) {
+async function rewritePrefix(collection, field, userId, oldPrefix, newPrefix, session, extraFilter = {}) {
   const oldLength = [...oldPrefix].length;
   await collection.updateMany(
     {
+      ...extraFilter,
       userId: new mongoose.Types.ObjectId(String(userId)),
       $or: [{ [field]: oldPrefix }, { [field]: { $regex: `^${escapeRegex(oldPrefix)}/` } }],
     },
@@ -260,7 +261,9 @@ async function moveFolder(userId, srcPath, destParent, newName, session) {
   }
 
   await rewritePrefix(Folder.collection, 'parentPath', userId, srcPath, newPath, session);
-  await rewritePrefix(Document.collection, 'folder', userId, srcPath, newPath, session);
+  // Documents in Trash are left alone: a trashed FOLDER's documents must keep the
+  // paths its Trash entry remembers, and a trashed file restores by its original path.
+  await rewritePrefix(Document.collection, 'folder', userId, srcPath, newPath, session, { deletedAt: null });
 
   // Verification: nothing may still sit under the old path. Inside a
   // transaction this aborts the whole move; in the non-transactional
@@ -274,6 +277,7 @@ async function moveFolder(userId, srcPath, destParent, newName, session) {
     }).session(session || null),
     Document.countDocuments({
       userId,
+      deletedAt: null,
       $or: [{ folder: srcPath }, { folder: { $regex: `^${escaped}/` } }],
     }).session(session || null),
   ]);
@@ -325,7 +329,7 @@ async function runInTransaction(fn) {
 async function listFolderPaths(userId) {
   const [folders, documentFolders] = await Promise.all([
     Folder.find({ userId }, 'parentPath name'),
-    Document.distinct('folder', { userId }),
+    Document.distinct('folder', { userId, deletedAt: null }),
   ]);
   const paths = new Set(folders.map(fullPathOf));
   documentFolders.forEach((folder) => {
@@ -358,6 +362,7 @@ async function deleteFolderTree(userId, path) {
 
   const leftovers = await Document.distinct('folder', {
     userId,
+    deletedAt: null,
     $or: [{ folder: canonical }, { folder: { $regex: `^${escaped}/` } }],
   });
   for (const folder of leftovers) {

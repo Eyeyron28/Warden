@@ -74,8 +74,9 @@ export const SECTIONS = [
         Anyone who has the full link, and any password or emailed code you required, can open the shared files until
         it expires, reaches its download limit or you stop sharing, so share links only with people you trust and
         stop sharing when it is no longer needed. If you restrict a share to an email address, you confirm you may
-        give us that address; we email it one-time codes and nothing else. A share is a snapshot: deleting or
-        editing the original file does not change or remove existing shared copies; stop sharing to remove them.
+        give us that address; we email it one-time codes and nothing else. A share is a snapshot: editing the
+        original file does not change existing shared copies, but moving the original to Trash stops every share that
+        includes it right away. Stop sharing to remove copies yourself.
         Links last at most 30 days, and each account can hold a limited number of shares and amount of shared
         data.
       </p>

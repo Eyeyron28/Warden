@@ -210,7 +210,7 @@ async function issueShare(req, res, documentIds) {
 
   const objectIds = uniqueIds.map((id) => new mongoose.Types.ObjectId(id));
   const sizes = await Document.aggregate([
-    { $match: { _id: { $in: objectIds }, userId: req.userId } },
+    { $match: { _id: { $in: objectIds }, userId: req.userId, deletedAt: null } },
     { $project: { size: { $binarySize: '$encryptedBlob' } } },
   ]);
   if (sizes.length !== uniqueIds.length) {
@@ -231,7 +231,7 @@ async function issueShare(req, res, documentIds) {
   }
 
   // At most 20MB of blobs from here on.
-  const documents = await Document.find({ _id: { $in: objectIds }, userId: req.userId }).select(
+  const documents = await Document.find({ _id: { $in: objectIds }, userId: req.userId, deletedAt: null }).select(
     'filename mimeType folder encryptedBlob iv authTag checksum'
   );
   if (documents.length !== uniqueIds.length) {
@@ -362,7 +362,7 @@ const createBulkShare = asyncHandler(async (req, res) => {
 const listShares = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId }).select('_id');
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).select('_id');
   if (!document) {
     throw documentNotFound();
   }

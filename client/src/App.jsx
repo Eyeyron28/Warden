@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import AppLayout from './components/AppLayout.jsx';
 import PublicLayout from './components/site/PublicLayout.jsx';
 import HomePage from './pages/public/HomePage.jsx';
 import { logoutVault } from './services/authService.js';
@@ -20,7 +21,9 @@ const SignupPage = lazy(() => import('./pages/auth/SignupPage.jsx'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage.jsx'));
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'));
 const VerifyEmailPage = lazy(() => import('./pages/auth/VerifyEmailPage.jsx'));
-const VaultShell = lazy(() => import('./pages/VaultShell.jsx'));
+const FilesPage = lazy(() => import('./pages/FilesPage.jsx'));
+const PhotosPage = lazy(() => import('./pages/PhotosPage.jsx'));
+const TrashPage = lazy(() => import('./pages/TrashPage.jsx'));
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 const SharesPage = lazy(() => import('./pages/SharesPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
@@ -103,30 +106,24 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
+        {/* The signed-in app: header + sidebar around one real route per section,
+            so refresh and the back button work. A reload ends the session by
+            design, and login brings you back to the route you were on. */}
         <Route
-          path="/vault"
           element={
             <RequireSession>
-              <VaultShell onLocked={handleLocked} />
+              <AppLayout onLocked={handleLocked} />
             </RequireSession>
           }
-        />
-        <Route
-          path="/shares"
-          element={
-            <RequireSession>
-              <SharesPage />
-            </RequireSession>
-          }
-        />
-        <Route
-          path="/account"
-          element={
-            <RequireSession>
-              <AccountPage />
-            </RequireSession>
-          }
-        />
+        >
+          <Route path="/files" element={<FilesPage />} />
+          <Route path="/photos" element={<PhotosPage />} />
+          <Route path="/shared" element={<SharesPage />} />
+          <Route path="/trash" element={<TrashPage />} />
+          <Route path="/account" element={<AccountPage />} />
+        </Route>
+        <Route path="/vault" element={<Navigate to="/files" replace />} />
+        <Route path="/shares" element={<Navigate to="/shared" replace />} />
         {/* Outside the account flow entirely: a share-link recipient has
             never logged into this account and never will. */}
         <Route path="/shared/:shareId" element={<SharedDocumentPage />} />

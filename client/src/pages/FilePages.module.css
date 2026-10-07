@@ -1,0 +1,253 @@
+/* Layout shared by My files, Photos, Trash and Shared: the page fills the
+   space beside the sidebar - no max-width, no big side margins. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  min-height: 44px;
+}
+
+.titleBlock {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.count {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.sort {
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--fs-sm);
+}
+
+.sort:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.viewToggle {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.viewButton {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 34px;
+  color: var(--color-text-faint);
+}
+
+.viewButton:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.viewButton[aria-pressed='true'] {
+  background: var(--color-accent-wash);
+  color: var(--color-accent);
+}
+
+.viewButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.dangerButton {
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-danger-wash);
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton:focus-visible,
+.dangerButton:focus-visible,
+.primaryButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.banner {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: var(--color-danger-wash);
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-wash);
+  font-size: var(--fs-sm);
+}
+
+/* An empty view is a short message with one action, not a page of nothing. */
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-3);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--color-text-faint);
+}
+
+.monthHeading {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.monthHeading:first-child {
+  margin-top: 0;
+}
+
+.retention {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}
+
+.daysLeft {
+  color: var(--color-text-muted);
+}
+
+.daysLeftSoon {
+  color: var(--color-danger);
+}
+
+.folderUploadLabel {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.progressTrack {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-raised);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width var(--duration-fast) var(--ease-standard);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.confirmText {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+  .selectAllLabel {
+    display: none;
+  }
+}

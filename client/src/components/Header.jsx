@@ -4,7 +4,7 @@ import wardenLogo from '../assets/warden_logo_badge.svg';
 import ThemeToggle from './ThemeToggle.jsx';
 import styles from './Header.module.css';
 
-function Header({ onLock, onToggleNav, searchTerm, onSearchChange }) {
+function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChange }) {
   return (
     <header className={styles.header}>
       <div className={styles.left}>
@@ -12,7 +12,9 @@ function Header({ onLock, onToggleNav, searchTerm, onSearchChange }) {
           type="button"
           className={styles.navToggle}
           onClick={onToggleNav}
-          aria-label="Toggle navigation"
+          aria-label="Open navigation menu"
+          aria-expanded={navOpen}
+          aria-controls="app-sidebar"
         >
           <List size={20} weight="bold" />
         </button>

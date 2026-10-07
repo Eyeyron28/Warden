@@ -44,7 +44,7 @@ const matches = (doc, filter) =>
 
 const NAMES = [
   'users', 'documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens',
-  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trusteddevices',
+  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -95,7 +95,7 @@ function fakeModel(name) {
 const models = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
-  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrustedDevice: 'trusteddevices',
+  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
@@ -166,6 +166,11 @@ function populate(user) {
   t.documents.push({ _id: oid(), userId: user._id, filename: 'passport.png', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4) });
   t.documents.push({ _id: oid(), userId: user._id, filename: 'lease.pdf', encryptedBlob: Buffer.alloc(10) });
   t.folders.push({ _id: oid(), userId: user._id, name: 'Taxes' });
+  // Things in Trash: a file trashed on its own, and a trashed folder with a file inside it.
+  const batchId = crypto.randomBytes(16).toString('hex');
+  t.documents.push({ _id: oid(), userId: user._id, filename: 'old.pdf', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4), deletedAt: new Date(), purgeAt: new Date(Date.now() + 86400000), trashBatchId: null });
+  t.documents.push({ _id: oid(), userId: user._id, filename: 'in-folder.png', folder: 'Old', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4), deletedAt: new Date(), purgeAt: new Date(Date.now() + 86400000), trashBatchId: batchId });
+  t.trashfolders.push({ _id: oid(), userId: user._id, batchId, path: 'Old', parentPath: '', name: 'Old', subPaths: ['Old'], itemCount: 1 });
   t.backuplogs.push({ _id: oid(), userId: user._id });
   t.paireddevices.push({ _id: oid(), userId: user._id, deviceToken: 'dev' });
   t.pairingtokens.push({ _id: oid(), userId: user._id });
@@ -197,7 +202,7 @@ const rowsOwnedBy = (user) => {
   return {
     // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
     stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
-    byOwner: ['documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges', 'trusteddevices']
+    byOwner: ['documents', 'folders', 'trashfolders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges', 'trusteddevices']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
       + world.tables.shares.filter((r) => String(r.ownerUserId) === id).length,
   };
@@ -272,7 +277,7 @@ test('a login code cannot authorise deletion, and a delete code cannot log in', 
   });
   assert.equal(attack.error.status, 401);
   assert.equal(attack.error.message, GENERIC);
-  assert.equal(world.tables.documents.length, 2, 'nothing deleted');
+  assert.equal(world.tables.documents.length, 4, 'nothing deleted');
   assert.equal(world.tables.users.length, 1);
   // ...and the login challenge was not harmed: it still completes the login.
   const ok = await call(verifyOtp, { body: { challengeToken: login.json.challengeToken, code: loginCode } });
@@ -301,7 +306,7 @@ test("another account's delete challenge cannot be used, even with the right cod
   });
   assert.equal(attack.error.status, 401);
   assert.equal(world.tables.users.length, 2);
-  assert.equal(rowsOwnedBy(ben).byOwner, 11, 'ben untouched');
+  assert.equal(rowsOwnedBy(ben).byOwner, 14, 'ben untouched');
 });
 
 test('wrong password, wrong code and wrong email confirmation each fail and delete nothing', async () => {
@@ -354,9 +359,9 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(world.tables.users.length, 1);
   assert.equal(world.tables.ratelimits.filter((r) => r.key === '203.0.113.7').length, 2, 'IP-keyed rows are not about a person and stay');
   // Ben's rows are exactly as before (compare after removing the rows that were ana's).
-  assert.equal(rowsOwnedBy(ben).byOwner, 11);
+  assert.equal(rowsOwnedBy(ben).byOwner, 14);
   assert.ok(world.tables.sharedfiles.length === 1 && world.tables.shares.length === 1, "only ben's share and its copy remain");
-  assert.ok(benBefore.length > 0 && anaBefore.documents === 4);
+  assert.ok(benBefore.length > 0 && anaBefore.documents === 8);
 
   const mail = world.mails[world.mails.length - 1];
   assert.equal(mail.to, 'ana@example.com');
@@ -496,6 +501,8 @@ test('a vault wipe and an account deletion clean shares through the same routine
   const wipe = auth.slice(auth.indexOf('confirmWipe !== true'), auth.indexOf('await finalizeReset(user, dek, newPassword, { newRecoveryKey })'));
   assert.match(wipe, /removeShares\(\{ ownerUserId: user\._id \}\)/, 'the wipe removes shares, their wrapped keys, verifiers, recipient emails, counters and code challenges');
   assert.doesNotMatch(wipe, /SharedFile|Share\.deleteMany/, 'no ad-hoc partial cleanup left in the wipe');
+  assert.match(wipe, /Document\.deleteMany\(\{ userId: user\._id \}\)/, 'the wipe deletes every document, trashed ones included (no deletedAt filter)');
+  assert.match(wipe, /TrashFolder\.deleteMany\(\{ userId: user\._id \}\)/, 'and the trashed-folder entries');
   const deletion = strip(fs.readFileSync(path.join(dir, 'utils', 'accountDeletion.js'), 'utf8'));
   assert.match(deletion, /removeShares\(\{ ownerUserId: userId \}/);
   const cleanup = strip(fs.readFileSync(path.join(dir, 'utils', 'shareCleanup.js'), 'utf8'));

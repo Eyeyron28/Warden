@@ -1,0 +1,395 @@
+/* ---- Shared by My files, Photos and Trash ---- */
+
+.list {
+  --lead: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--cols-narrow);
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.row:first-child {
+  border-top: 0;
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+}
+
+.row:last-child {
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.row:hover {
+  background: var(--color-surface-raised);
+}
+
+.row[data-selected] {
+  background: var(--color-accent-wash);
+}
+
+.row[data-drop] {
+  background: var(--color-accent-wash);
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+}
+
+.headRow {
+  min-height: 34px;
+  cursor: default;
+  background: var(--color-bg-raised);
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.headRow:hover {
+  background: var(--color-bg-raised);
+}
+
+.headLabel {
+  font-weight: 500;
+}
+
+/* The lead cell holds the file icon; the checkbox takes its place on hover,
+   on keyboard focus, and everywhere once anything is selected. */
+.lead {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--lead);
+  height: 32px;
+}
+
+.leadIcon {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-faint);
+}
+
+.folderIcon,
+.folderIconLarge {
+  color: var(--color-accent);
+}
+
+.check {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.row[data-selected] .check {
+  background: transparent;
+}
+
+.check input,
+.headCheck {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.check input:focus-visible,
+.headCheck:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.row:hover .check,
+.row:has(.check input:focus-visible) .check,
+.row[data-selected] .check,
+.list[data-any-selected] .check {
+  opacity: 1;
+}
+
+.row:hover .leadIcon,
+.row:has(.check input:focus-visible) .leadIcon,
+.row[data-selected] .leadIcon,
+.list[data-any-selected] .leadIcon {
+  opacity: 0;
+}
+
+.nameCell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.name {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.name:focus-visible,
+.cardName:focus-visible,
+.menuButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.subline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.subline:empty {
+  display: none;
+}
+
+.mobileMeta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell {
+  display: none;
+}
+
+.metaCell {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu {
+  position: relative;
+  justify-self: end;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.row:hover .menu,
+.row:focus-within .menu,
+.card:hover .menu,
+.card:focus-within .menu {
+  opacity: 1;
+}
+
+.menuButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.menuButton:hover {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.dangerOption {
+  color: var(--color-danger);
+}
+
+@media (min-width: 640px) {
+  .row {
+    grid-template-columns: var(--cols-wide);
+  }
+
+  .cell {
+    display: block;
+  }
+
+  .mobileMeta {
+    display: none;
+  }
+}
+
+/* ---- Grid ---- */
+
+.grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+@media (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+}
+
+@media (min-width: 1600px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  }
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.card[data-selected] {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-wash);
+}
+
+.card[data-drop] {
+  border-color: var(--color-accent);
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 2px;
+}
+
+.cardThumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+  background: var(--color-bg-raised);
+}
+
+.card .check {
+  inset: auto;
+  top: var(--space-2);
+  left: var(--space-2);
+  width: 28px;
+  height: 28px;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.card .menu {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.cardName {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cardMeta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Touch screens and narrow windows have no hover: checkboxes and the menu
+   are always there, the icon sits beside the checkbox, tap still opens. */
+@media (hover: none), (max-width: 639px) {
+  .list {
+    --lead: 62px;
+  }
+
+  .list .lead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .list .check {
+    position: static;
+    inset: auto;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    opacity: 1;
+    background: transparent;
+  }
+
+  .list .leadIcon {
+    opacity: 1 !important;
+    flex-shrink: 0;
+  }
+
+  .check,
+  .menu {
+    opacity: 1;
+  }
+
+  .row:first-child .headCheck {
+    margin-left: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .check,
+  .menu,
+  .card {
+    transition: none;
+  }
+}

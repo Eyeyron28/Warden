@@ -15,6 +15,7 @@
     "@fontsource/space-grotesk": "^5.1.0",
     "@phosphor-icons/react": "^2.1.7",
     "axios": "^1.7.7",
+    "docx-preview": "^0.4.1",
     "idb": "^8.0.3",
     "pdfjs-dist": "^4.10.38",
     "qrcode": "^1.5.4",

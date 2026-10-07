@@ -145,6 +145,16 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: 'What happens when I delete a file?',
+    answer: (
+      <p>
+        It moves to Trash, still encrypted, for 30 days, and is then permanently removed along with its preview. You
+        can restore it, delete it permanently, or empty the Trash sooner. Any share link that included it stops working
+        right away. Previews are decrypted for you on the server over HTTPS, so this is not end-to-end encryption.
+      </p>
+    ),
+  },
+  {
     question: 'Can I delete my account?',
     answer: (
       <p>
@@ -177,7 +187,7 @@ function HomePage() {
   const accountDeleted = Boolean(useLocation().state?.accountDeleted);
 
   const primaryCta = signedIn ? (
-    <Link to="/vault" className={`${site.button} ${site.primary}`}>
+    <Link to="/files" className={`${site.button} ${site.primary}`}>
       Go to your vault
       <Icon name="arrowRight" size={18} />
     </Link>

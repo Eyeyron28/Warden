@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { X } from '@phosphor-icons/react';
 
+import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Modal.module.css';
 
 /**
@@ -10,6 +11,10 @@ import styles from './Modal.module.css';
  * document list down or renders inline in the page body.
  */
 function Modal({ title, onClose, children }) {
+  const dialogRef = useRef(null);
+  // Focus moves in, Tab stays inside, and focus returns to what opened it.
+  useFocusTrap(dialogRef, true);
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
@@ -21,6 +26,7 @@ function Modal({ title, onClose, children }) {
   return (
     <div className={styles.backdrop} onClick={onClose}>
       <div
+        ref={dialogRef}
         className={styles.dialog}
         role="dialog"
         aria-modal="true"

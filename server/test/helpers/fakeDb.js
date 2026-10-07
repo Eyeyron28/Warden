@@ -11,13 +11,18 @@ const oid = () => new mongoose.Types.ObjectId();
 const norm = (v) => (v === undefined ? null : v);
 
 function matchValue(actual, cond) {
+  if (Array.isArray(actual)) {
+    if (cond && typeof cond === 'object' && '$in' in cond) return actual.some((v) => cond.$in.map(String).includes(String(v)));
+    if (cond === null || typeof cond !== 'object' || isDate(cond) || isId(cond)) return actual.some((v) => String(v) === String(cond));
+  }
   if (cond && typeof cond === 'object' && !isDate(cond) && !isId(cond) && !Buffer.isBuffer(cond)) {
     if ('$in' in cond) return cond.$in.map(String).includes(String(actual));
+    if ('$regex' in cond) return typeof actual === 'string' && new RegExp(cond.$regex).test(actual);
     if ('$ne' in cond) return String(norm(actual)) !== String(norm(cond.$ne));
-    if ('$lt' in cond && !(norm(actual) < cond.$lt)) return false;
-    if ('$lte' in cond && !(norm(actual) <= cond.$lte)) return false;
-    if ('$gt' in cond && !(norm(actual) > cond.$gt)) return false;
-    if ('$gte' in cond && !(norm(actual) >= cond.$gte)) return false;
+    if ('$lt' in cond && (norm(actual) === null || !(actual < cond.$lt))) return false;
+    if ('$lte' in cond && (norm(actual) === null || !(actual <= cond.$lte))) return false;
+    if ('$gt' in cond && (norm(actual) === null || !(actual > cond.$gt))) return false;
+    if ('$gte' in cond && (norm(actual) === null || !(actual >= cond.$gte))) return false;
     return true;
   }
   if (cond === null) return norm(actual) === null;
@@ -48,6 +53,11 @@ function fakeModel(world, table, extras = {}) {
   const query = (result) => {
     const q = {
       select: () => q,
+      limit: (n) => {
+        const original = result;
+        result = () => original().slice(0, n);
+        return q;
+      },
       session: () => q,
       sort: () => {
         const original = result;
@@ -64,6 +74,11 @@ function fakeModel(world, table, extras = {}) {
   };
   const base = {
     create: async (doc) => {
+      if (Array.isArray(doc)) {
+        const made = doc.map((d) => ({ _id: oid(), ...d }));
+        rows().push(...made);
+        return made;
+      }
       const created = { _id: oid(), attempts: 0, resendCount: 0, ...doc };
       rows().push(created);
       return created;
@@ -113,7 +128,13 @@ function fakeModel(world, table, extras = {}) {
       world.tables[table] = keep;
       return { deletedCount };
     },
-    aggregate: async () => [],
+    aggregate: () => {
+      const q = { session: () => q, then: (ok, bad) => Promise.resolve([]).then(ok, bad) };
+      return q;
+    },
+    distinct: async (field, filter = {}) => [...new Set(rows().filter((r) => matches(r, filter)).map((r) => r[field]))],
+    exists: async (filter) => (rows().some((r) => matches(r, filter)) ? { _id: 1 } : null),
+    countDocuments: (filter = {}) => query(() => rows().filter((r) => matches(r, filter)).length),
   };
   return { ...base, ...extras };
 }
@@ -127,7 +148,7 @@ const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits', TrustedDevice: 'trusteddevices',
+  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices',
 };
 
 function createWorld() {
@@ -167,7 +188,7 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, secure = true } = {}) {
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
@@ -178,7 +199,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, secure }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure }, res, (err) => { out.error = err; });
   return out;
 }
 

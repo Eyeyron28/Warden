@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 import Icon from '../components/site/Icon.jsx';
 import ShareEditModal from '../components/ShareEditModal.jsx';
-import AuthLayout from './auth/AuthLayout.jsx';
 import { listAllShares, revokeShareById, stopAllShares } from '../services/sharesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
@@ -12,6 +10,7 @@ import site from '../components/site/site.module.css';
 import forms from '../components/site/forms.module.css';
 import auth from './auth/auth.module.css';
 import styles from './SharesPage.module.css';
+import pageStyles from './FilePages.module.css';
 
 const MB = 1024 * 1024;
 const formatMb = (bytes) => `${bytes < 10 * MB ? (bytes / MB).toFixed(1) : Math.round(bytes / MB)}MB`;
@@ -96,15 +95,20 @@ function SharesPage() {
   };
 
   return (
-    <AuthLayout
-      title="Shared"
-      subtitle="Everything you are sharing right now. We don’t keep your links or their keys, so a link can’t be shown again: copy it when you create it."
-      wide
-    >
+    <div className={pageStyles.page}>
       <div className={auth.stack}>
-        <Link to="/vault" className={site.textLink}>
-          ← Back to your documents
-        </Link>
+        <div className={pageStyles.toolbar}>
+          <div className={pageStyles.titleBlock}>
+            <h1 className={pageStyles.heading}>Shared</h1>
+            <span className={pageStyles.count}>
+              {shares === null ? 'Loading…' : `${shares.length} active link${shares.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+        </div>
+        <p className={forms.hint}>
+          Everything you are sharing right now. We don’t keep your links or their keys, so a link can’t be shown again:
+          copy it when you create it.
+        </p>
 
         {error && (
           <div className={forms.alert} role="alert">
@@ -122,7 +126,7 @@ function SharesPage() {
         {shares === null && <p className={forms.hint}>Loading…</p>}
 
         {shares && shares.length === 0 && (
-          <p className={styles.empty}>You aren&apos;t sharing anything. Use Share on a document or folder to make a link.</p>
+          <p className={styles.empty}>You aren&apos;t sharing anything. Use Share on a file in My files or Photos to make a link.</p>
         )}
 
         {shares && shares.length > 0 && (
@@ -210,7 +214,7 @@ function SharesPage() {
       </div>
 
       {editingShare && <ShareEditModal share={editingShare} onClose={() => setEditing(null)} onChanged={load} />}
-    </AuthLayout>
+    </div>
   );
 }
 
