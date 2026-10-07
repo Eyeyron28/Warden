@@ -83,9 +83,9 @@ export const SECTIONS = [
     title: 'Ending your use',
     content: (
       <p>
-        You can stop using Warden at any time. To delete your account and all of its data, email{' '}
-        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. See the{' '}
-        <Link to="/privacy#deleting">privacy page</Link> for details.
+        You can stop using Warden at any time. You can permanently delete your account and all of its data yourself
+        from Account in the vault; if you can&apos;t, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        Deletion cannot be undone. See the <Link to="/privacy#deleting">privacy page</Link> for what it covers.
       </p>
     ),
   },

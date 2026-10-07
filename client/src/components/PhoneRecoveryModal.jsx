@@ -5,7 +5,14 @@ import { ArrowRight, CheckCircle } from '@phosphor-icons/react';
 import Modal from './Modal.jsx';
 import PasswordField from './PasswordField.jsx';
 import PasswordStrengthMeter from './PasswordStrengthMeter.jsx';
-import { initPhoneRecovery, getPhoneRecoveryStatus, completePhoneRecovery } from '../services/authService.js';
+import OtpChallengePanel from './OtpChallengePanel.jsx';
+import {
+  initPhoneRecovery,
+  getPhoneRecoveryStatus,
+  completePhoneRecovery,
+  verifyOtp,
+  resendOtp,
+} from '../services/authService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import styles from './PhoneRecoveryModal.module.css';
@@ -32,7 +39,7 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
   // 'email' first - multi-account now, so there's no implicit "the" vault
   // to start a request against; the owner confirms/edits whatever they'd
   // already typed on the login form (initialEmail) before this proceeds.
-  const [status, setStatus] = useState('email'); // email | loading | waiting | fulfilled | expired | error
+  const [status, setStatus] = useState('email'); // email | loading | waiting | fulfilled | code | expired | error
   const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState('');
   const [recoveryToken, setRecoveryToken] = useState(null);
@@ -45,6 +52,9 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // After the new password is set the server emails a login code instead of
+  // handing out a session; held in memory only, dropped on Back/success/expiry.
+  const [challenge, setChallenge] = useState(null);
 
   const pollRef = useRef(null);
   const countdownRef = useRef(null);
@@ -159,8 +169,17 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
     setSubmitting(true);
     setError('');
     try {
-      const { sessionToken } = await completePhoneRecovery(recoveryToken, newPassword);
-      onRecovered(sessionToken);
+      const result = await completePhoneRecovery(recoveryToken, newPassword);
+      if (result.otpRequired) {
+        // The phone approved and the password is changed; the emailed code
+        // is what finally opens a session.
+        setNewPassword('');
+        setConfirmPassword('');
+        setChallenge(result);
+        setStatus('code');
+      } else {
+        onRecovered(result.sessionToken);
+      }
     } catch (err) {
       setError(extractErrorMessage(err, 'Could not complete recovery.'));
     } finally {
@@ -254,6 +273,36 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
                 Generate a new code
               </button>
             </div>
+          </>
+        )}
+
+        {status === 'code' && challenge && (
+          <>
+            <div className={styles.successBanner}>
+              <CheckCircle size={20} weight="fill" className={styles.successIcon} />
+              <p>
+                Your password is changed. We emailed a 6-digit code to {email.trim()}; enter it to log in.
+              </p>
+            </div>
+            <OtpChallengePanel
+              challenge={challenge}
+              onSubmitCode={(code, challengeToken) => verifyOtp(challengeToken, code)}
+              onResend={resendOtp}
+              onVerified={({ sessionToken }) => {
+                setChallenge(null);
+                onRecovered(sessionToken);
+              }}
+              onBack={() => {
+                setChallenge(null);
+                onClose();
+              }}
+              onDead={(message) => {
+                setChallenge(null);
+                setError(`${message} Your new password is set: log in with it.`);
+                setStatus('error');
+              }}
+              submitLabel="Verify and log in"
+            />
           </>
         )}
 

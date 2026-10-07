@@ -28,13 +28,18 @@ const oid = () => new mongoose.Types.ObjectId();
 const matchValue = (actual, cond) => {
   if (cond && typeof cond === 'object' && !(cond instanceof Date) && !(cond instanceof mongoose.Types.ObjectId)) {
     if ('$lt' in cond && !(actual < cond.$lt)) return false;
+    if ('$lte' in cond && !(actual <= cond.$lte)) return false;
     if ('$gt' in cond && !(actual > cond.$gt)) return false;
+    if ('$gte' in cond && !(actual >= cond.$gte)) return false;
     return true;
   }
   if (actual instanceof Date && cond instanceof Date) return actual.getTime() === cond.getTime();
   return String(actual) === String(cond);
 };
-const matches = (doc, filter) => Object.entries(filter).every(([key, cond]) => matchValue(doc[key], cond));
+const matches = (doc, filter) =>
+  Object.entries(filter).every(([key, cond]) =>
+    key === '$or' ? cond.some((alternative) => matches(doc, alternative)) : matchValue(doc[key], cond)
+  );
 
 stub('../models/User', {
   findOne: async (query) => world.users.find((u) => u.email === query.email) || null,
@@ -184,7 +189,7 @@ test('the stored challenge has no plaintext code, no challengeKey and no usable 
   assert.ok(!stored.includes(user.dek.toString('hex')) && !stored.includes(user.dek.toString('base64')), 'no plaintext DEK');
   assert.deepEqual(
     Object.keys(world.challenges[0]).sort(),
-    ['_id', 'attempts', 'codeHash', 'expiresAt', 'lastSentAt', 'resendCount', 'salt', 'userId', 'wrappedDek', 'wrappedDekAuthTag', 'wrappedDekIv'].sort()
+    ['_id', 'attempts', 'codeHash', 'expiresAt', 'lastSentAt', 'purpose', 'resendCount', 'salt', 'userId', 'wrappedDek', 'wrappedDekAuthTag', 'wrappedDekIv'].sort()
   );
   // The wrapped key does not open with anything the database holds.
   const c = world.challenges[0];

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import Icon from '../../components/site/Icon.jsx';
 import Reveal from '../../components/site/Reveal.jsx';
@@ -11,6 +11,7 @@ import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import { MAX_FILE_SIZE_MB } from '../../config.js';
 import site from '../../components/site/site.module.css';
+import forms from '../../components/site/forms.module.css';
 import styles from './HomePage.module.css';
 
 // Copy rule for this page: every claim has to match what the code
@@ -132,6 +133,17 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: 'Can I delete my account?',
+    answer: (
+      <p>
+        Yes, yourself. Open Account in the vault, choose Delete account, then enter your password, a code we email you,
+        and your email address. Your documents, folders, share links, paired devices and the account are permanently
+        deleted and can&apos;t be recovered. It can&apos;t reach files you downloaded, backups you saved yourself,
+        emails already sent, or a phone&apos;s offline copy.
+      </p>
+    ),
+  },
+  {
     question: 'Where is my data stored?',
     answer: (
       <p>
@@ -149,6 +161,8 @@ function HomePage() {
     'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. A student project, provided as-is.'
   );
   const signedIn = Boolean(useSessionToken());
+  // Set once, by the account page, right after a successful deletion.
+  const accountDeleted = Boolean(useLocation().state?.accountDeleted);
 
   const primaryCta = signedIn ? (
     <Link to="/vault" className={`${site.button} ${site.primary}`}>
@@ -164,6 +178,18 @@ function HomePage() {
 
   return (
     <>
+      {accountDeleted && (
+        <div className={site.container} style={{ paddingTop: 24 }}>
+          <div className={forms.notice} role="status">
+            <Icon name="check" />
+            <p>
+              <strong>Your account has been deleted.</strong> Your documents and account data were permanently
+              removed from Warden, and we emailed you a confirmation.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ---- Hero ---- */}
       <section className={styles.hero}>
         <div className={`${site.container} ${styles.heroGrid}`}>

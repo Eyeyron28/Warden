@@ -60,10 +60,25 @@ test('formatClock renders m:ss', () => {
   assert.equal(formatClock(-4), '0:00');
 });
 
-test('the login page keeps the challenge token in memory only', () => {
-  const page = readFileSync(fileURLToPath(new URL('../pages/auth/LoginPage.jsx', import.meta.url)), 'utf8');
-  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  assert.doesNotMatch(code, /localStorage|sessionStorage|indexedDB|document\.cookie/);
-  assert.doesNotMatch(code, /navigate\([^)]*challenge/i, 'the token never goes into a URL or router state');
-  assert.doesNotMatch(code, /console\./);
+test('every screen that handles a code keeps the challenge token and code in memory only', () => {
+  for (const file of ['../pages/auth/LoginPage.jsx', '../components/OtpChallengePanel.jsx', '../pages/AccountPage.jsx', '../components/PhoneRecoveryModal.jsx']) {
+    const page = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
+    const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.doesNotMatch(code, /localStorage|sessionStorage|document\.cookie/, file);
+    assert.doesNotMatch(code, /indexedDB/, file);
+    assert.doesNotMatch(code, /navigate\([^)]*(challenge|code)/i, `${file}: the token never goes into a URL or router state`);
+    assert.doesNotMatch(code, /console\./, file);
+  }
+});
+
+test('after deleting an account the tab drops the session, the thumbnails and the offline copy', () => {
+  const account = readFileSync(fileURLToPath(new URL('../pages/AccountPage.jsx', import.meta.url)), 'utf8');
+  assert.match(account, /clearOfflineCopy\(\)/);
+  assert.match(account, /clearToken\(\)/);
+  assert.match(account, /accountDeleted: true/);
+  const helper = readFileSync(fileURLToPath(new URL('./clearLocalData.js', import.meta.url)), 'utf8');
+  assert.match(helper, /LOCAL_VAULT_DB = 'warden-local'/, 'the same database name the phone vault uses');
+  assert.match(helper, /deleteDatabase\(LOCAL_VAULT_DB\)/);
+  const vault = readFileSync(fileURLToPath(new URL('../services/localVault.js', import.meta.url)), 'utf8');
+  assert.match(vault, /DB_NAME = 'warden-local'/);
 });

@@ -6,7 +6,6 @@ const Folder = require('../models/Folder');
 const Share = require('../models/Share');
 const SharedFile = require('../models/SharedFile');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
-const OtpChallenge = require('../models/OtpChallenge');
 const {
   generateSalt,
   hashPassword,
@@ -22,33 +21,16 @@ const {
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
-const { resolveLanIp } = require('../utils/network');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
-const { consumeBudget } = require('../middleware/rateLimit');
-const { otpEnabled, otpTtlMinutes } = require('../utils/otpConfig');
-const {
-  generateCode,
-  newSalt,
-  hashCode,
-  codeMatches,
-  newChallengeKey,
-  parseChallengeToken,
-  buildChallengeToken,
-} = require('../utils/otp');
+const { otpEnabled } = require('../utils/otpConfig');
+const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
 const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-// Email one-time code on login (see unlock / verifyOtp / resendOtp below).
-const OTP_MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
-const OTP_MAX_RESENDS = 3; // per challenge
-const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
-const OTP_EMAILS_PER_HOUR = 5; // per account, across all challenges
-const OTP_EMAIL_WINDOW_MS = 60 * 60 * 1000;
-
 const RESET_TOKEN_BYTES = 32;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RECOVERY_REQUEST_TOKEN_BYTES = 32;
@@ -415,6 +397,49 @@ const getPublicConfig = (req, res) => {
 };
 
 /**
+ * Verifies a password for a known account with the lockout rules every
+ * password check shares: while locked, the check does not even run; 3
+ * consecutive failures lock the account for 5 minutes. Used by login and by
+ * the re-check before an account deletion code is sent, so a stolen session
+ * cannot be used to guess the password any faster than a login can.
+ */
+async function checkPasswordWithLockout(user, password) {
+  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+    throw lockoutError(user.lockedUntil);
+  }
+
+  if (!verifyPassword(password, user.salt, user.passwordHash)) {
+    user.failedAttempts += 1;
+
+    if (user.failedAttempts >= FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
+      user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      user.failedAttempts = 0;
+      await user.save();
+      throw lockoutError(user.lockedUntil);
+    }
+
+    await user.save();
+    throw genericLoginError();
+  }
+}
+
+/**
+ * The ONE place a login ends: it either answers with a code challenge (the
+ * default, always in production) or, only on a development server with
+ * OTP_ENABLED=false, a session. The password route and phone recovery both
+ * finish here, so no route can hand out a session without the emailed code.
+ * (The only other createSession call is in verifyOtp, after the code.)
+ */
+async function respondWithLoginChallenge(res, user, dek) {
+  if (otpEnabled()) {
+    res.status(200).json(await startChallenge({ user, secret: dek, purpose: PURPOSES.login }));
+    return;
+  }
+  const sessionToken = await createSession(user._id, dek);
+  res.status(200).json({ sessionToken });
+}
+
+/**
  * POST /api/auth/unlock
  * Body: { email, password }
  * Login. Route path kept as "unlock" to avoid an unrelated client churn,
@@ -451,25 +476,7 @@ const unlock = asyncHandler(async (req, res) => {
     throw genericLoginError();
   }
 
-  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-    throw lockoutError(user.lockedUntil);
-  }
-
-  const isValid = verifyPassword(password, user.salt, user.passwordHash);
-
-  if (!isValid) {
-    user.failedAttempts += 1;
-
-    if (user.failedAttempts >= FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
-      user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
-      user.failedAttempts = 0;
-      await user.save();
-      throw lockoutError(user.lockedUntil);
-    }
-
-    await user.save();
-    throw genericLoginError();
-  }
+  await checkPasswordWithLockout(user, password);
 
   if (!user.emailVerified) {
     throw unverifiedAccountError();
@@ -489,157 +496,32 @@ const unlock = asyncHandler(async (req, res) => {
 
   // Second factor: the password alone no longer gets a session. A 6-digit
   // code is emailed and the vault key is parked WRAPPED under a random key
-  // that only the browser receives (see startOtpChallenge). OTP can only be
-  // switched off outside production (utils/otpConfig.js).
-  if (otpEnabled()) {
-    res.status(200).json(await startOtpChallenge(user, dek));
-    return;
-  }
-
-  const sessionToken = await createSession(user._id, dek);
-
-  res.status(200).json({ sessionToken });
+  // that only the browser receives (utils/otpChallenge.js).
+  await respondWithLoginChallenge(res, user, dek);
 });
-
-// One message for every way a code check can fail - wrong code, expired,
-// too many tries, already used, unknown or tampered challenge - so a caller
-// learns nothing from which one it was.
-const OTP_FAILURE_MESSAGE = 'That code is incorrect or has expired.';
-function otpFailure() {
-  const error = new Error(OTP_FAILURE_MESSAGE);
-  error.status = 401;
-  return error;
-}
-
-function otpTooManyEmails() {
-  const error = new Error('Too many login codes have been requested for this account. Please try again later.');
-  error.status = 429;
-  return error;
-}
-
-function otpEmailNotSent() {
-  const error = new Error('We couldn\u2019t send the login code email. Please try again shortly.');
-  error.status = 503;
-  return error;
-}
-
-async function sendOtpEmail(to, code, ttlMinutes) {
-  return sendEmail({
-    to,
-    subject: 'Your Warden login code',
-    text:
-      `Your Warden login code is ${code}.\n\n` +
-      `It expires in ${ttlMinutes} minute${ttlMinutes === 1 ? '' : 's'}. ` +
-      "If you didn't try to log in to Warden, ignore this email. Nobody can log in with your password alone, " +
-      'but consider changing your password.',
-  });
-}
-
-function challengePayload(challenge, challengeKey) {
-  return {
-    otpRequired: true,
-    // <challengeId>.<challengeKey>. The key is not stored on the server.
-    challengeToken: buildChallengeToken(String(challenge._id), challengeKey),
-    codeLength: 6,
-    expiresAt: challenge.expiresAt,
-    resendAvailableAt: new Date(challenge.lastSentAt.getTime() + OTP_RESEND_COOLDOWN_MS),
-    resendsLeft: Math.max(0, OTP_MAX_RESENDS - challenge.resendCount),
-  };
-}
-
-/**
- * Called by unlock once the password has been verified. Emails a code and
- * returns the challenge to hand to the browser - no session yet.
- *
- * The vault key is held only wrapped under a fresh random challengeKey that
- * goes to the browser inside the challengeToken and is never stored, so
- * while a login waits for its code a database leak cannot unwrap anything.
- */
-async function startOtpChallenge(user, dek) {
-  const ttlMinutes = otpTtlMinutes();
-
-  const withinBudget = await consumeBudget({
-    name: 'otp-email-account',
-    key: String(user._id),
-    max: OTP_EMAILS_PER_HOUR,
-    windowMs: OTP_EMAIL_WINDOW_MS,
-  });
-  if (!withinBudget) throw otpTooManyEmails();
-
-  const code = generateCode();
-  const salt = newSalt();
-  const challengeKey = newChallengeKey();
-  const wrapped = wrapKey(dek, challengeKey);
-  const now = new Date();
-
-  const challenge = await OtpChallenge.create({
-    userId: user._id,
-    codeHash: hashCode(salt, code),
-    salt,
-    lastSentAt: now,
-    wrappedDek: wrapped.wrappedKey,
-    wrappedDekIv: wrapped.iv,
-    wrappedDekAuthTag: wrapped.authTag,
-    expiresAt: new Date(now.getTime() + ttlMinutes * 60 * 1000),
-  });
-
-  const sent = await sendOtpEmail(user.email, code, ttlMinutes);
-  if (!sent) {
-    await OtpChallenge.deleteOne({ _id: challenge._id });
-    throw otpEmailNotSent();
-  }
-
-  return challengePayload(challenge, challengeKey);
-}
 
 /**
  * POST /api/auth/verify-otp
  * Body: { challengeToken, code }
  * Completes a login: checks the emailed code and only then issues the
- * session. At most 5 guesses per challenge (each counted atomically before
- * it is checked), then the challenge is deleted. Single use: a correct code
- * deletes the challenge as it is claimed, so the same code cannot be used
- * twice even by two simultaneous requests. Every failure is the same error.
+ * session. See utils/otpChallenge.js: at most 5 guesses, single use, one
+ * generic error for every failure - and only a challenge made for a LOGIN
+ * can be used here (a delete-account code finds nothing).
  */
 const verifyOtp = asyncHandler(async (req, res) => {
   const { challengeToken, code } = req.body;
-  const parsed = parseChallengeToken(challengeToken);
-  if (!parsed || typeof code !== 'string') throw otpFailure();
-
-  // Count this guess BEFORE looking at it, and only against a challenge that
-  // is still alive and not out of attempts.
-  const challenge = await OtpChallenge.findOneAndUpdate(
-    { _id: parsed.challengeId, attempts: { $lt: OTP_MAX_ATTEMPTS }, expiresAt: { $gt: new Date() } },
-    { $inc: { attempts: 1 } },
-    { new: true }
-  );
-  if (!challenge) {
-    // Missing, expired or out of attempts: make sure a dead one is gone.
-    await OtpChallenge.deleteOne({ _id: parsed.challengeId });
-    throw otpFailure();
-  }
-
-  if (!codeMatches(challenge.salt, challenge.codeHash, code)) {
-    if (challenge.attempts >= OTP_MAX_ATTEMPTS) {
-      await OtpChallenge.deleteOne({ _id: challenge._id });
-    }
-    throw otpFailure();
-  }
-
-  // Correct code: claim the challenge. Only one request can ever get it.
-  const claimed = await OtpChallenge.findOneAndDelete({ _id: challenge._id });
-  if (!claimed) throw otpFailure();
-
-  let dek;
-  try {
-    dek = unwrapKey(claimed.wrappedDek, parsed.challengeKey, claimed.wrappedDekIv, claimed.wrappedDekAuthTag);
-  } catch {
-    // A challengeKey that does not match (tampered, or from another login).
-    throw otpFailure();
-  }
+  const { claimed, secret: dek } = await consumeChallenge({
+    challengeToken,
+    code,
+    purpose: PURPOSES.login,
+  });
 
   const user = await User.findById(claimed.userId);
-  if (!user || !user.emailVerified) throw otpFailure();
+  if (!user || !user.emailVerified) {
+    const error = new Error('That code is incorrect or has expired.');
+    error.status = 401;
+    throw error;
+  }
 
   const sessionToken = await createSession(user._id, dek);
   res.status(200).json({ sessionToken });
@@ -648,71 +530,16 @@ const verifyOtp = asyncHandler(async (req, res) => {
 /**
  * POST /api/auth/resend-otp
  * Body: { challengeToken }
- * A new code for the same login, which invalidates the previous one. At
- * least 60 seconds between sends, at most 3 resends per challenge, and at
- * most 5 code emails per hour per account. The caller has to hold the
- * challenge's key, so an id alone cannot make the server send mail.
+ * A new login code for the same challenge (previous one stops working).
  */
 const resendOtp = asyncHandler(async (req, res) => {
-  const parsed = parseChallengeToken(req.body.challengeToken);
-  if (!parsed) throw otpFailure();
-
-  const challenge = await OtpChallenge.findOne({ _id: parsed.challengeId, expiresAt: { $gt: new Date() } });
-  if (!challenge) throw otpFailure();
-  try {
-    unwrapKey(challenge.wrappedDek, parsed.challengeKey, challenge.wrappedDekIv, challenge.wrappedDekAuthTag);
-  } catch {
-    throw otpFailure();
-  }
-
-  if (challenge.resendCount >= OTP_MAX_RESENDS) {
-    const error = new Error('No more codes can be sent for this login. Go back and log in again.');
-    error.status = 429;
-    throw error;
-  }
-  const waitMs = challenge.lastSentAt.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
-  if (waitMs > 0) {
-    const error = new Error('Please wait before requesting another code.');
-    error.status = 429;
-    error.retryAfterSeconds = Math.ceil(waitMs / 1000);
-    throw error;
-  }
-
-  const user = await User.findById(challenge.userId);
-  if (!user || !user.emailVerified) throw otpFailure();
-
-  const withinBudget = await consumeBudget({
-    name: 'otp-email-account',
-    key: String(user._id),
-    max: OTP_EMAILS_PER_HOUR,
-    windowMs: OTP_EMAIL_WINDOW_MS,
-  });
-  if (!withinBudget) throw otpTooManyEmails();
-
-  const ttlMinutes = otpTtlMinutes();
-  const code = generateCode();
-  const salt = newSalt();
-  const now = new Date();
-  // Swap in the new code only if nobody else has resent in the meantime.
-  const updated = await OtpChallenge.findOneAndUpdate(
-    { _id: challenge._id, resendCount: challenge.resendCount, lastSentAt: challenge.lastSentAt },
-    {
-      $set: {
-        codeHash: hashCode(salt, code),
-        salt,
-        lastSentAt: now,
-        expiresAt: new Date(now.getTime() + ttlMinutes * 60 * 1000),
-      },
-      $inc: { resendCount: 1 },
-    },
-    { new: true }
+  res.status(200).json(
+    await resendChallenge({
+      challengeToken: req.body.challengeToken,
+      purpose: PURPOSES.login,
+      findUser: (id) => User.findById(id),
+    })
   );
-  if (!updated) throw otpFailure();
-
-  const sent = await sendOtpEmail(user.email, code, ttlMinutes);
-  if (!sent) throw otpEmailNotSent();
-
-  res.status(200).json(challengePayload(updated, parsed.challengeKey));
 });
 
 /**
@@ -968,15 +795,12 @@ const recoverViaPhoneInit = asyncHandler(async (req, res) => {
     await RecoveryRequestToken.create({ userId: user._id, token, expiresAt });
   }
 
-  // Still LAN-IP-based - meaningful only for local-network use today; see
-  // the module-level comment on resolvePublicAppUrl/FRONTEND_PORT for why
-  // this one specifically wasn't switched over (this QR has to be scanned
-  // by a phone physically paired on the same network, the deferred part
-  // of the phone-pairing redesign, not just "build any clickable link").
-  const lanIp = resolveLanIp();
-  const recoverUrl = lanIp
-    ? `${req.protocol}://${lanIp}:${FRONTEND_PORT}/phone?recover=${token}`
-    : null;
+  // The QR link opens the phone vault on the app's own public origin
+  // (PUBLIC_APP_URL, or in development the LAN fallback - never built from
+  // request headers). Pairing a phone still only works on the same network
+  // today; the QR is only meaningful to a phone that can reach that address.
+  const appUrl = getPublicAppUrl();
+  const recoverUrl = appUrl ? `${appUrl}/phone?recover=${token}` : null;
 
   res.status(201).json({ recoveryToken: token, recoverUrl, expiresAt });
 });
@@ -1095,8 +919,10 @@ const recoverViaPhoneComplete = asyncHandler(async (req, res) => {
   requestToken.used = true;
   await requestToken.save();
 
-  const sessionToken = await createSession(user._id, dek);
-  res.status(200).json({ sessionToken });
+  // Same ending as a password login: the emailed code comes first, so this
+  // route cannot hand out a session by itself. The phone's approval above is
+  // kept as it was; the code is in addition to it.
+  await respondWithLoginChallenge(res, user, dek);
 });
 
 /**
@@ -1127,4 +953,5 @@ module.exports = {
   verifyOtp,
   resendOtp,
   logout,
+  checkPasswordWithLockout,
 };

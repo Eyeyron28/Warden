@@ -14,6 +14,9 @@ const mongoose = require('mongoose');
 // session.
 const otpChallengeSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  // What this code is FOR. Every lookup includes it, so a login code can never
+  // authorise deleting an account, nor a delete code log anyone in.
+  purpose: { type: String, enum: ['login', 'delete-account'], default: 'login', required: true },
   codeHash: { type: String, required: true }, // hex HMAC-SHA-256
   salt: { type: String, required: true }, // hex, the HMAC key
   attempts: { type: Number, default: 0 }, // wrong-or-right guesses so far

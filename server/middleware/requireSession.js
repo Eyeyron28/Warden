@@ -27,6 +27,7 @@ const requireSession = asyncHandler(async (req, res, next) => {
   if (scheme !== 'Bearer' || !token) {
     const error = new Error('Missing or invalid Authorization header.');
     error.status = 401;
+    error.code = 'SESSION_INVALID';
     throw error;
   }
 
@@ -34,6 +35,7 @@ const requireSession = asyncHandler(async (req, res, next) => {
   if (!session) {
     const error = new Error('Session expired or invalid. Please log in again.');
     error.status = 401;
+    error.code = 'SESSION_INVALID';
     throw error;
   }
 

@@ -46,8 +46,8 @@ export const SECTIONS = [
             itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
           </li>
           <li>
-            <strong>Login codes</strong>: when you log in, a 6-digit code is emailed to you and expires after a
-            few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
+            <strong>One-time codes</strong>: when you log in, recover access with a paired phone, or delete your
+            account, a 6-digit code is emailed to you and expires after a few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
             expires.
           </li>
           <li>
@@ -121,8 +121,9 @@ export const SECTIONS = [
     title: 'How long we keep it',
     content: (
       <p>
-        Your account and documents are kept until you delete them or ask us to delete your account. Sign-in
-        sessions, verification links and rate-limit records expire on their own, within minutes to a day.
+        Your account and documents are kept until you delete them or delete your account. Sign-in sessions,
+        verification links and rate-limit records expire on their own, within minutes to a day, and are removed
+        immediately if you delete your account.
       </p>
     ),
   },
@@ -132,12 +133,22 @@ export const SECTIONS = [
     content: (
       <>
         <p>
-          You can delete any document from inside your vault at any time. There is no self-serve &quot;delete my
-          account&quot; button yet.
+          You can delete any document from inside your vault at any time, and you can delete your whole account
+          yourself: open Account in the vault and choose Delete account. You confirm with your master password, a
+          one-time code we email you, and by typing your account email.
         </p>
         <p>
-          To delete your whole account, email <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from the
-          address on the account. We will delete the account, its documents and its keys, and confirm by email.
+          Deleting is permanent and immediate. It removes your documents and their previews, your folders, every share
+          link and its encrypted copies, your paired devices, your backup records, any pending login or deletion
+          codes, your sessions, and the account itself (email, password hash and locked keys). We keep no copy and
+          cannot recover any of it, and we send you an email confirming it. Our logs record only that an account was
+          deleted, with no email address or content.
+        </p>
+        <p>
+          Deletion cannot reach what is not on our servers: emails we already sent, files you downloaded, backups you
+          saved to your own drive, and the offline copy on a phone you paired (this browser&apos;s copy is cleared
+          automatically; clear a phone&apos;s browser data yourself). If you cannot use the Account page, email{' '}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from the address on the account.
         </p>
       </>
     ),

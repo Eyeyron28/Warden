@@ -21,6 +21,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage.js
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'));
 const VerifyEmailPage = lazy(() => import('./pages/auth/VerifyEmailPage.jsx'));
 const VaultShell = lazy(() => import('./pages/VaultShell.jsx'));
+const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
 const PairPage = lazy(() => import('./pages/PairPage.jsx'));
 const PhoneVault = lazy(() => import('./pages/PhoneVault.jsx'));
@@ -106,6 +107,14 @@ function App() {
           element={
             <RequireSession>
               <VaultShell onLocked={handleLocked} />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/account"
+          element={
+            <RequireSession>
+              <AccountPage />
             </RequireSession>
           }
         />

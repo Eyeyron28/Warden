@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowsOutCardinal, CheckSquare, FolderLock, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import Header from '../components/Header.jsx';
@@ -66,6 +67,7 @@ function isDesktopWidth() {
 }
 
 function VaultShell({ onLocked }) {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
@@ -758,6 +760,7 @@ function VaultShell({ onLocked }) {
           onOpenPreviews={openPreviewsPanel}
           onOpenPair={openPairPanel}
           onOpenDevices={openDevicesPanel}
+          onOpenAccount={() => navigate('/account')}
         />
 
         <main className={styles.content}>

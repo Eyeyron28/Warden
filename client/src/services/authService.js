@@ -155,7 +155,10 @@ export async function getPhoneRecoveryStatus(token) {
  * fulfilled the request, to actually set the new master password.
  * @param {string} recoveryToken
  * @param {string} newPassword
- * @returns {Promise<{ sessionToken: string }>}
+ * @returns {Promise<{ otpRequired: true, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number } | { sessionToken: string }>}
+ *   A 6-digit code is emailed first, exactly like a password login; the session only
+ *   comes from POST /api/auth/verify-otp (a plain `{ sessionToken }` is only ever
+ *   answered by a development server with OTP_ENABLED=false).
  */
 export async function completePhoneRecovery(recoveryToken, newPassword) {
   const { data } = await api.post('/auth/recover-via-phone/complete', { recoveryToken, newPassword });

@@ -6,7 +6,10 @@ const notFound = (req, res, next) => {
   next(error);
 };
 
-const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS']);
+// SESSION_INVALID: the bearer token itself is missing, expired or unknown (as
+// opposed to some other 401, such as a wrong password or code on a signed-in
+// route), so the client knows to end its session.
+const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'SESSION_INVALID']);
 
 const errorHandler = (err, req, res, next) => {
   const status = err.status || (res.statusCode !== 200 ? res.statusCode : 500);

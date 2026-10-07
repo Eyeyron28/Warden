@@ -24,6 +24,7 @@ const sharedViewRoutes = require('./routes/sharedView.routes');
 const pairingRoutes = require('./routes/pairing.routes');
 const pairCompleteRoutes = require('./routes/pairComplete.routes');
 const devicesRoutes = require('./routes/devices.routes');
+const accountRoutes = require('./routes/account.routes');
 
 const app = express();
 
@@ -118,6 +119,7 @@ app.use('/api/pair', pairingRoutes);
 // see routes/pairComplete.routes.js.
 app.use('/api/pair', pairCompleteRoutes);
 app.use('/api/devices', devicesRoutes);
+app.use('/api/account', accountRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

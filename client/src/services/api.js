@@ -32,7 +32,13 @@ api.interceptors.response.use(
       // Session expired, was invalidated, or never existed. Clearing it
       // here (rather than in every caller) is what lets the app fall
       // back to /login from any authenticated call, globally (App.jsx RequireSession).
-      clearToken();
+      //
+      // Exception: a call that opts out with `skipSessionClear` (a signed-in
+      // screen where a 401 can also mean "wrong password" or "wrong code",
+      // e.g. deleting the account) only ends the session when the server says
+      // the SESSION is the problem (code SESSION_INVALID).
+      const sessionProblem = error.response?.data?.error?.code === 'SESSION_INVALID';
+      if (!error.config?.skipSessionClear || sessionProblem) clearToken();
     }
     return Promise.reject(error);
   }
