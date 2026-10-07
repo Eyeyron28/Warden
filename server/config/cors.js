@@ -5,6 +5,18 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+// The app's own public origin is always allowed. Deployed, the page and the API
+// share one origin, but the browser still sends an Origin header on every POST,
+// PATCH and DELETE; without this, CORS_ORIGINS would have to repeat PUBLIC_APP_URL
+// or every write would be refused. (A malformed PUBLIC_APP_URL is rejected at
+// startup by assertPublicAppUrlConfig, so it is simply skipped here.)
+try {
+  const own = (process.env.PUBLIC_APP_URL || '').trim();
+  if (own) allowedOrigins.push(new URL(own).origin);
+} catch {
+  // reported at startup
+}
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g. curl, same-machine tools)

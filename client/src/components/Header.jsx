@@ -19,7 +19,7 @@ function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChan
           <List size={20} weight="bold" />
         </button>
 
-        <div className={styles.brand} title="Local instance - no cloud sync">
+        <div className={styles.brand}>
           <img src={wardenLogo} alt="Warden" className={styles.mark} />
           <span className={styles.wordmark}>WARDEN</span>
         </div>

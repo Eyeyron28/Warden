@@ -1,0 +1,128 @@
+# Deploying Warden on Vercel (Hobby) with MongoDB Atlas (M0)
+
+A step-by-step guide for a first-time Vercel user. Warden is one project: the React app (`client/`) is served as static files and the Express API (`server/`) runs as a single Vercel Function (`api/index.js`). Both are on the **same origin**, which is what lets the "trust this browser" cookie work (`SameSite=Strict`, `HttpOnly`, `Secure`).
+
+> **Not verified against real Vercel:** this runbook was prepared and tested against a local stand-in for Vercel (see "What was and was not tested" at the end). The first real deployment is the first time it meets Vercel itself. Do the smoke test (section 9) before giving the link to anyone.
+
+## 0. What you need
+
+- A GitHub account with this repository.
+- A [Vercel](https://vercel.com) account (the Hobby plan is enough).
+- A [MongoDB Atlas](https://www.mongodb.com/atlas) account with a free **M0** cluster.
+- A Gmail account for sending the emailed codes, with **2-Step Verification** turned on (needed to create an app password).
+- About 20 minutes.
+
+## 1. Prepare Atlas (database)
+
+1. In Atlas open your project, **Database Access**, **Add New Database User**. Give it a long random password and the role **Read and write to any database** (or scope it to one database). Use a dedicated user for Warden, not your Atlas login.
+2. **Network Access**, **Add IP Address**, **Allow access from anywhere** (`0.0.0.0/0`). Vercel does not have fixed IP addresses on the Hobby plan, so you cannot list them.
+   - Why this is acceptable here: the database still needs the username and password, and the connection is TLS-encrypted. What you give up is the IP filter, so the password becomes the only barrier. Compensate: use a long random password (32+ characters), never reuse it, use a dedicated database user, and turn on Atlas **2FA** for your own login.
+   - Safer options if you outgrow this: Vercel's paid static IPs or Secure Compute with a restricted allow-list, or a private-link connection (paid Atlas tiers).
+3. **Connect, Drivers**: copy the connection string. It looks like `mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/?retryWrites=true&w=majority`. Insert a database name before the `?`, for example `.../warden?retryWrites=...`. Replace `PASSWORD` with the real one (URL-encode special characters such as `@` or `#`).
+4. **Delete the sample data.** Atlas may have loaded a `sample_mflix` database. In **Browse Collections**, drop `sample_mflix` (and any other `sample_*` database) so nothing but Warden's data lives on the cluster.
+5. Turn on **2FA on your Atlas account** (Account, Security).
+6. Note the cluster's region; the next steps use it to pick the Vercel function region. The database round trip is the main latency cost.
+
+## 2. Prepare Gmail (login codes and verification emails)
+
+1. Turn on 2-Step Verification for the Gmail account used by Warden (Google Account, Security). Also use a strong unique password.
+2. Create an **App password** (Google Account, Security, 2-Step Verification, App passwords). Copy the 16-character value once.
+3. You will use: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=<the gmail address>`, `SMTP_PASS=<the app password>`.
+4. Gmail limits sending (roughly 500 messages a day). That is fine for a student project and not for a public launch.
+
+## 3. Import the project into Vercel
+
+1. In Vercel: **Add New, Project**, **Import** your GitHub repository.
+2. **Framework Preset:** `Other`. **Root Directory:** leave it as the repository root (the folder that contains `vercel.json` and `api/`).
+3. Leave **Build Command**, **Output Directory** and **Install Command** untouched: they come from `vercel.json` (`client/dist` is the output; the server's dependencies are installed for the function).
+4. **Do not click Deploy yet.** Add the environment variables first (next section). A deployment without them fails at start-up on purpose; that is the production safety check working.
+5. Region: Project Settings, Functions, **Function Region**: pick the region nearest your Atlas cluster.
+6. Under Settings, Functions confirm **Fluid compute** is on (the default for new projects). The function's `maxDuration` is set to 30 seconds in `vercel.json`.
+
+## 4. Environment variables
+
+Add these under **Settings, Environment Variables** for **Production**. Mark every secret as **Sensitive** so Vercel hides it after saving.
+
+| Variable | Secret? | Value and notes |
+|---|---|---|
+| `MONGO_URI` | **Secret** | The Atlas connection string from step 1 (must include a database name and the password). |
+| `PUBLIC_APP_URL` | no | Your site's **https origin only**: no path, no trailing slash, e.g. `https://warden-yourname.vercel.app`. Every emailed link and share link is built from it, and it is the origin the API accepts writes from. Set the real value after the first deploy (section 5). |
+| `SMTP_HOST` | no | `smtp.gmail.com` |
+| `SMTP_PORT` | no | `465` |
+| `SMTP_USER` | **Secret** | The sending Gmail address. |
+| `SMTP_PASS` | **Secret** | The Gmail app password. |
+| `MAIL_FROM` | no | e.g. `Warden <your.gmail@gmail.com>` (Gmail rewrites the sender to your account anyway). |
+| `SIGNUP_MODE` | no | `invite` (recommended) or `open`. |
+| `INVITE_CODE` | **Secret** | Required when `SIGNUP_MODE=invite`. At least 16 characters, random. Share it only with the people you invite. |
+| `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it to the daily Trash-purge job. Optional but recommended. |
+| `STORAGE_QUOTA_MB` | no | Optional. Per-account storage limit in MB; must be a positive number. Default 25. |
+| `TRUST_PROXY_HOPS` | no | Optional. Leave it unset: the app uses **1** automatically on Vercel. If you set it, it must be `1`; any other value makes the rate limiter see the wrong IP address. |
+| `OTP_ENABLED` | no | **Do not set it.** The emailed login code is on by default, and the server refuses to start in production if it is `false`. |
+| `OTP_TTL_MINUTES` | no | Optional, 1 to 60 (default 5). |
+| `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
+
+Never put these values in the repository, in screenshots or in chat. `server/.env` is git-ignored; keep it that way.
+
+**Preview deployments:** each preview has its own URL, which will not match `PUBLIC_APP_URL`, so writes and emailed links from a preview URL will not work. Treat Production as the only working environment, or give previews their own `PUBLIC_APP_URL` and a separate database.
+
+**What the server checks at start-up (production only).** It refuses to start unless `MONGO_URI`, `PUBLIC_APP_URL` (https), all of `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, and a valid `SIGNUP_MODE` are present; `INVITE_CODE` is 16+ characters when invites are on; `OTP_ENABLED` is not `false`; and `STORAGE_QUOTA_MB` (if set) is a positive number. The error in the Vercel logs names the offending **variables only**, never their values.
+
+## 5. First deploy, then set `PUBLIC_APP_URL`
+
+1. Enter a placeholder `PUBLIC_APP_URL` (for example `https://placeholder.example.com`) so the first build can start, then click **Deploy**.
+2. When it finishes, copy your real URL (shown on the project page, e.g. `https://warden-yourname.vercel.app`, or your own domain).
+3. **Settings, Environment Variables**: edit `PUBLIC_APP_URL` to that exact origin, then **Deployments**, open the latest one, **Redeploy**. Variables are read at start-up, so a redeploy is required for the change to apply.
+4. Open `https://<your-url>/api/health`. You should see `{"success":true,"status":"ok","database":"reachable"}`. If it says `unreachable`, check the Atlas network access and `MONGO_URI`.
+
+## 6. Daily Trash purge (cron)
+
+`vercel.json` contains one cron job that calls `/api/cron/purge-trash` once a day. Vercel Hobby allows cron jobs that run **at most once per day**, started any time within the scheduled hour. With `CRON_SECRET` set, Vercel sends it automatically and the endpoint removes Trash older than 30 days. Without it the endpoint answers 404 and nothing is lost: the database's TTL index and each account's own requests also purge expired Trash.
+
+## 7. Security checklist before inviting anyone
+
+- [ ] `SIGNUP_MODE=invite` and a long random `INVITE_CODE`.
+- [ ] 2FA on Atlas and on the Gmail account; the Gmail app password is used, not the Gmail password.
+- [ ] `sample_mflix` and other sample databases deleted.
+- [ ] The Atlas database user is dedicated to Warden and has a long random password.
+- [ ] No secrets in the repository.
+- [ ] `/api/health` is OK and the smoke test below passes.
+
+## 8. Rolling back
+
+- **A bad deployment:** Vercel, **Deployments**, pick the last good one, open its menu, **Promote to Production** (Instant Rollback). The static files, the function and the cron schedule go back together.
+- **A bad environment variable:** fix it under Environment Variables and **Redeploy**.
+- **Data:** Vercel does not roll the database back, and Atlas M0 has no automatic backups. Download anything important from the app before risky changes.
+- **Users stuck on an old page:** the app's service worker replaces itself on every deployment and shows a "New version available" bar; one reload gets the new version. (A browser still running the very first service worker version needs two reloads, once.)
+
+## 9. Post-deploy smoke test
+
+Run this on the real URL, with a throwaway email address you control.
+
+1. [ ] `https://<your-url>/api/health` returns `ok` and `reachable`.
+2. [ ] **Sign up** with the invite code and a strong password. Save the recovery key.
+3. [ ] The verification **email arrives** (check spam). Its link starts with your `PUBLIC_APP_URL`. Open it: "Email verified".
+4. [ ] **Log in**: the 6-digit code email arrives and the code works. Tick "Trust this browser".
+5. [ ] Open a new tab and log in again: no code is asked on this browser. In a private window the code **is** asked.
+6. [ ] **Upload** a small PDF and a file of about 3.9 MB (both work). A file over 4 MB is refused with "File exceeds the 4MB size limit."
+7. [ ] **Preview** the PDF; download it and check the name and extension.
+8. [ ] **Share** the PDF with a password. Open the link in a **private window**, enter the password, view and download.
+9. [ ] Move a file to **Trash**, then **restore** it.
+10. [ ] **Delete the account** (password, emailed code, type your email). You get a confirmation email and cannot log in again.
+
+## 10. Limits to know about (Vercel Hobby)
+
+Figures are from Vercel's documentation, read on 2026-10-07; limits change, so re-check the linked pages.
+
+- **Request and response body: 4.5 MB** per function call ([Functions limits](https://vercel.com/docs/functions/limitations)). Warden caps an upload at 4 MB (the file plus a small multipart envelope fits under 4.5 MB). Phone sync sends documents as base64 inside JSON (about 4/3 the size), so over Vercel a phone sync push is limited to roughly 3.3 MB of file; a larger one is refused by Vercel with a 413 before Warden sees it.
+- **Duration:** with Fluid compute, Hobby has a 300 s default and maximum. Warden sets 30 s in `vercel.json`, far above a login (one scrypt derivation takes well under a second) or any other operation here.
+- **Memory:** 2 GB and 1 vCPU on Hobby. Uploads are processed in memory.
+- **Cron:** once per day at most, with up to an hour of scheduling slack ([usage and limits](https://vercel.com/docs/cron-jobs/usage-and-pricing)). Cron calls carry `Authorization: Bearer <CRON_SECRET>` ([managing cron jobs](https://vercel.com/docs/cron-jobs/manage-cron-jobs)).
+- **No disk or memory shared between requests.** Sessions, rate limits, trusted browsers, login challenges and shares all live in MongoDB. The app's USB backup and restore need a local disk and a path on the server, so the server turns them off in production (they answer 501); download files from the app instead.
+- **Atlas M0:** 512 MB of storage and a connection cap (500). Warden holds at most 5 connections per function instance.
+- **Client IP:** Vercel overwrites `X-Forwarded-For` with the real client address ([request headers](https://vercel.com/docs/headers/request-headers)). Warden trusts exactly one proxy hop, so the rate limiter counts per real visitor and a forged header gains nothing.
+
+## What was and was not tested
+
+Tested locally against a stand-in for Vercel (static files, headers and rewrites from `vercel.json`; `api/index.js` as the function; a 4.5 MB body limit; a proxy hop that sets `X-Forwarded-For`; a mail sink instead of Gmail) and a throwaway single-node MongoDB replica set: signup, email verification, code login, trusted browser, uploads under and over the limit, previews, a password-protected share in a private window, Trash and restore, account deletion, 20 parallel cold requests, rate-limit keying, service worker replacement, headers and CSP.
+
+**Not tested** (needs a real deployment): Vercel's actual routing and header application, real cold-start timing, Atlas M0 itself (connection counts and transactions on Atlas), real Gmail delivery, Vercel Cron, and the 4.5 MB limit as Vercel enforces it.

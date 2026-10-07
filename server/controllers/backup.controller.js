@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const Document = require('../models/Document');
+const { isProduction } = require('../utils/runtimeEnv');
 const { assertCanStore } = require('../utils/storage');
 const { cleanStoredName } = require('../utils/fileNames');
 const User = require('../models/User');
@@ -17,6 +18,18 @@ const MIN_USB_PASSPHRASE_LENGTH = 4; // same floor as the phone pairing PIN
 // error-handling middleware on its own - this small wrapper does that so
 // every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// Export and import read and write a folder on the machine the server runs on.
+// A serverless deployment has no such drive (its disk is read-only and
+// per-invocation), and a hosted server must never write to a path a visitor
+// names, so these two routes are off in production.
+function assertDriveBackupAvailable() {
+  if (isProduction()) {
+    const error = new Error('Backup to a drive is only available on a locally hosted Warden. Download your files instead.');
+    error.status = 501;
+    throw error;
+  }
+}
 
 function badRequest(message) {
   const error = new Error(message);
@@ -163,6 +176,7 @@ function accountMismatchError() {
  * backup folder's shape doesn't change out from under that future work.
  */
 const exportBackup = asyncHandler(async (req, res) => {
+  assertDriveBackupAvailable();
   const { targetPath, usbPassphrase } = req.body;
 
   if (!targetPath || typeof targetPath !== 'string') {
@@ -297,6 +311,7 @@ const exportBackup = asyncHandler(async (req, res) => {
  * never decrypt.
  */
 const importBackup = asyncHandler(async (req, res) => {
+  assertDriveBackupAvailable();
   const { sourcePath } = req.body;
 
   if (!sourcePath || typeof sourcePath !== 'string') {

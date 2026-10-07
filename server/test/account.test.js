@@ -221,6 +221,7 @@ async function call(handler, { userId, body = {} } = {}) {
   const res = {
     status(code) { out.status = code; return this; },
     json(payload) { out.json = payload; return this; },
+    clearCookie(name) { (out.cleared ||= []).push(name); return this; },
   };
   await handler({ userId, body, dek: null }, res, (err) => { out.error = err; });
   return out;
@@ -291,6 +292,7 @@ test('a login code cannot authorise deletion, and a delete code cannot log in', 
   // ...and the delete challenge still works for deletion.
   const real = await call(deleteAccount, { userId: user._id, body: { challengeToken: del.token, code: del.code, emailConfirmation: 'ana@example.com' } });
   assert.equal(real.status, 200);
+  assert.deepEqual(real.cleared, ['warden_td'], 'the trusted-browser cookie is cleared with the account');
 });
 
 test("another account's delete challenge cannot be used, even with the right code and key", async () => {

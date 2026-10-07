@@ -93,7 +93,16 @@ export async function updateDocument(id, updates) {
  * @param {{ file: File, folder?: string, expiryDate?: string }} params
  * @param {(percent: number) => void} [onProgress]
  */
+// Same cap as the server (routes/documents.routes.js). Checked here too because a
+// body past the host's own request limit (4.5MB on Vercel) is refused by the
+// platform before the app sees it, with a reply that carries no message.
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+export const TOO_LARGE_MESSAGE = 'File exceeds the 4MB size limit.';
+
 export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw Object.assign(new Error(TOO_LARGE_MESSAGE), { response: { status: 413, data: { error: { message: TOO_LARGE_MESSAGE } } } });
+  }
   const formData = new FormData();
   formData.append('file', file);
   // Drawn here, in the browser, from the plaintext file; the server
@@ -105,14 +114,22 @@ export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
   if (folder) formData.append('folder', folder);
   if (expiryDate) formData.append('expiryDate', expiryDate);
 
-  const { data } = await api.post('/documents', formData, {
-    onUploadProgress: (event) => {
-      if (onProgress && event.total) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    },
-  });
-  return data;
+  try {
+    const { data } = await api.post('/documents', formData, {
+      onUploadProgress: (event) => {
+        if (onProgress && event.total) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      },
+    });
+    return data;
+  } catch (err) {
+    // The platform's own "payload too large" has no JSON body to read a message from.
+    if (err?.response?.status === 413 && !err.response.data?.error?.message) {
+      err.response.data = { error: { message: TOO_LARGE_MESSAGE } };
+    }
+    throw err;
+  }
 }
 
 /**

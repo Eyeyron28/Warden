@@ -70,7 +70,7 @@ function OtpCodeInput({ digits, onChange, disabled = false, invalid = false, aut
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          autoComplete="off"
+          autoComplete="one-time-code"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}

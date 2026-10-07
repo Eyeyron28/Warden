@@ -9,6 +9,8 @@ const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
+const { isDatabaseReachable } = require('./config/db');
+const { assertProductionConfig } = require('./utils/productionConfig');
 const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 const { detectLanIp } = require('./utils/lanIp');
@@ -26,8 +28,13 @@ const pairCompleteRoutes = require('./routes/pairComplete.routes');
 const devicesRoutes = require('./routes/devices.routes');
 const accountRoutes = require('./routes/account.routes');
 const trashRoutes = require('./routes/trash.routes');
+const cronRoutes = require('./routes/cron.routes');
 
 const app = express();
+
+// In production, refuse to start unless every setting that matters is present
+// and valid. Reports variable NAMES only, never values.
+assertProductionConfig();
 
 // Fail at startup, not on the first share, if PUBLIC_APP_URL is missing in
 // production or malformed anywhere (https origin only: no path, no userinfo).
@@ -42,7 +49,9 @@ assertOtpConfig();
 // dev awaits this same promise explicitly before calling .listen() - see
 // the bottom of this file - so a misconfigured/unreachable Atlas cluster
 // still fails loudly there.
-connectDB();
+// The rejection is handled per request (see the gate below); catching it here
+// only stops a failed first attempt from being an unhandled rejection.
+connectDB().catch(() => {});
 
 // How many reverse proxies sit in front of this app and set
 // X-Forwarded-For. This must match reality in BOTH directions:
@@ -102,8 +111,33 @@ app.use(express.json({ limit: '6mb' }));
 // typeof checks in the controllers - as a second layer behind this one.
 app.use(mongoSanitize());
 
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ success: true, status: 'ok' });
+// Nothing under /api may be cached by the browser, a proxy or the CDN: it is
+// all per-account, session-gated data.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+// Liveness plus database reachability. No version, no host, no error text.
+app.get('/api/health', async (req, res) => {
+  const database = await isDatabaseReachable();
+  res.status(database ? 200 : 503).json({
+    success: database,
+    status: database ? 'ok' : 'degraded',
+    database: database ? 'reachable' : 'unreachable',
+  });
+});
+
+// Every other route needs the database. Wait for the (cached) connection once
+// per instance instead of leaning on Mongoose's command buffering, and answer a
+// clean 503 when Atlas cannot be reached.
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch {
+    res.status(503).json({ success: false, error: { message: 'The service is temporarily unavailable. Please try again.' } });
+  }
 });
 
 app.use('/api/auth', authRoutes);
@@ -122,6 +156,7 @@ app.use('/api/pair', pairCompleteRoutes);
 app.use('/api/devices', devicesRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/trash', trashRoutes);
+app.use('/api/cron', cronRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

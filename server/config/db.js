@@ -9,6 +9,20 @@ const mongoose = require('mongoose');
 // their own separate connection attempt before the first one resolves.
 let connectionPromise = null;
 
+// A small pool per function instance: Atlas M0 allows 500 connections in
+// total, and Vercel may run many instances side by side, so each one keeps
+// only a handful (and none idle for long). maxIdleTimeMS lets a quiet warm
+// instance hand its sockets back. socketTimeoutMS ends a stuck query well
+// inside the function's own time limit.
+const CONNECT_OPTIONS = {
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 5000,
+  socketTimeoutMS: 30000,
+  maxPoolSize: 5,
+  minPoolSize: 0,
+  maxIdleTimeMS: 30000,
+};
+
 /**
  * Connects to MONGO_URI (required - there is no localhost fallback. A
  * missing value fails loudly at startup/first call rather than silently
@@ -28,7 +42,7 @@ function connectDB() {
   }
 
   connectionPromise = mongoose
-    .connect(mongoUri, { serverSelectionTimeoutMS: 5000 })
+    .connect(mongoUri, CONNECT_OPTIONS)
     .then(async (conn) => {
       console.log('MongoDB connected.');
       // Required lazily - utils/migrateFolders pulls in models, which
@@ -55,4 +69,19 @@ function connectDB() {
   return connectionPromise;
 }
 
+/**
+ * Whether the database answers a ping right now (used by /api/health). Never
+ * throws and never reveals why it failed.
+ */
+async function isDatabaseReachable() {
+  try {
+    await connectDB();
+    await mongoose.connection.db.admin().ping();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = connectDB;
+module.exports.isDatabaseReachable = isDatabaseReachable;

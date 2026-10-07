@@ -97,7 +97,7 @@ async function openSharedFile({ shareId, key, entry, accessToken }) {
 function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
   // Named sharedFile, not "document" - this component needs the real global
   // `document` (document.createElement) for the click fallbacks above.
-  const [sharedFile, setSharedFile] = useState(null); // { url, kind, size }
+  const [sharedFile, setSharedFile] = useState(null); // { url, kind, size, fileName }
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -111,7 +111,7 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
     try {
       const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken });
       urlRef.current = opened.url;
-      const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size };
+      const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size, fileName: opened.fileName };
       loadedRef.current = loaded;
       setSharedFile(loaded);
       return loaded;

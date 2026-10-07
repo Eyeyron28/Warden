@@ -88,6 +88,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
     // leftover: finish the cleanup. Nothing here can touch anyone else.
     await Session.deleteMany({ userId: req.userId });
     await deleteAccountData(req.userId);
+    clearTrustCookie(req, res);
     res.status(200).json({ success: true });
     return;
   }
@@ -127,6 +128,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
       'This message is only a confirmation; if you did not do this, contact us right away.',
   }).catch(() => false);
 
+  clearTrustCookie(req, res);
   res.status(200).json({ success: true });
 });
 

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,8 +36,28 @@ function shareViewerHeaders() {
   };
 }
 
+// Stamps the service worker with this build's id (a hash of the built page,
+// which names every hashed asset), so each deployment changes the worker file.
+function stampServiceWorker() {
+  let outDir = 'dist';
+  return {
+    name: 'stamp-service-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const swPath = path.join(outDir, 'service-worker.js');
+      const indexPath = path.join(outDir, 'index.html');
+      if (!fs.existsSync(swPath) || !fs.existsSync(indexPath)) return;
+      const id = crypto.createHash('sha256').update(fs.readFileSync(indexPath)).digest('hex').slice(0, 12);
+      fs.writeFileSync(swPath, fs.readFileSync(swPath, 'utf8').replace('__BUILD_ID__', id));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), shareViewerHeaders()],
+  plugins: [react(), shareViewerHeaders(), stampServiceWorker()],
   server: {
     port: 5173,
     // Required, not optional: crypto.subtle's "secure context" check

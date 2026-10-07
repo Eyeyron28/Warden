@@ -13,11 +13,13 @@ import '@fontsource/ibm-plex-mono/500.css';
 
 import './styles/global.css';
 import App from './App.jsx';
+import UpdatePrompt from './components/UpdatePrompt.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <App />
+      <UpdatePrompt />
     </BrowserRouter>
   </StrictMode>
 );

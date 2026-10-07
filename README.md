@@ -2,6 +2,8 @@
 
 Encrypted, locally-hosted personal document vault - MERN stack (MongoDB, Express, React/Vite).
 
+**Deploying:** see [DEPLOY.md](DEPLOY.md) for the Vercel + MongoDB Atlas runbook.
+
 ## Running the dev servers
 
 From the project root, once:

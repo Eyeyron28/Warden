@@ -1,0 +1,29 @@
+.bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border, #444);
+  background: var(--color-surface, #1d141a);
+  color: var(--color-text, #fff);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  font-size: 0.9rem;
+}
+
+.button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
