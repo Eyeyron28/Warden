@@ -172,6 +172,7 @@ function installRateLimit() {
       return counts.get(id) <= max;
     },
     isBudgetExhausted: async ({ name, key, max }) => (counts.get(`${name}:${key}`) || 0) >= max,
+    budgetRetryAfterSeconds: async ({ name, key, max }) => ((counts.get(`${name}:${key}`) || 0) >= max ? 900 : 0),
   });
   return counts;
 }

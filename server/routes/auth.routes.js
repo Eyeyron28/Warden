@@ -1,4 +1,5 @@
 const express = require('express');
+const { inviteGate } = require('../utils/inviteGate');
 const router = express.Router();
 
 const {
@@ -35,6 +36,9 @@ const byEmail = (req) => {
 router.post(
   '/signup',
   createRateLimiter({ name: 'signup-ip', max: 10, windowMs: 60 * 60 * 1000 }),
+  // Before the per-email limiter, so a request with no valid code can never
+  // use up someone else's per-email allowance.
+  inviteGate,
   createRateLimiter({ name: 'signup-email', max: 5, windowMs: 60 * 60 * 1000, keyFn: byEmail }),
   signup
 );

@@ -1,0 +1,30 @@
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* A visible word, not only an asterisk: the field is the gate to the whole form. */
+.required {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+/* Masked without type="password" (see InviteCodeField.jsx). Browsers that do not
+   support the property simply show the code, which the toggle describes anyway. */
+.masked {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+.request {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}

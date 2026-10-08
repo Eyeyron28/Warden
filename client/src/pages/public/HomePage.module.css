@@ -317,3 +317,20 @@
     align-items: start;
   }
 }
+
+/* Invite-only notice under the hero buttons. Text only: the contact line comes from the server as plain text. */
+.inviteNote {
+  max-width: 52ch;
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.inviteNote strong {
+  color: var(--color-text);
+  font-weight: 600;
+}

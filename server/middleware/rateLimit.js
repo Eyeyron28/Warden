@@ -64,6 +64,18 @@ async function isBudgetExhausted({ name, key, max }) {
   return Boolean(doc && doc.windowExpiresAt.getTime() > Date.now() && doc.count >= max);
 }
 
+/**
+ * Seconds until a used-up budget frees up again, or 0 when it still has room.
+ * Spends nothing. Lets a caller refuse (and say when to come back) before doing
+ * any other work.
+ */
+async function budgetRetryAfterSeconds({ name, key, max }) {
+  const doc = await RateLimit.findOne({ bucket: name, key });
+  if (!doc || doc.count < max) return 0;
+  const left = doc.windowExpiresAt.getTime() - Date.now();
+  return left > 0 ? Math.ceil(left / 1000) : 0;
+}
+
 function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
   if (!name || typeof name !== 'string') {
     throw new Error('createRateLimiter requires a `name`.');
@@ -99,3 +111,4 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 module.exports = createRateLimiter;
 module.exports.consumeBudget = consumeBudget;
 module.exports.isBudgetExhausted = isBudgetExhausted;
+module.exports.budgetRetryAfterSeconds = budgetRetryAfterSeconds;

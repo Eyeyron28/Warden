@@ -1,11 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 
+import InviteCodeField from '../../components/InviteCodeField.jsx';
 import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter.jsx';
-import { getPublicConfig, signupVault } from '../../services/authService.js';
-import { extractErrorMessage } from '../../services/api.js';
+import { signupVault } from '../../services/authService.js';
+import { cleanInviteCode, describeSignupFailure, inviteFieldError } from '../../utils/inviteCode.js';
+import { useSignupConfig } from '../../utils/publicConfig.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
@@ -15,6 +17,7 @@ import RecoveryKeyStep from './RecoveryKeyStep.jsx';
 import ResendButton from './ResendButton.jsx';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
+import inviteStyles from '../../components/InviteCodeField.module.css';
 import styles from './auth.module.css';
 
 // The terms/privacy dialog is only needed once someone opens it, so it (and
@@ -32,7 +35,10 @@ function fieldErrors(values, { inviteRequired }) {
   if (!validatePassword(values.password).valid) errors.password = 'This password doesn’t meet every requirement below yet.';
   if (!values.confirm) errors.confirm = 'Type the same password again.';
   else if (values.confirm !== values.password) errors.confirm = 'The two passwords don’t match.';
-  if (inviteRequired && !values.invite.trim()) errors.invite = 'Signups are invite-only right now. Enter your invite code.';
+  if (inviteRequired) {
+    const problem = inviteFieldError(values.invite);
+    if (problem) errors.invite = problem;
+  }
   return errors;
 }
 
@@ -59,7 +65,12 @@ function SignupPage() {
   const [formError, setFormError] = useState('');
   const [serverFieldErrors, setServerFieldErrors] = useState({});
   const [recoveryKey, setRecoveryKey] = useState(null);
-  const [signupMode, setSignupMode] = useState(null); // 'open' | 'invite' | 'unknown'
+  // 'loading' | 'ready' | 'error': never guessed. If the settings cannot be loaded
+  // the page offers a retry instead of a form that may be missing the invite field.
+  const { status: configStatus, config, retry: retryConfig } = useSignupConfig();
+  const signupMode = config?.signupMode ?? null; // 'open' | 'invite'
+  const inviteRef = useRef(null);
+  const [attempted, setAttempted] = useState(false);
   // Terms and privacy: read in a dialog (scrolled to the end of each) before
   // the agreement checkbox becomes tickable.
   const [legalTab, setLegalTab] = useState(null); // null (closed) | 'terms' | 'privacy'
@@ -68,16 +79,6 @@ function SignupPage() {
   // Shown when someone tries to tick the box before reading both documents.
   const [legalNotice, setLegalNotice] = useState(false);
   const legalOpenerRef = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getPublicConfig()
-      .then((config) => !cancelled && setSignupMode(config.signupMode))
-      .catch(() => !cancelled && setSignupMode('unknown'));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const markLegalRead = useCallback(
     (key) => setLegalRead((prev) => (prev[key] ? prev : { ...prev, [key]: true })),
@@ -95,7 +96,6 @@ function SignupPage() {
   if (token) return <Navigate to="/files" replace />;
 
   const inviteRequired = signupMode === 'invite';
-  const showInvite = signupMode === 'invite' || signupMode === 'unknown';
   const errors = { ...fieldErrors(values, { inviteRequired }), ...serverFieldErrors };
   const visibleError = (field) => (touched[field] || serverFieldErrors[field] ? errors[field] : '');
   const isValid = Object.keys(fieldErrors(values, { inviteRequired })).length === 0;
@@ -109,10 +109,28 @@ function SignupPage() {
   };
   const blur = (field) => () => setTouched((prev) => ({ ...prev, [field]: true }));
 
+  const focusFirstProblem = (problems) => {
+    const order = [
+      ['invite', () => inviteRef.current],
+      ['email', () => document.getElementById('signup-email')],
+      ['password', () => document.getElementById('signup-password')],
+      ['confirm', () => document.getElementById('signup-confirm')],
+    ];
+    const first = order.find(([field]) => problems[field]);
+    first?.[1]()?.focus();
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setAttempted(true);
     setTouched({ email: true, password: true, confirm: true, invite: true });
-    if (!canSubmit || submitting) return;
+    if (submitting) return;
+    if (!canSubmit) {
+      // The button only looks disabled (aria-disabled), so a click lands here and says what is missing.
+      if (isValid && !legalAllRead) setLegalNotice(true);
+      focusFirstProblem(fieldErrors(values, { inviteRequired }));
+      return;
+    }
 
     setSubmitting(true);
     setFormError('');
@@ -120,23 +138,22 @@ function SignupPage() {
       const response = await signupVault(
         values.email.trim(),
         values.password,
-        showInvite && values.invite.trim() ? values.invite.trim() : undefined
+        inviteRequired ? cleanInviteCode(values.invite) : undefined
       );
       setRecoveryKey(response.recoveryKey);
-      setValues((prev) => ({ ...prev, password: '', confirm: '' }));
+      setValues((prev) => ({ ...prev, password: '', confirm: '', invite: '' }));
       setStep('key');
       window.scrollTo(0, 0);
     } catch (err) {
-      const status = err?.response?.status;
-      const body = err?.response?.data?.error;
-      if (status === 403 && showInvite) {
-        setServerFieldErrors({ invite: 'That invite code wasn’t accepted.' });
-      } else if (status === 400 && Array.isArray(body?.errors)) {
-        setServerFieldErrors({ password: body.errors.join(' ') });
-      } else if (status === 429) {
-        setFormError('Too many signup attempts. Please wait a while and try again.');
+      const failure = describeSignupFailure(err);
+      if (failure.kind === 'invite' && inviteRequired) {
+        // Everything else stays filled in, the password included.
+        setServerFieldErrors({ invite: failure.message });
+        requestAnimationFrame(() => inviteRef.current?.focus());
+      } else if (failure.kind === 'password') {
+        setServerFieldErrors({ password: failure.message });
       } else {
-        setFormError(extractErrorMessage(err, 'We couldn’t create your vault. Please try again.'));
+        setFormError(failure.message);
       }
     } finally {
       setSubmitting(false);
@@ -193,10 +210,42 @@ function SignupPage() {
     );
   }
 
+  if (configStatus !== 'ready') {
+    return (
+      <AuthLayout title="Create your vault" subtitle="Your password protects the key to everything you store.">
+        {configStatus === 'loading' ? (
+          <p className={styles.subtitle} role="status" style={{ marginTop: 0 }}>
+            Checking the sign-up settings…
+          </p>
+        ) : (
+          <div className={styles.stack}>
+            <div className={forms.alert} role="alert">
+              <Icon name="alert" />
+              <p>
+                We couldn’t load the sign-up settings, so we can’t show the form yet. Check your connection and try
+                again.
+              </p>
+            </div>
+            <button type="button" className={`${site.button} ${site.primary} ${site.block}`} onClick={retryConfig}>
+              Try again
+            </button>
+          </div>
+        )}
+      </AuthLayout>
+    );
+  }
+
+  const accessLine = config.requestAccessText || 'Ask the person who runs this Warden for a code.';
+  const agreeProblem = attempted && !agreed && !legalNotice;
+
   return (
     <AuthLayout
       title="Create your vault"
-      subtitle="Your password protects the key to everything you store. Pick one you won't need to write down."
+      subtitle={
+        inviteRequired
+          ? 'Access is by invitation. Your password protects the key to everything you store; pick one you won’t need to write down.'
+          : 'Your password protects the key to everything you store. Pick one you won\'t need to write down.'
+      }
       footer={
         <span>
           Already have a vault?{' '}
@@ -216,6 +265,21 @@ function SignupPage() {
           )}
         </div>
 
+        {inviteRequired && (
+          <InviteCodeField
+            value={values.invite}
+            onChange={(next) => update('invite')({ target: { value: next } })}
+            onBlur={blur('invite')}
+            error={visibleError('invite')}
+            inputRef={inviteRef}
+            autoFocus
+          >
+            <p className={inviteStyles.request}>
+              <strong>No code?</strong> {accessLine}
+            </p>
+          </InviteCodeField>
+        )}
+
         <div className={forms.field}>
           <label htmlFor="signup-email" className={forms.label}>
             Email
@@ -230,7 +294,7 @@ function SignupPage() {
             onBlur={blur('email')}
             inputMode="email"
             maxLength={MAX_EMAIL_LENGTH}
-            autoFocus
+            autoFocus={!inviteRequired}
             aria-invalid={Boolean(visibleError('email'))}
             aria-describedby="signup-email-error"
           />
@@ -265,34 +329,6 @@ function SignupPage() {
           autoComplete="new-password"
         />
 
-        {showInvite && (
-          <div className={forms.field}>
-            <label htmlFor="signup-invite" className={forms.label}>
-              Invite code {!inviteRequired && <span className={forms.optional}>(if you have one)</span>}
-            </label>
-            <SensitiveInput
-              fieldName="signup-invite"
-              id="signup-invite"
-              className={`${forms.input} ${forms.mono}`}
-              value={values.invite}
-              onChange={update('invite')}
-              onBlur={blur('invite')}
-              aria-invalid={Boolean(visibleError('invite'))}
-              aria-describedby="signup-invite-error"
-            />
-            <p id="signup-invite-error" className={forms.error} aria-live="polite">
-              {visibleError('invite')}
-            </p>
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className={`${site.button} ${site.primary} ${site.block}`}
-          disabled={!canSubmit || submitting || signupMode === null}
-        >
-          {submitting ? 'Creating your vault…' : 'Create vault'}
-        </button>
         <div className={forms.field}>
           <label className={forms.checkboxRow}>
             <input
@@ -321,9 +357,15 @@ function SignupPage() {
               .
             </span>
           </label>
-          <p id="signup-legal-hint" className={legalNotice && !legalAllRead ? forms.error : forms.hint} aria-live="polite">
+          <p
+            id="signup-legal-hint"
+            className={(legalNotice && !legalAllRead) || agreeProblem ? forms.error : forms.hint}
+            aria-live="polite"
+          >
             {legalAllRead
-              ? 'Thanks for reading. Tick the box to continue.'
+              ? agreeProblem
+                ? 'Tick the box to agree and continue.'
+                : 'Thanks for reading. Tick the box to continue.'
               : legalNotice
                 ? 'Please read the Terms of use and Privacy policy first. '
                 : `Read both documents to be able to tick this${
@@ -338,6 +380,17 @@ function SignupPage() {
             )}
           </p>
         </div>
+
+        {/* aria-disabled, not disabled: it looks and is announced as unavailable, but a click
+            (or Enter) still lands on the form and shows what is missing. */}
+        <button
+          type="submit"
+          className={`${site.button} ${site.primary} ${site.block}`}
+          aria-disabled={!canSubmit || submitting}
+          style={!canSubmit || submitting ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
+        >
+          {submitting ? 'Creating your vault…' : 'Create vault'}
+        </button>
       </form>
 
       {legalTab && (

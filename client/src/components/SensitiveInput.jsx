@@ -10,12 +10,13 @@ import { useId, useState } from 'react';
  *
  * Best effort: browsers may ignore autocomplete="off" for some fields.
  */
-function SensitiveInput({ fieldName = 'field', type = 'text', onFocus, onPointerDown, ...rest }) {
+function SensitiveInput({ fieldName = 'field', type = 'text', inputRef, onFocus, onPointerDown, ...rest }) {
   const unique = useId().replace(/[^a-z0-9]/gi, '');
   const [armed, setArmed] = useState(false);
   return (
     <input
       {...rest}
+      ref={inputRef}
       type={type}
       name={`wd-${fieldName}-${unique}`}
       autoComplete="off"

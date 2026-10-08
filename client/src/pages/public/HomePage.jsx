@@ -9,6 +9,7 @@ import AboutSection from './AboutSection.jsx';
 import ContactSection from './ContactSection.jsx';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
+import { useSignupConfig } from '../../utils/publicConfig.js';
 import { MAX_FILE_SIZE_MB } from '../../config.js';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
@@ -194,6 +195,9 @@ function HomePage() {
     'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. A student project, provided as-is.'
   );
   const signedIn = Boolean(useSessionToken());
+  // Only when the server says sign-up needs an invite code; a failed lookup just shows nothing here.
+  const { status: configStatus, config } = useSignupConfig();
+  const inviteOnly = !signedIn && configStatus === 'ready' && config?.signupMode === 'invite';
   // Set once, by the account page, right after a successful deletion.
   const accountDeleted = Boolean(useLocation().state?.accountDeleted);
 
@@ -243,6 +247,12 @@ function HomePage() {
                 <Icon name="arrowDown" size={18} />
               </a>
             </div>
+            {inviteOnly && (
+              <p className={styles.inviteNote}>
+                <strong>Access is by invitation.</strong>{' '}
+                {config.requestAccessText || 'Ask the person who runs this Warden for an invite code.'}
+              </p>
+            )}
             <ul className={styles.heroFacts}>
               <li>AES-256-GCM per file</li>
               <li>Recovery key shown once</li>

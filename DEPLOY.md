@@ -54,6 +54,7 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `MAIL_FROM` | no | e.g. `Warden <your.gmail@gmail.com>` (Gmail rewrites the sender to your account anyway). |
 | `SIGNUP_MODE` | no | `invite` (recommended) or `open`. |
 | `INVITE_CODE` | **Secret** | Required when `SIGNUP_MODE=invite`. At least 16 characters, random. Share it only with the people you invite. |
+| `REQUEST_ACCESS_TEXT` | no | Optional. One plain-text line (max 200 characters) shown on the landing page and the sign-up form in invite mode, e.g. `Email sam@example.com to ask for a code.` It is public and shown as text only. Never put the code in it. |
 | `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it to the daily Trash-purge job. Optional but recommended. |
 | `STORAGE_QUOTA_MB` | no | Optional. Per-account storage limit in MB; must be a positive number. Default 25. |
 | `TRUST_PROXY_HOPS` | no | Optional. Leave it unset: the app uses **1** automatically on Vercel. If you set it, it must be `1`; any other value makes the rate limiter see the wrong IP address. |
@@ -62,6 +63,8 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
 
 Never put these values in the repository, in screenshots or in chat. `server/.env` is git-ignored; keep it that way.
+
+**How invite-only sign-up behaves.** With `SIGNUP_MODE=invite` the sign-up form shows a required "Invite code" field first, and the server enforces it on its own: a missing, empty, wrong, oversized or wrong-typed code is refused with `INVITE_CODE_INVALID` before the email is looked at, so nothing is created and no email is sent. Wrong attempts are limited per IP address (5 per 15 minutes, 20 per hour); while a limit is active even the right code is refused until it ends. Only the exact value `open` turns invite checking off, so a typo in `SIGNUP_MODE` leaves the code required. If you rotate `INVITE_CODE`, redeploy; people who already signed up are not affected.
 
 **Preview deployments:** each preview has its own URL, which will not match `PUBLIC_APP_URL`, so writes and emailed links from a preview URL will not work. Treat Production as the only working environment, or give previews their own `PUBLIC_APP_URL` and a separate database.
 
@@ -99,7 +102,7 @@ Never put these values in the repository, in screenshots or in chat. `server/.en
 Run this on the real URL, with a throwaway email address you control.
 
 1. [ ] `https://<your-url>/api/health` returns `ok` and `reachable`.
-2. [ ] **Sign up** with the invite code and a strong password. Save the recovery key.
+2. [ ] **Sign up**: the "Invite code" field is first and marked Required. A wrong code is refused under the field; the right code (spaces around it are fine) and a strong password create the account. Save the recovery key.
 3. [ ] The verification **email arrives** (check spam). Its link starts with your `PUBLIC_APP_URL`. Open it: "Email verified".
 4. [ ] **Log in**: the 6-digit code email arrives and the code works. Tick "Trust this browser".
 5. [ ] Open a new tab and log in again: no code is asked on this browser. In a private window the code **is** asked.

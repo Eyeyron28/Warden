@@ -20,6 +20,7 @@ const {
   verifyRecoveryKey,
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
+const { assertInviteCode, signupMode, requestAccessText } = require('../utils/inviteGate');
 const { trustThisBrowser, isTrustedFor } = require('../utils/trustedDevice');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
@@ -60,19 +61,6 @@ function resolvePublicAppUrl() {
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
-}
-
-// Fixed-length, constant-time string comparison for the invite code (a
-// human-typed shared secret, unlike every other token in this app, which
-// are all high-entropy and compared via crypto.timingSafeEqual on hashes
-// already). crypto.timingSafeEqual itself requires equal-length buffers
-// and throws otherwise, so lengths are equalized by hashing both sides
-// first (SHA-256 output is always 32 bytes) rather than padding - hashing
-// also means this never short-circuits on the raw strings' own lengths.
-function constantTimeStringEqual(a, b) {
-  const hashedA = crypto.createHash('sha256').update(String(a)).digest();
-  const hashedB = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(hashedA, hashedB);
 }
 
 // Fixed dummy salt/hash, computed once at module load (not per-request) -
@@ -155,12 +143,6 @@ function wrongRecoveryKeyError() {
   return error;
 }
 
-function invalidSignupError() {
-  const error = new Error('Could not create an account with the information provided.');
-  error.status = 403;
-  return error;
-}
-
 // The recovery key's own salt isn't stored in a separate field - it's
 // embedded in recoveryKeyHash as `${salt}:${hash}` (see hashRecoveryKey)
 // and doubles as the salt used to derive the recovery-key KEK.
@@ -188,7 +170,7 @@ function dekMismatchError() {
 
 /**
  * POST /api/auth/signup
- * Body: { email, password, inviteCode? }
+ * Body: { email, password, inviteCode } (inviteCode only matters unless SIGNUP_MODE is "open")
  *
  * Creates the account using the exact same vault-creation logic the old
  * single-vault setup used (generate the DEK, wrap it under the password
@@ -209,13 +191,14 @@ function dekMismatchError() {
  * be the enumeration oracle (recoveryKey present = new account).
  */
 const signup = asyncHandler(async (req, res) => {
-  const { email, password, inviteCode } = req.body;
+  // First of all, before the email is looked at (see utils/inviteGate.js). The
+  // route already ran it as middleware; this covers a direct call.
+  if (!req.inviteChecked) await assertInviteCode(req);
+
+  const { email, password } = req.body;
 
   if (typeof email !== 'string' || typeof password !== 'string') {
     throw badRequest('email and password are required.');
-  }
-  if (inviteCode !== undefined && typeof inviteCode !== 'string') {
-    throw badRequest('inviteCode must be a string.');
   }
 
   // Must be exactly one plain address (see utils/email.js isSafeRecipient):
@@ -232,15 +215,6 @@ const signup = asyncHandler(async (req, res) => {
   const { valid, errors } = validatePassword(password);
   if (!valid) {
     throw passwordPolicyError(errors);
-  }
-
-  const signupMode = (process.env.SIGNUP_MODE || 'invite').toLowerCase();
-  if (signupMode === 'invite') {
-    const expectedCode = process.env.INVITE_CODE || '';
-    const gotCode = typeof inviteCode === 'string' ? inviteCode : '';
-    if (!expectedCode || !constantTimeStringEqual(gotCode, expectedCode)) {
-      throw invalidSignupError();
-    }
   }
 
   const responseBody = {
@@ -394,8 +368,15 @@ const resendVerification = asyncHandler(async (req, res) => {
  * required. Never exposes the code itself.
  */
 const getPublicConfig = (req, res) => {
-  const signupMode = (process.env.SIGNUP_MODE || 'invite').toLowerCase() === 'open' ? 'open' : 'invite';
-  res.status(200).json({ signupMode });
+  const mode = signupMode();
+  const body = { signupMode: mode };
+  // A plain-text line on how to ask for a code (REQUEST_ACCESS_TEXT). Only
+  // sent in invite mode; the page renders it as text, never as HTML.
+  if (mode === 'invite') {
+    const text = requestAccessText();
+    if (text) body.requestAccessText = text;
+  }
+  res.status(200).json(body);
 };
 
 /**
