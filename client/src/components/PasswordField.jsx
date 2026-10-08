@@ -10,6 +10,7 @@ function PasswordField({
   placeholder,
   error,
   autoFocus = false,
+  autoComplete = 'off', // 'new-password' only where a password is being chosen
 }) {
   const [revealed, setRevealed] = useState(false);
   const inputId = useId();
@@ -29,7 +30,8 @@ function PasswordField({
           onChange={onChange}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          autoComplete="current-password"
+          name={autoComplete === 'new-password' ? undefined : `wd-${inputId.replace(/[^a-z0-9]/gi, '')}-secret`}
+          autoComplete={autoComplete}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
           className={styles.input}

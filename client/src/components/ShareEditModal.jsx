@@ -23,16 +23,8 @@ import {
   wrapShareKey,
 } from '../utils/sharePassword.js';
 import { formatDateTime } from '../utils/formatDate.js';
-import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
+import { EXPIRY_PRESET_DAYS, customDaysProblem, dayLabel, daysToHours, maxDaysUntil } from '../utils/shareExpiry.js';
 import styles from './ShareModal.module.css';
-
-const PRESETS = [
-  { label: '1 hour', hours: 1 },
-  { label: '24 hours', hours: 24 },
-  { label: '3 days', hours: 72 },
-  { label: '7 days', hours: 168 },
-  { label: '30 days', hours: 720 },
-];
 
 const linkFor = (shareId) => `${window.location.origin}/shared/${shareId}`;
 
@@ -66,12 +58,12 @@ function ShareEditModal({ share, onClose, onChanged }) {
   const of = (section) => status[section] || {};
 
   // expiry
-  const [hours, setHours] = useState(null);
+  const [days, setDays] = useState(null);
   const [customExpiry, setCustomExpiry] = useState('');
-  const maxEnd = new Date(share.maxExpiresAt).getTime();
-  const customMs = customExpiry ? new Date(customExpiry).getTime() : null;
-  const customHours = customMs ? (customMs - Date.now()) / 3600000 : null;
-  const customOk = customMs !== null && customMs > Date.now() && customMs <= maxEnd;
+  // A share can last at most 30 days from when it was made: that leaves this many whole days from now.
+  const maxDays = maxDaysUntil(new Date(share.maxExpiresAt).getTime());
+  const customMessage = customExpiry !== '' ? customDaysProblem(customExpiry, maxDays) : '';
+  const customOk = customExpiry !== '' && customMessage === '' && maxDays >= 1;
 
   // limits
   const [maxText, setMaxText] = useState(share.maxDownloads ? String(share.maxDownloads) : '');
@@ -97,7 +89,7 @@ function ShareEditModal({ share, onClose, onChanged }) {
   const fail = (message) => Object.assign(new Error(message), { userMessage: message });
 
   const saveExpiry = () => {
-    const value = hours ?? customHours;
+    const value = daysToHours(days ?? Number(customExpiry.trim()));
     return run('expiry', () => updateShare(share.id, { durationHours: value }), 'Expiry updated.');
   };
   const saveMax = () => {
@@ -207,42 +199,48 @@ function ShareEditModal({ share, onClose, onChanged }) {
           note={of('expiry').note}
         >
           <div className={styles.presetRow}>
-            {PRESETS.map((preset) => {
-              const tooLate = Date.now() + preset.hours * 3600000 > maxEnd;
-              return (
-                <button
-                  key={preset.hours}
-                  type="button"
-                  className={`${styles.presetButton} ${hours === preset.hours ? styles.presetActive : ''}`}
-                  disabled={tooLate || of('expiry').busy}
-                  onClick={() => {
-                    setHours(preset.hours);
-                    setCustomExpiry('');
-                  }}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
+            {EXPIRY_PRESET_DAYS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`${styles.presetButton} ${days === preset ? styles.presetActive : ''}`}
+                aria-pressed={days === preset}
+                disabled={preset > maxDays || of('expiry').busy}
+                onClick={() => {
+                  setDays(preset);
+                  setCustomExpiry('');
+                }}
+              >
+                {dayLabel(preset)}
+              </button>
+            ))}
           </div>
           <input
-            type="datetime-local"
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max={Math.max(1, maxDays)}
+            step="1"
             className={styles.textInput}
             value={customExpiry}
-            min={getNowDateTimeInputValue()}
-            max={getNowDateTimeInputValue(maxEnd - Date.now())}
+            placeholder={`Custom: days from now (1 to ${maxDays})`}
             onChange={(event) => {
               setCustomExpiry(event.target.value);
-              setHours(null);
+              setDays(null);
             }}
-            aria-label="Custom expiry date and time"
+            aria-label={`Custom expiry in days from now, 1 to ${maxDays}`}
+            aria-invalid={Boolean(customMessage)}
+            aria-describedby="share-edit-days-error"
             style={{ marginTop: 8 }}
           />
+          <p id="share-edit-days-error" className={styles.fieldError} aria-live="polite">
+            {customMessage}
+          </p>
           <button
             type="button"
             className={styles.secondaryButton}
             onClick={saveExpiry}
-            disabled={of('expiry').busy || (hours === null && !customOk)}
+            disabled={of('expiry').busy || (days === null && !customOk)}
             style={{ marginTop: 8 }}
           >
             Save expiry

@@ -320,6 +320,7 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Enter a new strong password"
                 error={error}
+                autoComplete="new-password"
                 autoFocus
               />
 
@@ -331,6 +332,7 @@ function PhoneRecoveryModal({ onClose, onRecovered, initialEmail = '' }) {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter password"
                 error={confirmError}
+                autoComplete="new-password"
               />
 
               <button type="submit" className={styles.primaryButton} disabled={!canSubmit}>

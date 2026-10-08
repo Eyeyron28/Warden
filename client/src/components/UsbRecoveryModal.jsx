@@ -163,6 +163,7 @@ function UsbRecoveryModal({ onClose, onRecovered }) {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Enter a new strong password"
               error={error}
+              autoComplete="new-password"
             />
 
             <PasswordStrengthMeter password={newPassword} />
@@ -173,6 +174,7 @@ function UsbRecoveryModal({ onClose, onRecovered }) {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter password"
               error={confirmError}
+              autoComplete="new-password"
             />
           </>
         )}

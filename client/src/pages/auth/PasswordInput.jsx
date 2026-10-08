@@ -4,7 +4,15 @@ import Icon from '../../components/site/Icon.jsx';
 import forms from '../../components/site/forms.module.css';
 
 /**
- * Password field with a show/hide toggle. The toggle is a real button
+ * Password field with a show/hide toggle.
+ *
+ * `autoComplete` says what the field is for:
+ *   - "new-password": the person is CHOOSING a password (sign-up, reset, change,
+ *     and the confirm field next to it) - browsers may offer a generated one;
+ *   - "off" (the default): the existing password (login, re-authentication) - with a
+ *     non-standard name, so browsers do not offer to generate a strong password
+ *     where nothing new is being created.
+ The toggle is a real button
  * with a changing label and aria-pressed, outside the input's own tab
  * stop order only by position (Tab reaches it right after the input).
  */
@@ -15,7 +23,7 @@ function PasswordInput({
   onChange,
   onBlur,
   error,
-  autoComplete = 'current-password',
+  autoComplete = 'off',
   describedBy,
   autoFocus = false,
   inputRef,
@@ -32,6 +40,7 @@ function PasswordInput({
         <input
           ref={inputRef}
           id={id}
+          name={autoComplete === 'new-password' ? undefined : `wd-${id}-secret`}
           type={revealed ? 'text' : 'password'}
           className={forms.input}
           value={value}

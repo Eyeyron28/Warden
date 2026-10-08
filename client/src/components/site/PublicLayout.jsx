@@ -5,6 +5,10 @@ import SiteHeader from './SiteHeader.jsx';
 import SiteFooter from './SiteFooter.jsx';
 import styles from './PublicLayout.module.css';
 
+// Screens built on AuthLayout: on a desktop landscape window they fill the viewport,
+// so the tall footer gives way to a one-line bar there (phones and tablets keep it).
+const AUTH_PATHS = new Set(['/login', '/signup', '/forgot-password', '/reset-password', '/verify-email']);
+
 function scrollToHash(hash) {
   let id = '';
   try {
@@ -58,7 +62,7 @@ function PublicLayout() {
           <Outlet />
         </Suspense>
       </main>
-      <SiteFooter />
+      <SiteFooter compact={AUTH_PATHS.has(pathname)} />
     </div>
   );
 }

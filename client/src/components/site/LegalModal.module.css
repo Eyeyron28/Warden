@@ -140,3 +140,11 @@
   font-size: var(--fs-sm);
   color: var(--color-text-muted);
 }
+
+/* Desktop: a wider reading column that uses the height there is. */
+@media (min-width: 1024px) {
+  .dialog {
+    max-width: 900px;
+    height: min(90dvh, 820px);
+  }
+}

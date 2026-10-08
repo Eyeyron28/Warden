@@ -30,7 +30,7 @@ export function RecoveryKeyField({ id, value, onChange, onBlur, error, touched, 
         aria-invalid={Boolean(shown)}
         aria-describedby={`${id}-hint ${id}-error`}
       />
-      <p id={`${id}-hint`} className={forms.hint}>
+      <p id={`${id}-hint`} className={`${forms.hint} ${forms.hintOptional}`}>
         The 16-character key you saved when you signed up. Paste it as it is; spaces, dashes and capital letters don’t
         matter.
       </p>
@@ -47,7 +47,8 @@ export function NewPasswordFields({ idPrefix, password, confirm, onPassword, onC
   const confirmOk = confirm.length > 0 && confirm === password;
   return (
     <>
-      <div className={forms.field}>
+      {/* Side by side on a desktop landscape window; the rules sit under both. */}
+      <div className={forms.row2}>
         <PasswordInput
           id={`${idPrefix}-password`}
           label="New password"
@@ -58,19 +59,19 @@ export function NewPasswordFields({ idPrefix, password, confirm, onPassword, onC
           autoComplete="new-password"
           describedBy={`${idPrefix}-rules`}
         />
-        <div id={`${idPrefix}-rules`}>
-          <PasswordStrengthMeter password={password} />
-        </div>
+        <PasswordInput
+          id={`${idPrefix}-confirm`}
+          label="Confirm new password"
+          value={confirm}
+          onChange={(event) => onConfirm(event.target.value)}
+          onBlur={() => onTouch('confirm')}
+          error={touched.confirm && !confirmOk ? 'The two passwords don’t match.' : ''}
+          autoComplete="new-password"
+        />
       </div>
-      <PasswordInput
-        id={`${idPrefix}-confirm`}
-        label="Confirm new password"
-        value={confirm}
-        onChange={(event) => onConfirm(event.target.value)}
-        onBlur={() => onTouch('confirm')}
-        error={touched.confirm && !confirmOk ? 'The two passwords don’t match.' : ''}
-        autoComplete="new-password"
-      />
+      <div id={`${idPrefix}-rules`}>
+        <PasswordStrengthMeter password={password} />
+      </div>
     </>
   );
 }

@@ -1,5 +1,5 @@
 .dial {
-  --dial-size: clamp(140px, 30vw, 200px);
+  --dial-size: var(--dial-override, clamp(140px, 30vw, 200px));
   position: relative;
   width: var(--dial-size);
   height: var(--dial-size);
@@ -12,7 +12,7 @@
    at 1920px, capped at 300px - and the icon in its center scales with it. */
 @media (min-width: 900px) {
   .dial {
-    --dial-size: clamp(200px, 7.8vw + 130px, 300px);
+    --dial-size: var(--dial-override, clamp(200px, 7.8vw + 130px, 300px));
   }
 
   .icon {

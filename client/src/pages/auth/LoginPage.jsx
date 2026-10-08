@@ -239,7 +239,7 @@ function LoginPage() {
           label="Password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          autoComplete="new-password"
+          autoComplete="off"
         />
 
         <div className={styles.inlineLinkRow}>

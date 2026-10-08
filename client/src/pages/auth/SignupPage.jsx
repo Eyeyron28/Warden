@@ -265,45 +265,48 @@ function SignupPage() {
           )}
         </div>
 
-        {inviteRequired && (
-          <InviteCodeField
-            value={values.invite}
-            onChange={(next) => update('invite')({ target: { value: next } })}
-            onBlur={blur('invite')}
-            error={visibleError('invite')}
-            inputRef={inviteRef}
-            autoFocus
-          >
-            <p className={inviteStyles.request}>
-              <strong>No code?</strong> {accessLine}
-            </p>
-          </InviteCodeField>
-        )}
+        {/* Related fields share a row on a desktop landscape window (forms.row2); one column elsewhere. */}
+        <div className={forms.row2}>
+          {inviteRequired && (
+            <InviteCodeField
+              value={values.invite}
+              onChange={(next) => update('invite')({ target: { value: next } })}
+              onBlur={blur('invite')}
+              error={visibleError('invite')}
+              inputRef={inviteRef}
+              autoFocus
+            >
+              <p className={`${inviteStyles.request} ${forms.hintOptional}`}>
+                <strong>No code?</strong> {accessLine}
+              </p>
+            </InviteCodeField>
+          )}
 
-        <div className={forms.field}>
-          <label htmlFor="signup-email" className={forms.label}>
-            Email
-          </label>
-          <SensitiveInput
-            fieldName="signup-contact"
-            id="signup-email"
-            type="email"
-            className={forms.input}
-            value={values.email}
-            onChange={update('email')}
-            onBlur={blur('email')}
-            inputMode="email"
-            maxLength={MAX_EMAIL_LENGTH}
-            autoFocus={!inviteRequired}
-            aria-invalid={Boolean(visibleError('email'))}
-            aria-describedby="signup-email-error"
-          />
-          <p id="signup-email-error" className={forms.error} aria-live="polite">
-            {visibleError('email')}
-          </p>
+          <div className={forms.field}>
+            <label htmlFor="signup-email" className={forms.label}>
+              Email
+            </label>
+            <SensitiveInput
+              fieldName="signup-contact"
+              id="signup-email"
+              type="email"
+              className={forms.input}
+              value={values.email}
+              onChange={update('email')}
+              onBlur={blur('email')}
+              inputMode="email"
+              maxLength={MAX_EMAIL_LENGTH}
+              autoFocus={!inviteRequired}
+              aria-invalid={Boolean(visibleError('email'))}
+              aria-describedby="signup-email-error"
+            />
+            <p id="signup-email-error" className={forms.error} aria-live="polite">
+              {visibleError('email')}
+            </p>
+          </div>
         </div>
 
-        <div className={forms.field}>
+        <div className={forms.row2}>
           <PasswordInput
             id="signup-password"
             label="Password"
@@ -314,21 +317,21 @@ function SignupPage() {
             autoComplete="new-password"
             describedBy="signup-password-rules"
           />
-          <div id="signup-password-rules">
-            <PasswordStrengthMeter password={values.password} />
-          </div>
+          <PasswordInput
+            id="signup-confirm"
+            label="Confirm password"
+            value={values.confirm}
+            onChange={update('confirm')}
+            onBlur={blur('confirm')}
+            error={visibleError('confirm')}
+            autoComplete="new-password"
+          />
+        </div>
+        <div id="signup-password-rules">
+          <PasswordStrengthMeter password={values.password} />
         </div>
 
-        <PasswordInput
-          id="signup-confirm"
-          label="Confirm password"
-          value={values.confirm}
-          onChange={update('confirm')}
-          onBlur={blur('confirm')}
-          error={visibleError('confirm')}
-          autoComplete="new-password"
-        />
-
+        <div className={forms.actionRow}>
         <div className={forms.field}>
           <label className={forms.checkboxRow}>
             <input
@@ -391,6 +394,7 @@ function SignupPage() {
         >
           {submitting ? 'Creating your vault…' : 'Create vault'}
         </button>
+        </div>
       </form>
 
       {legalTab && (

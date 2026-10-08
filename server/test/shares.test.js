@@ -188,6 +188,18 @@ test('revoke deletes the share and its ciphertext copies; missing shares are a 4
 });
 
 // ---------- limits ----------
+test('the server still accepts lifetimes the interface never offers (hours), within the 30-day cap', async () => {
+  reset();
+  const doc = addDocument();
+  for (const hours of [1, 24 * 14, 24 * 30]) {
+    const r = await call(createShare, { ...owner(), params: { id: String(doc._id) }, body: { durationHours: hours } });
+    assert.equal(r.status, 201, `${hours} h`);
+    assert.ok(Math.abs(new Date(r.json.expiresAt) - (Date.now() + hours * 3600 * 1000)) < 5000);
+  }
+  const over = await call(createShare, { ...owner(), params: { id: String(doc._id) }, body: { durationHours: 24 * 30 + 1 } });
+  assert.equal(over.error?.status, 400);
+});
+
 test('limits: 30-day cap, 21st active share, 20MB per share, 60MB per user', async () => {
   reset();
   const doc = addDocument();

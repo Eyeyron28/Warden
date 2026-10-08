@@ -63,3 +63,26 @@
     margin-right: 0;
   }
 }
+
+/* Desktop landscape: the six boxes span the form column - same width as the other
+   form blocks - as seven equal tracks (3 boxes, a gap, 3 boxes), so every box is the
+   same size and nothing is cut off or wraps at any width from 1024px up. */
+@media (min-width: 1024px) and (orientation: landscape) {
+  [data-auth-shell] .group {
+    max-width: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 0.3fr repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  [data-auth-shell] .afterThird {
+    margin-right: 0;
+  }
+
+  [data-auth-shell] .box:nth-child(4) {
+    grid-column-start: 5;
+  }
+
+  [data-auth-shell] .box {
+    height: 3.25rem;
+  }
+}

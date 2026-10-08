@@ -15,17 +15,9 @@ import { base64UrlToBytes } from '../utils/shareCrypto.js';
 import { KDF_PARAMS, deriveShareSecrets, passwordProblem, randomSalt, toBase64, wrapShareKey } from '../utils/sharePassword.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
-import { getNowDateTimeInputValue } from '../utils/dateInputs.js';
+import { DEFAULT_EXPIRY_DAYS, EXPIRY_PRESET_DAYS, MAX_EXPIRY_DAYS, customDaysProblem, dayLabel, daysToHours } from '../utils/shareExpiry.js';
 import styles from './ShareModal.module.css';
 
-const DURATION_PRESETS = [
-  { label: '1 hour', hours: 1 },
-  { label: '24 hours', hours: 24 },
-  { label: '3 days', hours: 72 },
-  { label: '7 days', hours: 168 },
-];
-const DEFAULT_PRESET = DURATION_PRESETS[3]; // 7 days
-const MAX_EXPIRY_DAYS = 30; // the server's cap too
 
 const MB = 1024 * 1024;
 function formatMb(bytes) {
@@ -66,7 +58,7 @@ function describeExpiry(expiresAtIso) {
 function ShareModal({ documentIds, title, onClose }) {
   const isSingle = documentIds.length === 1;
   const documentId = documentIds[0];
-  const [durationHours, setDurationHours] = useState(DEFAULT_PRESET.hours);
+  const [durationDays, setDurationDays] = useState(DEFAULT_EXPIRY_DAYS);
   const [isCustomExpiry, setIsCustomExpiry] = useState(false);
   const [customExpiry, setCustomExpiry] = useState('');
   const [creating, setCreating] = useState(false);
@@ -144,16 +136,10 @@ function ShareModal({ documentIds, title, onClose }) {
     };
   }, [createdShare]);
 
-  // The endpoint only ever takes durationHours (an offset from now) - a
-  // custom expiry is just that same offset computed from the exact
-  // datetime the owner picked, rather than a fixed preset. No backend
-  // change needed, and fractional hours (e.g. 10 minutes = 1/6 hour) work
-  // fine since the controller only requires a positive finite number.
-  const customExpiryMs = isCustomExpiry && customExpiry ? new Date(customExpiry).getTime() : null;
-  const isCustomExpiryValid =
-    Number.isFinite(customExpiryMs) &&
-    customExpiryMs > Date.now() &&
-    customExpiryMs <= Date.now() + MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+  // The endpoint takes durationHours (an offset from now); the interface only
+  // ever offers whole days (utils/shareExpiry.js), converted here.
+  const customDaysMessage = isCustomExpiry ? customDaysProblem(customExpiry) : '';
+  const isCustomExpiryValid = isCustomExpiry && customDaysMessage === '';
   const maxDownloadsValue = maxDownloadsText.trim() === '' ? null : Number(maxDownloadsText);
   const maxDownloadsProblem =
     maxDownloadsValue !== null && (!Number.isInteger(maxDownloadsValue) || maxDownloadsValue < 1 || maxDownloadsValue > 100)
@@ -171,14 +157,13 @@ function ShareModal({ documentIds, title, onClose }) {
     !emailProblem &&
     !pwProblem;
 
-  const handlePresetClick = (hours) => {
+  const handlePresetClick = (days) => {
     setIsCustomExpiry(false);
-    setDurationHours(hours);
+    setDurationDays(days);
   };
 
   const handleCustomClick = () => {
     setIsCustomExpiry(true);
-    if (!customExpiry) setCustomExpiry(getNowDateTimeInputValue());
   };
 
   const handleGenerate = async () => {
@@ -186,7 +171,7 @@ function ShareModal({ documentIds, title, onClose }) {
     setCreating(true);
     setCreateError('');
     try {
-      const hours = isCustomExpiry ? (customExpiryMs - Date.now()) / (60 * 60 * 1000) : durationHours;
+      const hours = daysToHours(isCustomExpiry ? Number(customExpiry.trim()) : durationDays);
       const options = {};
       if (maxDownloadsValue !== null) options.maxDownloads = maxDownloadsValue;
       if (recipientEmail.trim()) options.recipientEmail = recipientEmail.trim();
@@ -316,15 +301,16 @@ function ShareModal({ documentIds, title, onClose }) {
           <div className={styles.field}>
             <span className={styles.label}>Link expires after</span>
             <div className={styles.presetRow}>
-              {DURATION_PRESETS.map((preset) => (
+              {EXPIRY_PRESET_DAYS.map((days) => (
                 <button
-                  key={preset.hours}
+                  key={days}
                   type="button"
-                  className={`${styles.presetButton} ${!isCustomExpiry && durationHours === preset.hours ? styles.presetActive : ''}`}
-                  onClick={() => handlePresetClick(preset.hours)}
+                  className={`${styles.presetButton} ${!isCustomExpiry && durationDays === days ? styles.presetActive : ''}`}
+                  onClick={() => handlePresetClick(days)}
+                  aria-pressed={!isCustomExpiry && durationDays === days}
                   disabled={creating}
                 >
-                  {preset.label}
+                  {dayLabel(days)}
                 </button>
               ))}
               <button
@@ -340,20 +326,24 @@ function ShareModal({ documentIds, title, onClose }) {
             {isCustomExpiry && (
               <div className={styles.customExpiryField}>
                 <input
-                  type="datetime-local"
+                  id="share-custom-days"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max={MAX_EXPIRY_DAYS}
+                  step="1"
                   className={styles.textInput}
                   value={customExpiry}
                   onChange={(event) => setCustomExpiry(event.target.value)}
-                  min={getNowDateTimeInputValue()}
-                  max={getNowDateTimeInputValue(MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000)}
                   disabled={creating}
-                  aria-label="Custom expiry date and time"
+                  placeholder={`Days (1 to ${MAX_EXPIRY_DAYS})`}
+                  aria-label={`Custom expiry in days, 1 to ${MAX_EXPIRY_DAYS}`}
+                  aria-invalid={Boolean(customDaysMessage)}
+                  aria-describedby="share-custom-days-error"
                 />
-                {customExpiry && !isCustomExpiryValid && (
-                  <p className={styles.fieldError}>
-                    Pick a date and time in the future, within {MAX_EXPIRY_DAYS} days.
-                  </p>
-                )}
+                <p id="share-custom-days-error" className={styles.fieldError} aria-live="polite">
+                  {customExpiry !== '' ? customDaysMessage : ''}
+                </p>
               </div>
             )}
           </div>

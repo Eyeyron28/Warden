@@ -70,3 +70,41 @@
     align-items: start;
   }
 }
+
+/* On the auth screens a desktop landscape window is one full-height scene, so the footer
+   shrinks to a single line there. Everywhere else it is the normal footer. */
+.compactBar {
+  display: none;
+}
+
+@media (min-width: 1024px) and (orientation: landscape) {
+  .compact {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .compact .inner,
+  .compact .bottom {
+    display: none;
+  }
+
+  .compactBar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    font-size: var(--fs-xs);
+    color: var(--color-text-muted);
+  }
+
+  .compactBar nav {
+    display: flex;
+    gap: var(--space-4);
+  }
+
+  .compactBar a {
+    color: inherit;
+    text-underline-offset: 3px;
+  }
+}

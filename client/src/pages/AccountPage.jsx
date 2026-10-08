@@ -135,6 +135,7 @@ function AccountPage() {
       subtitle={accountEmail ? `Signed in as ${accountEmail}.` : undefined}
       dial={step === 'idle' ? undefined : dial}
       wide
+      layout="stacked"
     >
       <div className={styles.stack}>
         <TrustedBrowsers />
@@ -193,7 +194,7 @@ function AccountPage() {
                 label="Master password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
+                autoComplete="off"
                 autoFocus
               />
               <div className={styles.otpActions}>

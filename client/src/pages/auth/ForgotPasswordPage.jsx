@@ -391,13 +391,15 @@ function ForgotPasswordPage() {
             onTouch={touch}
             passwordError={fieldErrors.password}
           />
-          <p className={forms.hint}>
+          <p className={`${forms.hint} ${forms.hintOptional}`}>
             A wrong key changes nothing. After 5 wrong keys this reset session ends and you start again.
           </p>
-          <button type="submit" className={`${site.button} ${site.primary} ${site.block}`} disabled={submitting}>
-            {submitting ? 'Resetting…' : 'Reset password and keep my files'}
-          </button>
-          <div className={styles.otpActions}>{backButton('Back')}</div>
+          <div className={forms.actionRow}>
+            <button type="submit" className={`${site.button} ${site.primary} ${site.block}`} disabled={submitting}>
+              {submitting ? 'Resetting…' : 'Reset password and keep my files'}
+            </button>
+            {backButton('Back')}
+          </div>
         </form>
       </AuthLayout>
     );
@@ -485,10 +487,12 @@ function ForgotPasswordPage() {
             onTouch={touch}
             passwordError={fieldErrors.password}
           />
-          <button type="submit" className={`${site.button} ${site.danger} ${site.block}`} disabled={submitting}>
-            {submitting ? 'Erasing and resetting…' : 'Erase my vault and set this password'}
-          </button>
-          <div className={styles.otpActions}>{backButton('Back')}</div>
+          <div className={forms.actionRow}>
+            <button type="submit" className={`${site.button} ${site.danger} ${site.block}`} disabled={submitting}>
+              {submitting ? 'Erasing and resetting…' : 'Erase my vault and set this password'}
+            </button>
+            {backButton('Back')}
+          </div>
         </form>
       </AuthLayout>
     );
@@ -504,6 +508,7 @@ function ForgotPasswordPage() {
       >
         <form className={forms.form} onSubmit={handleKeyOnly} noValidate>
           {alert}
+        <div className={forms.row2}>
           <div className={forms.field}>
             <label htmlFor="keyonly-email" className={forms.label}>
               Email
@@ -532,6 +537,7 @@ function ForgotPasswordPage() {
             onBlur={() => touch('key')}
             touched={touched.key}
           />
+        </div>
           <NewPasswordFields
             idPrefix="keyonly"
             password={password}
@@ -542,13 +548,15 @@ function ForgotPasswordPage() {
             onTouch={touch}
             passwordError={fieldErrors.password}
           />
-          <p className={forms.hint}>
+          <p className={`${forms.hint} ${forms.hintOptional}`}>
             Wrong guesses are limited and slow down. We’ll email the account to say the password was changed.
           </p>
-          <button type="submit" className={`${site.button} ${site.primary} ${site.block}`} disabled={submitting}>
-            {submitting ? 'Resetting…' : 'Reset password and keep my files'}
-          </button>
-          <div className={styles.otpActions}>{backButton('Back')}</div>
+          <div className={forms.actionRow}>
+            <button type="submit" className={`${site.button} ${site.primary} ${site.block}`} disabled={submitting}>
+              {submitting ? 'Resetting…' : 'Reset password and keep my files'}
+            </button>
+            {backButton('Back')}
+          </div>
         </form>
       </AuthLayout>
     );

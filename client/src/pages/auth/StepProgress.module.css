@@ -67,6 +67,16 @@
   white-space: nowrap;
 }
 
+@media (min-width: 1024px) and (orientation: landscape) {
+  .progress {
+    margin-bottom: var(--space-4);
+  }
+
+  .step {
+    padding-top: var(--space-2);
+  }
+}
+
 @media (max-width: 420px) {
   /* Only the current label on a phone, so three steps fit without squeezing. */
   .step:not(.current) .label {

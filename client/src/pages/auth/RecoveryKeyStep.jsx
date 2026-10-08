@@ -54,7 +54,13 @@ function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Cont
           Your recovery key
         </p>
         <p className={styles.key} aria-labelledby="recovery-key-label">
-          {recoveryKey}
+          {/* One group per cell on a desktop window; the dashes stay in the text, so a selection or a copy is still the whole key. */}
+          {recoveryKey.split('-').map((group, index, groups) => (
+            <span key={index} className={styles.keyGroup}>
+              {group}
+              {index < groups.length - 1 ? '-' : ''}
+            </span>
+          ))}
         </p>
         <div className={styles.keyActions}>
           <button type="button" className={`${site.button} ${site.ghost}`} onClick={handleCopy}>
@@ -66,7 +72,7 @@ function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Cont
             Download .txt
           </button>
         </div>
-        <p className={forms.hint} role="status" aria-live="polite">
+        <p className={`${forms.hint} ${styles.copyStatus}`} role="status" aria-live="polite">
           {copyStatus}
         </p>
       </div>
