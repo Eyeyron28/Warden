@@ -135,7 +135,7 @@ async function destroySession(token) {
 
 /**
  * Deletes every session belonging to one account - called after a
- * password reset (POST /api/auth/reset-password) so a stolen session
+ * password reset (utils/accountReset.js finishReset) so a stolen session
  * token from before the reset stops working immediately, same spirit as
  * destroySession but for every device at once rather than just the
  * caller's own.

@@ -148,7 +148,7 @@ const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices',
+  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
 };
 
 function createWorld() {
@@ -182,6 +182,7 @@ function installMailer(world) {
   stubModule(path.join(__dirname, '..', '..', 'utils', 'email'), {
     ...real,
     sendEmail: async (message) => {
+      if (world.sendDelayMs) await new Promise((resolve) => setTimeout(resolve, world.sendDelayMs));
       world.mails.push(message);
       return true;
     },
@@ -189,7 +190,7 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files } = {}) {
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, ip = '203.0.113.9' } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
@@ -200,7 +201,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, query, secure, files }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure, files, ip }, res, (err) => { out.error = err; });
   return out;
 }
 

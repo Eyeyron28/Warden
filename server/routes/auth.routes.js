@@ -1,5 +1,14 @@
 const express = require('express');
 const { inviteGate } = require('../utils/inviteGate');
+const {
+  startReset,
+  resendResetCode,
+  verifyResetCode,
+  resetWithRecoveryKey,
+  resetWithWipe,
+  resetWithRecoveryKeyOnly,
+  goneResetLink,
+} = require('../controllers/passwordReset.controller');
 const router = express.Router();
 
 const {
@@ -11,8 +20,6 @@ const {
   verifyOtp,
   resendOtp,
   getMe,
-  forgotPassword,
-  resetPassword,
   recoverViaUsb,
   recoverViaPhoneInit,
   recoverViaPhoneStatus,
@@ -74,13 +81,42 @@ router.post(
   resendOtp
 );
 router.get('/me', requireSession, getMe);
+// Forgot password: an emailed 6-digit code, then a single-use ticket, then a
+// choice (recovery key, or start over). See controllers/passwordReset.controller.js.
+// The start step is limited per IP and per email, and counted the same way for
+// addresses that have no account.
 router.post(
-  '/forgot-password',
-  createRateLimiter({ name: 'forgot-password-ip', max: 10, windowMs: 60 * 60 * 1000 }),
-  createRateLimiter({ name: 'forgot-password-email', max: 5, windowMs: 60 * 60 * 1000, keyFn: byEmail }),
-  forgotPassword
+  '/password-reset/start',
+  createRateLimiter({ name: 'password-reset-ip', max: 10, windowMs: 60 * 60 * 1000 }),
+  createRateLimiter({ name: 'password-reset-email', max: 5, windowMs: 60 * 60 * 1000, keyFn: byEmail }),
+  startReset
 );
-router.post('/reset-password', resetPassword);
+router.post(
+  '/password-reset/resend',
+  createRateLimiter({ name: 'password-reset-code-ip', max: 20, windowMs: 15 * 60 * 1000 }),
+  resendResetCode
+);
+router.post(
+  '/password-reset/verify',
+  createRateLimiter({ name: 'password-reset-code-ip', max: 20, windowMs: 15 * 60 * 1000 }),
+  verifyResetCode
+);
+router.post(
+  '/password-reset/with-recovery-key',
+  createRateLimiter({ name: 'password-reset-ticket-ip', max: 20, windowMs: 15 * 60 * 1000 }),
+  resetWithRecoveryKey
+);
+router.post(
+  '/password-reset/start-over',
+  createRateLimiter({ name: 'password-reset-ticket-ip', max: 20, windowMs: 15 * 60 * 1000 }),
+  resetWithWipe
+);
+// "Try another way": the recovery key alone, no email. Its own strict failure
+// limits live in the controller (per email and per IP, with growing delays).
+router.post('/password-reset/recovery-key-only', resetWithRecoveryKeyOnly);
+// The old emailed-link flow is gone; anything still calling it gets a plain 410.
+router.post('/forgot-password', goneResetLink);
+router.post('/reset-password', goneResetLink);
 
 // None of these take requireSession - recovering access is exactly what
 // happens when there's no session to have. /recover-via-phone/submit is

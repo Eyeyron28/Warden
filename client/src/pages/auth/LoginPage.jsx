@@ -176,6 +176,18 @@ function LoginPage() {
       }
     >
       <form className={forms.form} onSubmit={handleSubmit} noValidate>
+        {location.state?.passwordReset && (
+          <div className={forms.notice} role="status">
+            <Icon name="check" />
+            <p>
+              <strong>Your password was changed.</strong>{' '}
+              {location.state.passwordReset === 'wiped'
+                ? 'Your vault was erased and replaced with a new, empty one. '
+                : 'Your documents were kept. '}
+              Everyone was signed out. Log in with your new password; we’ll email you a code as usual.
+            </p>
+          </div>
+        )}
         <div role="alert" aria-live="assertive">
           {problem?.kind === 'locked' && locked && (
             <div className={forms.alert}>

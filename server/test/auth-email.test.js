@@ -39,7 +39,7 @@ stub('../utils/email', {
   },
 });
 
-const { signup, resendVerification, forgotPassword } = require('../controllers/auth.controller');
+const { signup, resendVerification } = require('../controllers/auth.controller');
 
 const PASSWORD = 'Tk9$Lantern-Orbit%57';
 
@@ -145,7 +145,6 @@ test('signup for an already-registered address keeps the same response shape and
 
 for (const [label, handler, generic] of [
   ['resend-verification', resendVerification, 'If this account exists and is not yet verified, a new link has been sent.'],
-  ['forgot-password', forgotPassword, 'If this account exists and is verified, a password reset link has been sent.'],
 ]) {
   test(`${label}: hostile addresses get the generic response and trigger nothing`, async () => {
     reset();
@@ -174,7 +173,7 @@ for (const [label, handler, generic] of [
   });
 }
 
-test('resend-verification and forgot-password still work for a valid address', async () => {
+test('resend-verification still works for a valid address', async () => {
   const saves = [];
   reset({
     emailVerified: false,
@@ -186,10 +185,4 @@ test('resend-verification and forgot-password still work for a valid address', a
   assert.equal(calls.mails.length, 1);
   assert.equal(calls.mails[0].to, 'real.user@example.com');
   assert.equal(saves.length, 1);
-
-  reset({ emailVerified: true, save: async () => saves.push('saved') });
-  const forgot = await run(forgotPassword, { email: 'real.user@example.com' });
-  assert.equal(forgot.status, 200);
-  assert.equal(calls.mails.length, 1);
-  assert.equal(calls.mails[0].to, 'real.user@example.com');
 });

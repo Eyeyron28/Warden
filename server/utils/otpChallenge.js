@@ -29,7 +29,7 @@ const {
  * challenge never involves the vault key at all).
  */
 
-const PURPOSES = { login: 'login', deleteAccount: 'delete-account' };
+const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset' };
 
 const MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
 const MAX_RESENDS = 3; // per challenge
@@ -54,6 +54,17 @@ const emailNotSent = () => httpError(503, 'We couldn’t send the code email. Pl
 
 function emailFor(purpose, code, ttlMinutes) {
   const expires = `It expires in ${ttlMinutes} minute${ttlMinutes === 1 ? '' : 's'}.`;
+  if (purpose === PURPOSES.passwordReset) {
+    return {
+      subject: 'Your Warden password reset code',
+      text:
+        `Your Warden password reset code is ${code}.
+
+${expires} ` +
+        "If you didn't ask to reset your Warden password, ignore this email: your password has not changed. " +
+        'Never share this code with anyone.',
+    };
+  }
   if (purpose === PURPOSES.deleteAccount) {
     return {
       subject: 'Your Warden account deletion code',
@@ -71,6 +82,15 @@ function emailFor(purpose, code, ttlMinutes) {
       'but consider changing your password.',
   };
 }
+
+// How long a real send takes (smoothed), so the look-alike made for an address
+// with no account can wait about as long and the two cannot be told apart by timing.
+let sendMs = null;
+const noteSendDuration = (ms) => {
+  sendMs = sendMs === null ? ms : sendMs * 0.7 + ms * 0.3;
+};
+const expectedSendMs = () => (sendMs === null ? (process.env.SMTP_HOST ? 700 : 0) : sendMs);
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 function payload(challenge, challengeKey) {
   return {
@@ -99,7 +119,7 @@ function spendEmailBudget(userId) {
  *   `secret` is what the challengeKey wraps (the DEK for logins).
  * @returns the payload to hand to the browser
  */
-async function startChallenge({ user, secret, purpose }) {
+async function startChallenge({ user, secret, purpose, decoy = false }) {
   const ttlMinutes = otpTtlMinutes();
   if (!(await spendEmailBudget(user._id))) throw tooManyEmails();
 
@@ -112,6 +132,7 @@ async function startChallenge({ user, secret, purpose }) {
   const challenge = await OtpChallenge.create({
     userId: user._id,
     purpose,
+    decoy,
     codeHash: hashCode(salt, code),
     salt,
     lastSentAt: now,
@@ -121,11 +142,18 @@ async function startChallenge({ user, secret, purpose }) {
     expiresAt: new Date(now.getTime() + ttlMinutes * 60 * 1000),
   });
 
+  if (decoy) {
+    // Nothing is sent and the code is thrown away; only the time is matched.
+    await wait(expectedSendMs() * (0.85 + Math.random() * 0.3));
+    return payload(challenge, challengeKey);
+  }
   const message = emailFor(purpose, code, ttlMinutes);
+  const startedAt = Date.now();
   if (!(await sendEmail({ to: user.email, ...message }))) {
     await OtpChallenge.deleteOne({ _id: challenge._id });
     throw emailNotSent();
   }
+  noteSendDuration(Date.now() - startedAt);
   return payload(challenge, challengeKey);
 }
 
@@ -215,7 +243,7 @@ async function resendChallenge({ challengeToken, purpose, userId, findUser }) {
     });
   }
 
-  const user = await findUser(challenge.userId);
+  const user = challenge.decoy ? { _id: challenge.userId } : await findUser(challenge.userId);
   if (!user) throw failure();
   if (!(await spendEmailBudget(user._id))) throw tooManyEmails();
 
@@ -239,13 +267,20 @@ async function resendChallenge({ challengeToken, purpose, userId, findUser }) {
   );
   if (!updated) throw failure();
 
+  if (challenge.decoy) {
+    await wait(expectedSendMs() * (0.85 + Math.random() * 0.3));
+    return payload(updated, parsed.challengeKey);
+  }
+  const startedAt = Date.now();
   if (!(await sendEmail({ to: user.email, ...emailFor(purpose, code, ttlMinutes) }))) throw emailNotSent();
+  noteSendDuration(Date.now() - startedAt);
   return payload(updated, parsed.challengeKey);
 }
 
 module.exports = {
   PURPOSES,
   FAILURE_MESSAGE,
+  expectedSendMs,
   startChallenge,
   consumeChallenge,
   resendChallenge,

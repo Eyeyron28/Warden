@@ -316,6 +316,20 @@ function generateRecoveryKey() {
 }
 
 /**
+ * A recovery key as typed or pasted -> the canonical `XXXX-XXXX-XXXX-XXXX` the key
+ * was generated and hashed in, or null if it cannot be one. Spaces, dashes and
+ * letter case do not matter ("abcd efgh-ijkm npqr" works), nothing else is
+ * forgiven: a wrong character is wrong.
+ */
+function normalizeRecoveryKey(input) {
+  if (typeof input !== 'string' || input.length > 100) return null;
+  const compact = input.replace(/[\s-]+/g, '').toUpperCase();
+  if (compact.length !== 16) return null;
+  for (const char of compact) if (!RECOVERY_KEY_ALPHABET.includes(char)) return null;
+  return compact.match(/.{4}/g).join('-');
+}
+
+/**
  * Hashes a recovery key for storage, in the same spirit as
  * `hashPassword`. Unlike `hashPassword`, the salt isn't stored in its
  * own field on the User model - there's only a single `recoveryKeyHash`
@@ -364,6 +378,7 @@ module.exports = {
   wrapKey,
   unwrapKey,
   generateRecoveryKey,
+  normalizeRecoveryKey,
   hashRecoveryKey,
   verifyRecoveryKey,
 };

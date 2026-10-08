@@ -1,0 +1,78 @@
+.progress {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: 2px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.current {
+  border-top-color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.done {
+  border-top-color: var(--color-accent);
+}
+
+.marker {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.current .marker {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.done .marker {
+  color: var(--color-accent);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  /* Only the current label on a phone, so three steps fit without squeezing. */
+  .step:not(.current) .label {
+    display: none;
+  }
+  .step.current {
+    flex: 3 1 0;
+  }
+}

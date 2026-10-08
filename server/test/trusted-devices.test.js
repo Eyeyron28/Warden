@@ -196,9 +196,10 @@ test('password reset / wipe (all sessions) and account deletion remove every tru
   await deleteAccountData(ben._id, { transaction: false });
   assert.equal(world.tables.trusteddevices.length, 0);
 
-  const source = fs.readFileSync(path.join(__dirname, '..', 'controllers', 'auth.controller.js'), 'utf8');
-  const resetBody = source.slice(source.indexOf('const resetPassword'), source.indexOf('const recoverViaUsb'));
-  assert.match(resetBody, /destroyAllSessionsForUser/);
+  const source = fs.readFileSync(path.join(__dirname, '..', 'utils', 'accountReset.js'), 'utf8');
+  const finish = source.slice(source.indexOf('async function finishReset'));
+  assert.match(finish, /destroyAllSessionsForUser/);
+  assert.match(finish, /revokeAllTrustedDevices/);
 });
 
 test('a trusted browser still needs a fresh code for deleting the account, phone recovery and share emails', async () => {

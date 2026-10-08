@@ -27,7 +27,7 @@ export const LIMITS = [
   {
     title: 'Your email account',
     body:
-      'Login codes and password-reset links are sent to your email address. Whoever can read your mailbox can receive them, so keep your email account as well protected as your vault.',
+      'Login, password-reset and account-deletion codes are sent to your email address. Whoever can read your mailbox can receive them, so keep your email account as well protected as your vault.',
   },
   {
     title: 'Share links',

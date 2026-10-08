@@ -36,17 +36,6 @@ const userSchema = new mongoose.Schema(
       required: false,
     },
 
-    // Password-reset token (POST /api/auth/forgot-password /
-    // reset-password) - same hash-only, single-use, expiring pattern.
-    resetTokenHash: {
-      type: String,
-      required: false,
-    },
-    resetTokenExpiresAt: {
-      type: Date,
-      required: false,
-    },
-
     // Hash of the master password (never the password itself).
     passwordHash: {
       type: String,
@@ -105,9 +94,8 @@ const userSchema = new mongoose.Schema(
 
     // SHA-256 of the DEK itself (utils/crypto.js fingerprintDEK), set once
     // at signup and never changed since the DEK itself never changes. Lets
-    // a password reset without the recovery key (POST /api/auth/
-    // reset-password, no recoveryKey given) recognize that it's about to
-    // create a brand-new DEK and wipe the old one's documents, and lets
+    // a password reset check that a recovery key (or a phone's copy)
+    // really opens THIS account's vault before anything is rewritten, and lets
     // POST /api/backup/import refuse a backup that belongs to a different
     // account before writing anything.
     dekFingerprint: {

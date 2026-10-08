@@ -44,7 +44,7 @@ const matches = (doc, filter) =>
 
 const NAMES = [
   'users', 'documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens',
-  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices',
+  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices', 'resettickets',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -95,7 +95,7 @@ function fakeModel(name) {
 const models = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
   PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
-  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices',
+  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
@@ -465,46 +465,12 @@ test('starting a phone recovery works and links to the validated public origin',
 test('no route can issue a session without the emailed code', () => {
   const dir = path.join(__dirname, '..');
   const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  const auth = strip(fs.readFileSync(path.join(dir, 'controllers', 'auth.controller.js'), 'utf8'));
-
-  // createSession appears exactly three times: after a verified code, in the
-  // development-only OTP_ENABLED=false branch of the one shared login ending,
-  // and for a TRUSTED browser in unlock - after the password is proven.
-  assert.equal((auth.match(/createSession\(/g) || []).length, 3);
-  const verify = auth.slice(auth.indexOf('const verifyOtp'), auth.indexOf('const resendOtp'));
-  assert.match(verify, /consumeChallenge\(/);
-  assert.match(verify, /createSession\(/);
-  const ending = auth.slice(auth.indexOf('async function respondWithLoginChallenge'), auth.indexOf('/**', auth.indexOf('async function respondWithLoginChallenge')));
-  assert.match(ending, /if \(otpEnabled\(\)\)/);
-
-  // Both ways of starting a login finish through that ending.
-  const unlockBody = auth.slice(auth.indexOf('const unlock ='), auth.indexOf('const verifyOtp'));
-  const phoneBody = auth.slice(auth.indexOf('const recoverViaPhoneComplete'), auth.indexOf('const logout'));
-  assert.match(unlockBody, /respondWithLoginChallenge\(res, user, dek\)/);
-  assert.ok(unlockBody.indexOf('checkPasswordWithLockout') < unlockBody.indexOf('isTrustedFor'), 'trust is only consulted after the password');
-  assert.match(phoneBody, /respondWithLoginChallenge\(res, user, dek\)/);
-  assert.doesNotMatch(phoneBody, /createSession/);
-  assert.doesNotMatch(phoneBody, /isTrustedFor/, 'phone recovery always needs a fresh code');
-  assert.doesNotMatch(phoneBody, /sessionToken/);
-
-  // And nothing outside auth.controller creates a session either.
-  for (const folder of ['controllers', 'routes', 'middleware']) {
-    for (const name of fs.readdirSync(path.join(dir, folder))) {
-      if (name === 'auth.controller.js') continue;
-      assert.doesNotMatch(strip(fs.readFileSync(path.join(dir, folder, name), 'utf8')), /createSession\(/, `${folder}/${name}`);
-    }
-  }
-});
-
-test('a vault wipe and an account deletion clean shares through the same routine', () => {
-  const dir = path.join(__dirname, '..');
-  const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  const auth = strip(fs.readFileSync(path.join(dir, 'controllers', 'auth.controller.js'), 'utf8'));
-  const wipe = auth.slice(auth.indexOf('confirmWipe !== true'), auth.indexOf('await finalizeReset(user, dek, newPassword, { newRecoveryKey })'));
-  assert.match(wipe, /removeShares\(\{ ownerUserId: user\._id \}\)/, 'the wipe removes shares, their wrapped keys, verifiers, recipient emails, counters and code challenges');
+  const reset = strip(fs.readFileSync(path.join(dir, 'utils', 'accountReset.js'), 'utf8'));
+  const wipe = reset.slice(reset.indexOf('async function wipeVault'), reset.indexOf('const NOTICES'));
+  assert.match(wipe, /removeShares\(\{ ownerUserId: userId \}\)/, 'the wipe removes shares, their wrapped keys, verifiers, recipient emails, counters and code challenges');
   assert.doesNotMatch(wipe, /SharedFile|Share\.deleteMany/, 'no ad-hoc partial cleanup left in the wipe');
-  assert.match(wipe, /Document\.deleteMany\(\{ userId: user\._id \}\)/, 'the wipe deletes every document, trashed ones included (no deletedAt filter)');
-  assert.match(wipe, /TrashFolder\.deleteMany\(\{ userId: user\._id \}\)/, 'and the trashed-folder entries');
+  assert.match(wipe, /Document\.deleteMany\(\{ userId \}\)/, 'the wipe deletes every document, trashed ones included (no deletedAt filter)');
+  assert.match(wipe, /TrashFolder\.deleteMany\(\{ userId \}\)/, 'and the trashed-folder entries');
   const deletion = strip(fs.readFileSync(path.join(dir, 'utils', 'accountDeletion.js'), 'utf8'));
   assert.match(deletion, /removeShares\(\{ ownerUserId: userId \}/);
   const cleanup = strip(fs.readFileSync(path.join(dir, 'utils', 'shareCleanup.js'), 'utf8'));

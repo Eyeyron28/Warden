@@ -19,7 +19,7 @@ export const SECTIONS = [
         <ul>
           <li>
             <strong>Your email address</strong>, to identify your account and send verification and
-            password-reset links.
+            verification links and one-time codes (login, password reset and account deletion), and to tell you when your password was changed.
           </li>
           <li>
             <strong>A password hash</strong> (scrypt, salted). We never store your password itself.
@@ -60,7 +60,7 @@ export const SECTIONS = [
             browser), a short label such as &quot;Chrome on Windows&quot; from the browser&apos;s user-agent, and when
             it was added and last used. No IP address is stored. It lets that browser skip the emailed code, never
             the password, and expires after 30 days. You can remove one or all of them on the Account page; they
-            are also removed when you reset your password, wipe your vault or delete your account.
+            are also removed when you reset your password (by any route), wipe your vault or delete your account.
           </li>
           <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per

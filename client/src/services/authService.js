@@ -101,30 +101,54 @@ export async function getMe() {
   return data;
 }
 
+// ---- Forgot password: emailed code -> single-use ticket -> recovery key or start over ----
+// Tickets, codes, recovery keys and passwords only ever pass through here in memory.
+
 /**
- * POST /api/auth/forgot-password - always the same generic response.
+ * POST /api/auth/password-reset/start - the same answer for every address. It
+ * carries a code challenge (a decoy for an address with no account).
  * @param {string} email
- * @returns {Promise<{ message: string }>}
+ * @returns {Promise<{ message: string, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
  */
-export async function forgotPassword(email) {
-  const { data } = await api.post('/auth/forgot-password', { email });
+export async function requestPasswordReset(email) {
+  const { data } = await api.post('/auth/password-reset/start', { email });
+  return data;
+}
+
+/** POST /api/auth/password-reset/resend - a new code for the same challenge. */
+export async function resendPasswordResetCode(challengeToken) {
+  const { data } = await api.post('/auth/password-reset/resend', { challengeToken });
   return data;
 }
 
 /**
- * POST /api/auth/reset-password
- * @param {{ token: string, newPassword: string, recoveryKey?: string, confirmWipe?: boolean }} params
- * @returns {Promise<{ message: string, recoveryKey?: string, documentsWiped?: boolean }>}
- *   `recoveryKey` is present only on the no-recovery-key (wipe) path - a
- *   brand-new one, since the old one no longer unwraps anything meaningful.
+ * POST /api/auth/password-reset/verify - a correct code buys a single-use ticket
+ * (never a session).
+ * @returns {Promise<{ resetTicket: string, expiresAt: string }>}
  */
-export async function resetPassword({ token, newPassword, recoveryKey, confirmWipe }) {
-  const { data } = await api.post('/auth/reset-password', {
-    token,
-    newPassword,
-    recoveryKey,
-    confirmWipe,
-  });
+export async function verifyPasswordResetCode(challengeToken, code) {
+  const { data } = await api.post('/auth/password-reset/verify', { challengeToken, code });
+  return data;
+}
+
+/** POST /api/auth/password-reset/with-recovery-key - keeps the vault. */
+export async function resetPasswordWithRecoveryKey({ resetTicket, recoveryKey, newPassword }) {
+  const { data } = await api.post('/auth/password-reset/with-recovery-key', { resetTicket, recoveryKey, newPassword });
+  return data;
+}
+
+/**
+ * POST /api/auth/password-reset/start-over - erases the vault and starts a new one.
+ * @returns {Promise<{ recoveryKey: string, documentsWiped: true }>} the NEW recovery key, shown once
+ */
+export async function resetPasswordStartOver({ resetTicket, confirmEmail, newPassword }) {
+  const { data } = await api.post('/auth/password-reset/start-over', { resetTicket, confirmEmail, newPassword });
+  return data;
+}
+
+/** POST /api/auth/password-reset/recovery-key-only - "Try another way": no email code, vault kept. */
+export async function resetPasswordWithRecoveryKeyOnly({ email, recoveryKey, newPassword }) {
+  const { data } = await api.post('/auth/password-reset/recovery-key-only', { email, recoveryKey, newPassword });
   return data;
 }
 

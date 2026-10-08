@@ -1,10 +1,6 @@
 const crypto = require('crypto');
 
 const User = require('../models/User');
-const Document = require('../models/Document');
-const Folder = require('../models/Folder');
-const TrashFolder = require('../models/TrashFolder');
-const { removeShares } = require('../utils/shareCleanup');
 const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
   generateSalt,
@@ -17,7 +13,6 @@ const {
   unwrapKey,
   generateRecoveryKey,
   hashRecoveryKey,
-  verifyRecoveryKey,
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
 const { assertInviteCode, signupMode, requestAccessText } = require('../utils/inviteGate');
@@ -27,24 +22,21 @@ const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
 const { otpEnabled } = require('../utils/otpConfig');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
+const { finalizeReset, extractRecoverySalt } = require('../utils/accountReset');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
 const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const RESET_TOKEN_BYTES = 32;
-const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const RECOVERY_REQUEST_TOKEN_BYTES = 32;
 const RECOVERY_REQUEST_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes, same as PairingToken
 
 // Same text for every outcome of these two endpoints - an unknown email, an
 // already-verified one, a malformed one and a real send all look identical.
 const RESEND_GENERIC_MESSAGE = 'If this account exists and is not yet verified, a new link has been sent.';
-const FORGOT_GENERIC_MESSAGE =
-  'If this account exists and is verified, a password reset link has been sent.';
 
-// /phone and /verify-email and /reset-password are React Router routes
+// /phone and /verify-email are React Router routes
 // served by Vite, not this Express app - links built here have to point
 // there, never at this API's own port. PUBLIC_APP_URL (set in production/
 // Vercel) takes priority; resolveLanIp + this fixed dev port is the local-
@@ -129,25 +121,6 @@ function invalidVerificationTokenError() {
   const error = new Error('This verification link is invalid or has expired.');
   error.status = 404;
   return error;
-}
-
-function invalidResetTokenError() {
-  const error = new Error('This password reset link is invalid or has expired.');
-  error.status = 404;
-  return error;
-}
-
-function wrongRecoveryKeyError() {
-  const error = new Error('Incorrect recovery key.');
-  error.status = 401;
-  return error;
-}
-
-// The recovery key's own salt isn't stored in a separate field - it's
-// embedded in recoveryKeyHash as `${salt}:${hash}` (see hashRecoveryKey)
-// and doubles as the salt used to derive the recovery-key KEK.
-function extractRecoverySalt(recoveryKeyHash) {
-  return recoveryKeyHash.split(':')[0];
 }
 
 // Deliberately generic and identical whether the token never existed,
@@ -555,195 +528,6 @@ const getMe = asyncHandler(async (req, res) => {
 });
 
 /**
- * POST /api/auth/forgot-password
- * Body: { email }
- * Always the same generic response - identical whether the account
- * doesn't exist, exists but isn't verified yet (an unverified account has
- * no password worth resetting - the owner should verify first), or
- * genuinely gets an email.
- */
-const forgotPassword = asyncHandler(async (req, res) => {
-  const { email } = req.body;
-  if (typeof email !== 'string') {
-    throw badRequest('email is required.');
-  }
-  const normalizedEmail = normalizeRecipient(email);
-  if (!normalizedEmail) {
-    return res.status(200).json({ message: FORGOT_GENERIC_MESSAGE });
-  }
-
-  const user = await User.findOne({ email: normalizedEmail });
-  if (user && user.emailVerified) {
-    const resetToken = crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
-    user.resetTokenHash = hashToken(resetToken);
-    user.resetTokenExpiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
-    await user.save();
-
-    const appUrl = resolvePublicAppUrl(req);
-    const resetUrl = appUrl ? `${appUrl}/reset-password?token=${resetToken}` : null;
-    await sendEmail({
-      to: normalizedEmail,
-      subject: 'Reset your Warden password',
-      text:
-        `Reset your password:\n${resetUrl || `Reset code: ${resetToken}`}\n\n` +
-        'This link expires in 30 minutes. If you have your recovery key, enter it during reset to keep your ' +
-        'existing documents. Without it, resetting will permanently delete them and start a brand-new, empty vault.',
-    });
-  }
-
-  res.status(200).json({
-    message: FORGOT_GENERIC_MESSAGE,
-  });
-});
-
-/**
- * Shared final step of a password reset: re-wrap `dek` under a freshly-
- * derived password KEK and replace wrappedDEKPassword/passwordHash/salt,
- * clear the reset token, and clear any active lockout. If `newRecoveryKey`
- * is given, also replaces recoveryKeyHash/wrappedDEKRecovery - used only
- * by the no-recovery-key wipe path below, where the OLD recovery key
- * would otherwise keep "working" while actually unwrapping a DEK that no
- * longer corresponds to anything (see reset-password).
- *
- * Callers MUST have already verified `dek` is correct for this account
- * before calling this (or, for the wipe path, generated it fresh
- * themselves) - this function only writes.
- */
-async function finalizeReset(user, dek, newPassword, { newRecoveryKey } = {}) {
-  const newSalt = generateSalt();
-  const newPasswordHash = hashPassword(newPassword, newSalt);
-  const newPasswordKek = deriveEncryptionKey(newPassword, newSalt);
-  const rewrappedPassword = wrapKey(dek, newPasswordKek);
-
-  user.salt = newSalt;
-  user.passwordHash = newPasswordHash;
-  user.wrappedDEKPassword = rewrappedPassword.wrappedKey;
-  user.wrappedDEKPasswordIv = rewrappedPassword.iv;
-  user.wrappedDEKPasswordAuthTag = rewrappedPassword.authTag;
-
-  if (newRecoveryKey) {
-    const recoveryKeyHash = hashRecoveryKey(newRecoveryKey);
-    const recoverySalt = extractRecoverySalt(recoveryKeyHash);
-    const recoveryKek = deriveEncryptionKey(newRecoveryKey, recoverySalt);
-    const wrappedRecovery = wrapKey(dek, recoveryKek);
-
-    user.recoveryKeyHash = recoveryKeyHash;
-    user.wrappedDEKRecovery = wrappedRecovery.wrappedKey;
-    user.wrappedDEKRecoveryIv = wrappedRecovery.iv;
-    user.wrappedDEKRecoveryAuthTag = wrappedRecovery.authTag;
-  }
-
-  user.dekFingerprint = fingerprintDEK(dek);
-  user.failedAttempts = 0;
-  user.lockedUntil = undefined;
-  user.resetTokenHash = undefined;
-  user.resetTokenExpiresAt = undefined;
-  await user.save();
-}
-
-/**
- * POST /api/auth/reset-password
- * Body: { token, newPassword, recoveryKey?, confirmWipe? }
- *
- * token must be a live, unexpired forgot-password token - this is what
- * proves email ownership; it is never enough on its own to unwrap the DEK.
- *
- * - recoveryKey given: verify-before-write, exactly like the old
- *   POST /api/auth/recover - unwrap the DEK with it (which also proves
- *   the key itself is correct), confirm its fingerprint actually matches
- *   this account (defense in depth - should be unreachable, since
- *   wrappedDEKRecovery is this same account's own field), THEN re-wrap
- *   under the new password. Every existing document stays decryptable.
- * - recoveryKey omitted: the email link proves ownership of the inbox
- *   only, never the DEK - this path cannot preserve existing documents,
- *   so it requires confirmWipe: true, generates a brand-new DEK (and a
- *   brand-new recovery key, shown once in the response - the old one
- *   would otherwise silently stop meaning anything), and permanently
- *   deletes every document and folder marker on the account.
- *
- * Either way, every existing session for this account is destroyed
- * afterward - a stolen session token from before the reset stops working
- * immediately.
- */
-const resetPassword = asyncHandler(async (req, res) => {
-  const { token, newPassword, recoveryKey, confirmWipe } = req.body;
-
-  if (!token || typeof token !== 'string') {
-    throw badRequest('A reset token is required.');
-  }
-  if (!newPassword || typeof newPassword !== 'string') {
-    throw badRequest('A new password is required.');
-  }
-  if (recoveryKey !== undefined && typeof recoveryKey !== 'string') {
-    throw badRequest('recoveryKey must be a string.');
-  }
-  if (confirmWipe !== undefined && typeof confirmWipe !== 'boolean') {
-    throw badRequest('confirmWipe must be a boolean.');
-  }
-
-  const { valid, errors } = validatePassword(newPassword);
-  if (!valid) {
-    throw passwordPolicyError(errors);
-  }
-
-  const user = await User.findOne({ resetTokenHash: hashToken(token) });
-  if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt.getTime() <= Date.now()) {
-    throw invalidResetTokenError();
-  }
-
-  let responseExtra = {};
-
-  if (recoveryKey) {
-    const isValid = verifyRecoveryKey(recoveryKey, user.recoveryKeyHash);
-    if (!isValid) {
-      // Nothing written - the account's password/DEK wraps are untouched.
-      throw wrongRecoveryKeyError();
-    }
-
-    const recoverySalt = extractRecoverySalt(user.recoveryKeyHash);
-    const recoveryKek = deriveEncryptionKey(recoveryKey, recoverySalt);
-    const dek = unwrapKey(
-      user.wrappedDEKRecovery,
-      recoveryKek,
-      user.wrappedDEKRecoveryIv,
-      user.wrappedDEKRecoveryAuthTag
-    );
-    if (fingerprintDEK(dek) !== user.dekFingerprint) {
-      throw dekMismatchError();
-    }
-
-    await finalizeReset(user, dek, newPassword);
-  } else {
-    if (confirmWipe !== true) {
-      throw badRequest(
-        'Resetting without your recovery key permanently deletes your existing documents. ' +
-          'Resend with confirmWipe: true to proceed, or provide your recovery key instead to keep them.'
-      );
-    }
-
-    const dek = generateDEK();
-    const newRecoveryKey = generateRecoveryKey();
-
-    // Everything in Trash goes too: trashed documents are documents, and the
-    // trashed-folder entries that group them are removed with them.
-    await Document.deleteMany({ userId: user._id });
-    await TrashFolder.deleteMany({ userId: user._id });
-    await Folder.deleteMany({ userId: user._id });
-    // Shares are snapshots of the old vault; a wipe should not leave copies
-    // reachable by link, nor any of their wrapped keys, verifiers, recipient
-    // emails, counters, access sessions or code challenges.
-    await removeShares({ ownerUserId: user._id });
-
-    await finalizeReset(user, dek, newPassword, { newRecoveryKey });
-    responseExtra = { recoveryKey: newRecoveryKey, documentsWiped: true };
-  }
-
-  await destroyAllSessionsForUser(user._id);
-
-  res.status(200).json({ message: 'Password reset. Please log in.', ...responseExtra });
-});
-
-/**
  * POST /api/auth/recover-via-usb
  * TEMPORARILY DISABLED. This flow used to resolve "the" account with a
  * singleton User.findOne() - there is no longer a single account to fall
@@ -940,8 +724,6 @@ module.exports = {
   getPublicConfig,
   unlock,
   getMe,
-  forgotPassword,
-  resetPassword,
   recoverViaUsb,
   recoverViaPhoneInit,
   recoverViaPhoneStatus,

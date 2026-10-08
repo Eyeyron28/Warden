@@ -47,7 +47,7 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Recovery is checked before anything changes',
-    body: 'A password reset with your recovery key, or approved from your paired phone, proves it unlocks your exact vault before any password or key is rewritten.',
+    body: 'Forgot your password? An emailed 6-digit code starts the reset, and your recovery key is what keeps the vault: it is checked against your exact vault before any password or key is rewritten. Without the recovery key, the reset erases the vault and starts a new, empty one. The recovery key alone can also reset the password, with no email, under strict limits. A paired phone can still approve a reset too.',
   },
 ];
 

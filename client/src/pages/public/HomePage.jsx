@@ -47,7 +47,7 @@ const COMPARISON = [
   {
     question: 'If you forget your password',
     drive: 'Reset by email; your files are untouched.',
-    warden: 'Use your recovery key or paired phone and nothing is lost. Lose both, and an email reset starts you on a new, empty vault.',
+    warden: 'An emailed code starts the reset; your recovery key (or paired phone) keeps everything. Without the key, the reset erases the vault and starts a new, empty one.',
   },
 ];
 
@@ -55,7 +55,7 @@ const RECOVERY = [
   {
     icon: 'key',
     title: 'Recovery key',
-    body: 'Sixteen characters shown once, when you sign up. It unlocks your vault so you can set a new password.',
+    body: 'Sixteen characters shown once, when you sign up. After an emailed code, it unlocks your vault so you can set a new password and keep everything. It can also reset the password on its own, with no email.',
   },
   {
     icon: 'phone',
@@ -64,8 +64,8 @@ const RECOVERY = [
   },
   {
     icon: 'mail',
-    title: 'Email reset, last resort',
-    body: 'Proves the inbox is yours, not the vault. You get a new, empty vault; the old files stay unreadable.',
+    title: 'Emailed code, no recovery key',
+    body: 'The code proves the inbox is yours, not the vault. Without the recovery key the reset erases the vault and you start a new, empty one; the old files stay unreadable.',
   },
 ];
 
@@ -75,12 +75,15 @@ const FAQ_ITEMS = [
     answer: (
       <>
         <p>
-          Request a reset link, then enter your recovery key on the reset page, or approve the reset from your
-          paired phone. Either way your documents stay exactly as they were.
+          Choose &quot;Forgot password&quot; and we email a 6-digit code. After you enter it, give your recovery
+          key and a new password: your documents stay exactly as they were. You can also approve the reset from
+          a paired phone.
         </p>
         <p>
-          Without the recovery key or a paired phone, the reset link can still get you back into your account,
-          but only with a new, empty vault. Nobody, including us, can decrypt the old one.
+          If you can&apos;t get the email, &quot;Try another way&quot; resets with the recovery key alone.
+          Without the recovery key, you can still get back into your account, but the reset erases your vault
+          (files, folders, Trash, shares and paired phones) and starts a new, empty one with a new recovery key.
+          Nobody, including us, can decrypt the old one.
         </p>
       </>
     ),

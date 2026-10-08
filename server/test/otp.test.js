@@ -189,7 +189,7 @@ test('the stored challenge has no plaintext code, no challengeKey and no usable 
   assert.ok(!stored.includes(user.dek.toString('hex')) && !stored.includes(user.dek.toString('base64')), 'no plaintext DEK');
   assert.deepEqual(
     Object.keys(world.challenges[0]).sort(),
-    ['_id', 'attempts', 'codeHash', 'expiresAt', 'lastSentAt', 'purpose', 'resendCount', 'salt', 'userId', 'wrappedDek', 'wrappedDekAuthTag', 'wrappedDekIv'].sort()
+    ['_id', 'attempts', 'codeHash', 'decoy', 'expiresAt', 'lastSentAt', 'purpose', 'resendCount', 'salt', 'userId', 'wrappedDek', 'wrappedDekAuthTag', 'wrappedDekIv'].sort()
   );
   // The wrapped key does not open with anything the database holds.
   const c = world.challenges[0];

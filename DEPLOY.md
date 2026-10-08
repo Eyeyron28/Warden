@@ -110,6 +110,7 @@ Run this on the real URL, with a throwaway email address you control.
 7. [ ] **Preview** the PDF; download it and check the name and extension.
 8. [ ] **Share** the PDF with a password. Open the link in a **private window**, enter the password, view and download.
 9. [ ] Move a file to **Trash**, then **restore** it.
+   - **Forgot password:** on the login page choose "Forgot password", enter the email: a 6-digit code arrives. Enter it, choose "I have my recovery key", enter the key you saved and a new password: you land on the login page with a success message and a notification email arrives (no links in it). Log in with the new password and the emailed code; your files are still there. (Use a throwaway account: the other choice, "I don't have my recovery key", erases the vault.)
 10. [ ] **Delete the account** (password, emailed code, type your email). You get a confirmation email and cannot log in again.
 
 ## 10. Limits to know about (Vercel Hobby)

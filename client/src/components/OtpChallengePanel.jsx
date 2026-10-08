@@ -42,6 +42,7 @@ export function readChallenge(data) {
  *   trustOption?: boolean,                   // show "Trust this browser for 30 days" (login only)
  *   submitLabel?: string,
  *   busyLabel?: string,
+ *   footer?: import('react').ReactNode,        // under the boxes (e.g. "Try another way")
  * }} props
  */
 function OtpChallengePanel({
@@ -55,6 +56,7 @@ function OtpChallengePanel({
   trustOption = false,
   submitLabel = 'Verify and continue',
   busyLabel = 'Checking…',
+  footer = null,
 }) {
   const [challenge, setChallenge] = useState(() => readChallenge(initialChallenge));
   const [digits, setDigits] = useState(emptyDigits);
@@ -219,6 +221,7 @@ function OtpChallengePanel({
         </button>
       </div>
       <p className={forms.hint}>Didn’t get it? Check your spam folder.</p>
+      {footer}
     </form>
   );
 }
