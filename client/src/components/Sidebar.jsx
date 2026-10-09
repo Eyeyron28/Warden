@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
-  ArrowsClockwise,
+  DownloadSimple,
   CaretDoubleLeft,
   CaretDoubleRight,
   CaretDown,
@@ -140,23 +140,25 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           {label('Trash')}
         </NavLink>
 
+        <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export')}>
+          <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
+          {label('Export')}
+        </NavLink>
+
         {rail ? (
-          <Link onClick={closeDrawer} to="/files?panel=backup" className={styles.item} {...tipFor('Backup & devices')}>
-            <ArrowsClockwise size={ICON} weight="regular" aria-hidden="true" />
-            <span className={styles.srOnly}>Backup &amp; devices</span>
+          <Link onClick={closeDrawer} to="/files?panel=devices" className={styles.item} {...tipFor('Devices')}>
+            <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
+            <span className={styles.srOnly}>Devices</span>
           </Link>
         ) : (
           <div className={styles.group}>
             <button type="button" className={styles.item} onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}>
-              <ArrowsClockwise size={ICON} weight="regular" aria-hidden="true" />
-              <span className={styles.itemLabel}>Backup &amp; devices</span>
+              <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
+              <span className={styles.itemLabel}>Devices</span>
               <CaretDown size={14} weight="bold" className={moreOpen ? '' : styles.caretClosed} />
             </button>
             {moreOpen && (
               <div className={styles.children}>
-                <Link onClick={closeDrawer} to="/files?panel=backup" className={styles.childItem}>Backup to USB</Link>
-                <Link onClick={closeDrawer} to="/files?panel=restore" className={styles.childItem}>Restore from backup</Link>
-                <Link onClick={closeDrawer} to="/files?panel=previews" className={styles.childItem}>Generate previews</Link>
                 <Link onClick={closeDrawer} to="/files?panel=pair" className={styles.childItem}>
                   <DeviceMobile size={14} aria-hidden="true" /> Pair a device
                 </Link>

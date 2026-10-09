@@ -146,6 +146,21 @@ export async function putThumbnail(id, thumb) {
 }
 
 /**
+ * POST /api/documents/:id/thumbnail-failed - records that a preview could not be made, so the
+ * file is not tried again on every run. `reason` is one of the server's fixed codes.
+ */
+export async function markThumbnailFailed(id, reason, kind) {
+  const { data } = await api.post(`/documents/${id}/thumbnail-failed`, { reason, kind });
+  return data;
+}
+
+/** POST /api/documents/thumbnails/retry - forget recorded preview failures ("Try again"). */
+export async function retryFailedThumbnails() {
+  const { data } = await api.post('/documents/thumbnails/retry');
+  return data;
+}
+
+/**
  * GET /api/documents/:id/view - decrypts server-side and streams the file
  * back. Returns the raw blob plus the filename/content-type the server
  * reported, so the caller can open or save it.

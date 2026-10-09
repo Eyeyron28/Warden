@@ -517,7 +517,7 @@ test('every query that serves the vault is filtered to non-trashed documents', (
   for (const [, call] of docs.matchAll(/Document\.(?:find|findOne|exists|countDocuments)\(\{([^}]*)\}/g)) {
     assert.match(call, /deletedAt/, `documents.controller query without deletedAt: ${call}`);
   }
-  for (const file of [['controllers', 'sync.controller.js'], ['controllers', 'backup.controller.js'], ['controllers', 'shares.controller.js']]) {
+  for (const file of [['controllers', 'sync.controller.js'], ['controllers', 'shares.controller.js']]) {
     const text = read(...file);
     for (const [, call] of text.matchAll(/Document\.(?:find|findOne|aggregate)\(\[?\{([^}]*\{[^}]*\}[^}]*|[^}]*)\}/g)) {
       assert.match(call, /deletedAt/, `${file.join('/')} query without deletedAt: ${call}`);

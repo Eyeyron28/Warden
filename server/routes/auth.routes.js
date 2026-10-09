@@ -20,7 +20,6 @@ const {
   verifyOtp,
   resendOtp,
   getMe,
-  recoverViaUsb,
   recoverViaPhoneInit,
   recoverViaPhoneStatus,
   recoverViaPhoneSubmit,
@@ -122,7 +121,6 @@ router.post('/reset-password', goneResetLink);
 // happens when there's no session to have. /recover-via-phone/submit is
 // the one exception, since that request comes from the ALREADY-paired
 // phone (authenticated with its own deviceToken), not the locked-out PC.
-router.post('/recover-via-usb', recoverViaUsb);
 router.post('/recover-via-phone/init', recoverViaPhoneInit);
 router.get('/recover-via-phone/status/:token', recoverViaPhoneStatus);
 router.post('/recover-via-phone/submit', requireDeviceAuth, recoverViaPhoneSubmit);

@@ -1,0 +1,125 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 760px;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+.title {
+  font-size: var(--fs-xl);
+  letter-spacing: -0.01em;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-raised);
+}
+
+.heading {
+  font-size: var(--fs-lg);
+}
+
+.text {
+  max-width: 62ch;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.small {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.warning {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-wash);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
+}
+
+.primary,
+.secondary {
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary {
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.secondary {
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.progressBlock,
+.summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.bar {
+  width: 100%;
+  max-width: 420px;
+  height: 8px;
+  accent-color: var(--color-accent);
+}
+
+.failures {
+  width: 100%;
+  font-size: var(--fs-sm);
+}
+
+.failures summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.failures ul {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.25em;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.failures strong {
+  color: var(--color-text);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

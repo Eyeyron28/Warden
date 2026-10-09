@@ -139,17 +139,3 @@ test('cron route: absent without CRON_SECRET, 401 without the right bearer token
     server.close();
   }
 });
-
-test('drive backup is switched off in production (no server paths on a hosted server)', async () => {
-  const { exportBackup, importBackup } = require('../controllers/backup.controller');
-  const saved = { v: process.env.VERCEL, n: process.env.NODE_ENV };
-  process.env.VERCEL = '1';
-  try {
-    for (const handler of [exportBackup, importBackup]) {
-      const status = await new Promise((resolve) => handler({ body: { targetPath: '/tmp/x', sourcePath: '/tmp/x' }, userId: 'u' }, {}, (err) => resolve(err && err.status)));
-      assert.equal(status, 501);
-    }
-  } finally {
-    if (saved.v === undefined) delete process.env.VERCEL; else process.env.VERCEL = saved.v;
-  }
-});

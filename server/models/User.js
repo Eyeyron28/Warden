@@ -95,9 +95,7 @@ const userSchema = new mongoose.Schema(
     // SHA-256 of the DEK itself (utils/crypto.js fingerprintDEK), set once
     // at signup and never changed since the DEK itself never changes. Lets
     // a password reset check that a recovery key (or a phone's copy)
-    // really opens THIS account's vault before anything is rewritten, and lets
-    // POST /api/backup/import refuse a backup that belongs to a different
-    // account before writing anything.
+    // really opens THIS account's vault before anything is rewritten.
     dekFingerprint: {
       type: String,
       required: true,

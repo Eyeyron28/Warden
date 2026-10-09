@@ -20,4 +20,16 @@ function sniffImageType(buffer) {
   return 'none';
 }
 
-module.exports = { IMAGE_TYPES, sniffImageType };
+/**
+ * What kind of PREVIEW a file can have, from its bytes: 'image' (png, jpeg, gif,
+ * webp), 'pdf', or 'none'. SVG, HEIC and everything else are 'none': the browser
+ * cannot be trusted to draw them safely or at all.
+ */
+function sniffPreviewKind(buffer) {
+  if (!Buffer.isBuffer(buffer)) return 'none';
+  if (sniffImageType(buffer) !== 'none') return 'image';
+  if (buffer.toString('latin1', 0, Math.min(buffer.length, 1024)).includes('%PDF-')) return 'pdf';
+  return 'none';
+}
+
+module.exports = { IMAGE_TYPES, sniffImageType, sniffPreviewKind };

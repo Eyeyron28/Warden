@@ -210,7 +210,7 @@ test('every place that names a download goes through the shared rules', () => {
   const docs = fs.readFileSync(path.join(root, 'controllers', 'documents.controller.js'), 'utf8');
   assert.match(docs, /contentDisposition\(downloadName\(document\.filename, plaintext\)\)/);
   assert.doesNotMatch(docs, /filename\*=UTF-8''\$\{encodeURIComponent\(document\.filename\)\}/, 'no unsanitised header left');
-  for (const file of ['controllers/sync.controller.js', 'controllers/backup.controller.js', 'controllers/documents.controller.js']) {
+  for (const file of ['controllers/sync.controller.js', 'controllers/documents.controller.js']) {
     assert.match(fs.readFileSync(path.join(root, file), 'utf8'), /cleanStoredName\(/, file);
   }
 });

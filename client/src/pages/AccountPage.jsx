@@ -161,12 +161,12 @@ function AccountPage() {
               </p>
               <p className={styles.dangerBody}>
                 <strong>Deleted:</strong> your documents and their previews, your folders, every share link and its
-                encrypted copies, your paired devices&apos; access, your backup records, your login codes, trusted
+                encrypted copies, your paired devices&apos; access, your login codes, trusted
                 browsers and sessions, and the account itself (email, password hash and locked keys).
               </p>
               <p className={styles.dangerBody}>
                 <strong>Not deleted, because we don&apos;t hold it:</strong> emails we already sent you, files you
-                downloaded, backups you saved to a drive, and the offline copy on a phone you paired (clear that
+                downloaded (including any zip you made with Export, which is not encrypted), and the offline copy on a phone you paired (clear that
                 phone&apos;s browser data yourself).
               </p>
               <button

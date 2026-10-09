@@ -6,7 +6,7 @@ import styles from './Modal.module.css';
 
 /**
  * Generic overlay dialog: backdrop, Esc-to-close, click-outside-to-close.
- * Used for every page-level action (upload, backup, restore, pairing,
+ * Used for every page-level action (upload, pairing,
  * paired devices) and per-item ones (sharing) so nothing ever pushes the
  * document list down or renders inline in the page body.
  */

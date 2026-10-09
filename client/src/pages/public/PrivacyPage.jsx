@@ -159,15 +159,20 @@ export const SECTIONS = [
           one-time code we email you, and by typing your account email.
         </p>
         <p>
+          <strong>Export:</strong> &quot;Export my files&quot; builds a zip inside your browser, from the same authenticated downloads
+          you could make one at a time, and saves it to your device. We do not see or keep the zip. It is not encrypted, so
+          anyone who gets the file can open it.
+        </p>
+        <p>
           Deleting is permanent and immediate. It removes your documents (including anything in Trash) and their previews, your folders, every share
-          link and its encrypted copies, your paired devices, your backup records, any pending login or deletion
+          link and its encrypted copies, your paired devices, any pending login or deletion
           codes, your sessions, and the account itself (email, password hash and locked keys). We keep no copy and
           cannot recover any of it, and we send you an email confirming it. Our logs record only that an account was
           deleted, with no email address or content.
         </p>
         <p>
-          Deletion cannot reach what is not on our servers: emails we already sent, files you downloaded, backups you
-          saved to your own drive, and the offline copy on a phone you paired (this browser&apos;s copy is cleared
+          Deletion cannot reach what is not on our servers: emails we already sent, files you downloaded or
+          exported yourself, and the offline copy on a phone you paired (this browser&apos;s copy is cleared
           automatically; clear a phone&apos;s browser data yourself). If you cannot use the Account page, email{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from the address on the account.
         </p>

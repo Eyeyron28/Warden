@@ -126,24 +126,42 @@ async function fromPdf(file) {
  * @returns {Promise<Blob|null>} a WebP/JPEG thumbnail of at most ~30KB, or null
  */
 export async function generateThumbnail(file, { name } = {}) {
-  try {
-    const kind = thumbnailKind(name ?? file.name, file.type);
-    if (!kind || file.size > THUMB_SOURCE_MAX_BYTES) return null;
+  const kind = thumbnailKind(name ?? file.name, file.type);
+  if (!kind) return null;
+  return (await thumbnailResult(file, kind)).blob ?? null;
+}
 
-    const work = kind === 'pdf' ? fromPdf(file) : fromImage(file);
-    let timer;
-    const timeout = new Promise((resolve) => {
-      timer = setTimeout(() => resolve(null), GENERATION_TIMEOUT_MS);
-    });
-    try {
-      return await Promise.race([work, timeout]);
-    } finally {
-      clearTimeout(timer);
-      // If the timeout won, the abandoned work may still reject later.
-      work.catch(() => {});
-    }
+/**
+ * Draws a thumbnail for a file whose KIND is already known (decided from its bytes by the
+ * caller, not from a name) and says WHY when it cannot: never throws.
+ *
+ * @param {Blob|File} file the plaintext file
+ * @param {'image'|'pdf'} kind
+ * @returns {Promise<{ blob: Blob } | { reason: 'too-large'|'decode-failed'|'timeout'|'too-big-result' }>}
+ */
+export async function thumbnailResult(file, kind) {
+  if (file.size > THUMB_SOURCE_MAX_BYTES) return { reason: 'too-large' };
+  let work;
+  try {
+    work = kind === 'pdf' ? fromPdf(file) : fromImage(file);
   } catch {
-    // Corrupt/unsupported/encrypted file: no thumbnail, upload carries on.
-    return null;
+    return { reason: 'decode-failed' };
+  }
+  let timer;
+  const TIMED_OUT = Symbol('timeout');
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), GENERATION_TIMEOUT_MS);
+  });
+  try {
+    const outcome = await Promise.race([work, timeout]);
+    if (outcome === TIMED_OUT) return { reason: 'timeout' };
+    return outcome ? { blob: outcome } : { reason: 'too-big-result' };
+  } catch {
+    // Corrupt, unsupported or encrypted file.
+    return { reason: 'decode-failed' };
+  } finally {
+    clearTimeout(timer);
+    // If the timeout won, the abandoned work may still reject later.
+    work.catch(() => {});
   }
 }

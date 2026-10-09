@@ -528,26 +528,6 @@ const getMe = asyncHandler(async (req, res) => {
 });
 
 /**
- * POST /api/auth/recover-via-usb
- * TEMPORARILY DISABLED. This flow used to resolve "the" account with a
- * singleton User.findOne() - there is no longer a single account to fall
- * back to, and the USB backup manifest it reads from doesn't carry enough
- * identity (email/userId) to resolve one safely. Redesigning the backup
- * manifest format to carry that was explicitly deferred alongside the
- * rest of the USB-backup-on-Vercel work (it has the same server-local-
- * filesystem problem as backup export/import). Disabled outright rather
- * than left reachable against an arbitrary account.
- */
-const recoverViaUsb = asyncHandler(async () => {
-  const error = new Error(
-    'USB-backup recovery is temporarily unavailable while Warden moves to multi-user accounts - it needs a ' +
-      'redesign to identify which account a backup belongs to. Use "Forgot password" with your recovery key instead.'
-  );
-  error.status = 501;
-  throw error;
-});
-
-/**
  * POST /api/auth/recover-via-phone/init
  * Body: { email }
  * No session required - the whole point is recovering access when the
@@ -724,7 +704,6 @@ module.exports = {
   getPublicConfig,
   unlock,
   getMe,
-  recoverViaUsb,
   recoverViaPhoneInit,
   recoverViaPhoneStatus,
   recoverViaPhoneSubmit,

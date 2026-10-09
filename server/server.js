@@ -20,7 +20,7 @@ const { assertOtpConfig, otpEnabled, otpTtlMinutes } = require('./utils/otpConfi
 const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
 const syncRoutes = require('./routes/sync.routes');
-const backupRoutes = require('./routes/backup.routes');
+const removedRoutes = require('./routes/removed.routes');
 const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.routes');
 const sharedViewRoutes = require('./routes/sharedView.routes');
 const pairingRoutes = require('./routes/pairing.routes');
@@ -140,6 +140,8 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
+// Removed features answer 410 (before the real routers, so nothing else handles them).
+app.use('/api', removedRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/documents', documentSharesRoutes);
@@ -148,7 +150,6 @@ app.use('/api/shares', shareTokenRoutes);
 // see routes/sharedView.routes.js.
 app.use('/api/shared', sharedViewRoutes);
 app.use('/api/sync', syncRoutes);
-app.use('/api/backup', backupRoutes);
 app.use('/api/pair', pairingRoutes);
 // Deliberately mounted with no requireSession anywhere in its chain -
 // see routes/pairComplete.routes.js.

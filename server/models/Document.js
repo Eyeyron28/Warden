@@ -57,8 +57,8 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Which client originally created/uploaded this document. "restored"
-    // means it arrived via backup import rather than a direct upload.
+    // Which client originally created/uploaded this document. ("restored" is
+    // kept in the list for rows made when drive backups existed.)
     originDevice: {
       type: String,
       enum: ['pc', 'phone', 'restored'],
@@ -96,6 +96,13 @@ const documentSchema = new mongoose.Schema(
     // (older files; the Photos endpoint classifies them on demand). This - not
     // the file name or the mimeType the browser claimed - decides what shows in Photos.
     sniffedType: { type: String, default: null },
+    // What kind of preview the bytes allow: 'image', 'pdf' or 'none'; null = not known yet
+    // (older files and phone uploads; the browser sniffs them when it makes previews).
+    previewKind: { type: String, enum: ['image', 'pdf', 'none', null], default: null },
+    // A preview that could not be made is recorded, so the same file is not tried again on
+    // every run: when, and a short reason code (see PREVIEW_FAILURE_REASONS in utils/thumbnails.js).
+    thumbFailedAt: { type: Date, default: null },
+    thumbFailReason: { type: String, default: null },
     // Trash (soft delete). A trashed document keeps its encrypted data until it
     // is restored or purged. deletedAt marks it trashed; purgeAt is when it is
     // removed for good (TTL index below); trashBatchId groups documents that were

@@ -46,6 +46,9 @@ export const SECTIONS = [
           phone, the only way back into your account is an emailed-code reset that erases the vault and starts a new, empty one. Your old documents
           cannot be decrypted by anyone.
         </p>
+        <p>
+          A zip you make with Export is an ordinary, unencrypted copy of your files. Looking after it is up to you.
+        </p>
         <p>Use a real email address you control. One account per person.</p>
       </>
     ),

@@ -23,9 +23,7 @@ import { useShell } from '../components/ShellContext.js';
 import UploadForm from '../components/UploadForm.jsx';
 import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
-import BackupPanel from '../components/BackupPanel.jsx';
-import PreviewsPanel from '../components/PreviewsPanel.jsx';
-import RestorePanel from '../components/RestorePanel.jsx';
+import PreviewsNotice from '../components/PreviewsNotice.jsx';
 import Modal from '../components/Modal.jsx';
 import PairDevicePanel from '../components/PairDevicePanel.jsx';
 import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
@@ -48,11 +46,11 @@ import {
   listFolders,
   moveItems,
 } from '../services/documentsService.js';
-import { getBackupStatus, exportBackup, importBackup } from '../services/backupService.js';
+import { usePreviewGenerator } from '../utils/usePreviewGenerator.js';
 import { extractErrorMessage } from '../services/api.js';
 import { invalidateThumbnail } from '../services/thumbnailCache.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
-import { formatDate, formatDateTime } from '../utils/formatDate.js';
+import { formatDate } from '../utils/formatDate.js';
 import { SORT_OPTIONS, formatBytes, sortItems } from '../utils/listing.js';
 import { uploadFitsMessage } from '../utils/storageUsage.js';
 import { useSelection } from '../utils/useSelection.js';
@@ -73,7 +71,7 @@ import styles from './FilePages.module.css';
 // already clears it, and the route guard is about to unmount this page.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-const PANELS = ['backup', 'restore', 'previews', 'pair', 'devices'];
+const PANELS = ['pair', 'devices'];
 
 const expiryLabel = (days) => (days === 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}`);
 
@@ -126,14 +124,6 @@ function FilesPage() {
   const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
   const folderInputRef = useRef(null);
 
-  const [backupStatus, setBackupStatus] = useState(null);
-  const [backupSubmitting, setBackupSubmitting] = useState(false);
-  const [backupError, setBackupError] = useState('');
-  const [backupResult, setBackupResult] = useState(null);
-  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
-  const [restoreError, setRestoreError] = useState('');
-  const [restoreResult, setRestoreResult] = useState(null);
-
   const refresh = useCallback(async () => {
     setLoading(true);
     setListError('');
@@ -155,19 +145,10 @@ function FilesPage() {
     refreshSidebar();
   }, [refreshSidebar]);
 
-  const refreshBackupStatus = useCallback(async () => {
-    try {
-      setBackupStatus(await getBackupStatus());
-    } catch {
-      // Informational only.
-    }
-  }, []);
-
   useEffect(() => {
     refresh();
-    refreshBackupStatus();
     refreshFolders();
-  }, [refresh, refreshBackupStatus, refreshFolders]);
+  }, [refresh, refreshFolders]);
 
   const setCurrentPath = useCallback(
     (path, { replace = false } = {}) => {
@@ -331,8 +312,26 @@ function FilesPage() {
   // ---- thumbnails ----
   const markThumbnailAdded = useCallback((id) => {
     invalidateThumbnail(id);
-    setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasThumb: true } : doc)));
+    setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasThumb: true, thumbFailed: false, thumbFailReason: null } : doc)));
   }, []);
+
+  // Background previews (opt-in): a made preview shows at once, a failed one is remembered so it is not retried.
+  const previews = usePreviewGenerator({
+    documents,
+    onResult: (result) => {
+      if (result.status === 'done') {
+        markThumbnailAdded(result.id);
+      } else {
+        setDocuments((prev) =>
+          prev.map((doc) =>
+            doc.id === result.id
+              ? { ...doc, thumbFailed: true, thumbFailReason: result.reason, previewKind: result.reason === 'unsupported-type' ? 'none' : doc.previewKind }
+              : doc
+          )
+        );
+      }
+    },
+  });
 
   // The preview just decrypted this file: if it has no thumbnail yet, draw one
   // from those same bytes. Silent and best-effort.
@@ -563,51 +562,12 @@ function FilesPage() {
     refreshFolders();
   };
 
-  // ---- panels (?panel=backup etc., linked from the sidebar) ----
+  // ---- panels (?panel=pair and ?panel=devices, linked from the sidebar) ----
   const closePanel = () => {
     const next = new URLSearchParams(params);
     next.delete('panel');
     setParams(next, { replace: true });
   };
-  const closeBackup = () => {
-    closePanel();
-    setBackupError('');
-    setBackupResult(null);
-  };
-  const closeRestore = () => {
-    closePanel();
-    setRestoreError('');
-    setRestoreResult(null);
-  };
-
-  const handleBackupExport = async (targetPath, usbPassphrase) => {
-    setBackupSubmitting(true);
-    setBackupError('');
-    try {
-      const result = await exportBackup(targetPath, usbPassphrase);
-      setBackupResult(result);
-      setBackupStatus({ lastBackupAt: result.timestamp, documentCount: result.documentsBackedUp, backupPath: result.backupPath });
-    } catch (err) {
-      setBackupError(extractErrorMessage(err, 'Backup failed.'));
-    } finally {
-      setBackupSubmitting(false);
-    }
-  };
-
-  const handleRestoreImport = async (sourcePath) => {
-    setRestoreSubmitting(true);
-    setRestoreError('');
-    try {
-      setRestoreResult(await importBackup(sourcePath));
-      await refresh();
-      refreshFolders();
-    } catch (err) {
-      setRestoreError(extractErrorMessage(err, 'Restore failed.'));
-    } finally {
-      setRestoreSubmitting(false);
-    }
-  };
-
   // ---- menus: one set of actions for the "..." button, right-click, long-press and Shift+F10 ----
   const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
 
@@ -701,10 +661,6 @@ function FilesPage() {
     setContextMenu({ x: event.clientX, y: event.clientY, opener: null, label: 'New', items: backgroundMenuItems() });
   };
 
-  const backupStatusLine = backupStatus?.lastBackupAt
-    ? `Last backup: ${formatDateTime(backupStatus.lastBackupAt)} · ${backupStatus.documentCount} document${backupStatus.documentCount === 1 ? '' : 's'}`
-    : '';
-
   const emptyHere = !loading && !vaultIsEmpty && items.length === 0;
 
   return (
@@ -754,7 +710,7 @@ function FilesPage() {
         </div>
       )}
 
-      {backupStatusLine && selection.count === 0 && <p className={styles.retention}>{backupStatusLine}</p>}
+      {selection.count === 0 && <PreviewsNotice generator={previews} documents={documents} onRetried={refresh} />}
       {actionError && <p className={styles.banner} role="alert">{actionError}</p>}
       {listError && <p className={styles.banner} role="alert">{listError}</p>}
 
@@ -900,21 +856,6 @@ function FilesPage() {
         </Modal>
       )}
 
-      {panel === 'backup' && (
-        <Modal title="Backup to USB" onClose={closeBackup}>
-          <BackupPanel onSubmit={handleBackupExport} onCancel={closeBackup} submitting={backupSubmitting} error={backupError} result={backupResult} />
-        </Modal>
-      )}
-      {panel === 'previews' && (
-        <Modal title="Generate previews" onClose={closePanel}>
-          <PreviewsPanel documents={documents} onThumbnailAdded={markThumbnailAdded} onClose={closePanel} />
-        </Modal>
-      )}
-      {panel === 'restore' && (
-        <Modal title="Restore from backup" onClose={closeRestore}>
-          <RestorePanel onSubmit={handleRestoreImport} onCancel={closeRestore} submitting={restoreSubmitting} error={restoreError} result={restoreResult} />
-        </Modal>
-      )}
       {panel === 'pair' && (
         <Modal title="Pair a device" onClose={closePanel}>
           <PairDevicePanel onClose={closePanel} />

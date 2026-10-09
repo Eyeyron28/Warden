@@ -73,7 +73,19 @@ function restoreThumbnail(record) {
   return { thumbCipher: bytes, thumbIv, thumbAuthTag, thumbMime };
 }
 
+// Why a preview could not be made. Reported by the browser that tried; the server only
+// stores a code from this list (anything else is refused), never free text.
+const PREVIEW_FAILURE_REASONS = Object.freeze([
+  'unsupported-type', // not an image or PDF the browser may draw (SVG, HEIC, documents...)
+  'decode-failed', // looked like one, but is corrupt or cannot be decoded
+  'too-large', // over the 4MB the previews work on
+  'too-big-result', // could not be shrunk under the thumbnail size limit
+  'timeout', // took too long to draw
+  'download-failed', // the file itself could not be fetched or decrypted
+]);
+
 module.exports = {
+  PREVIEW_FAILURE_REASONS,
   MAX_THUMB_BYTES,
   encryptThumbnail,
   decryptThumbnail,

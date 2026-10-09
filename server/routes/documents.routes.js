@@ -17,6 +17,8 @@ const {
   viewDocument,
   getThumbnail,
   putThumbnail,
+  markThumbnailFailed,
+  retryFailedThumbnails,
   deleteDocument,
   listPhotos,
   getStorage,
@@ -89,6 +91,8 @@ router.post('/move', moveItems);
 router.get('/:id/view', viewDocument);
 router.get('/:id/thumbnail', getThumbnail);
 router.put('/:id/thumbnail', handleUpload, putThumbnail);
+router.post('/thumbnails/retry', retryFailedThumbnails);
+router.post('/:id/thumbnail-failed', markThumbnailFailed);
 router.patch('/:id', updateDocument);
 
 module.exports = router;

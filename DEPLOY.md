@@ -94,7 +94,7 @@ Never put these values in the repository, in screenshots or in chat. `server/.en
 
 - **A bad deployment:** Vercel, **Deployments**, pick the last good one, open its menu, **Promote to Production** (Instant Rollback). The static files, the function and the cron schedule go back together.
 - **A bad environment variable:** fix it under Environment Variables and **Redeploy**.
-- **Data:** Vercel does not roll the database back, and Atlas M0 has no automatic backups. Download anything important from the app before risky changes.
+- **Data:** Vercel does not roll the database back, and Atlas M0 has no automatic backups. Use **Export** in the app (a zip of all your files, built in your browser) before risky changes.
 - **Users stuck on an old page:** the app's service worker replaces itself on every deployment and shows a "New version available" bar; one reload gets the new version. (A browser still running the very first service worker version needs two reloads, once.)
 
 ## 9. Post-deploy smoke test
@@ -121,7 +121,7 @@ Figures are from Vercel's documentation, read on 2026-10-07; limits change, so r
 - **Duration:** with Fluid compute, Hobby has a 300 s default and maximum. Warden sets 30 s in `vercel.json`, far above a login (one scrypt derivation takes well under a second) or any other operation here.
 - **Memory:** 2 GB and 1 vCPU on Hobby. Uploads are processed in memory.
 - **Cron:** once per day at most, with up to an hour of scheduling slack ([usage and limits](https://vercel.com/docs/cron-jobs/usage-and-pricing)). Cron calls carry `Authorization: Bearer <CRON_SECRET>` ([managing cron jobs](https://vercel.com/docs/cron-jobs/manage-cron-jobs)).
-- **No disk or memory shared between requests.** Sessions, rate limits, trusted browsers, login challenges and shares all live in MongoDB. The app's USB backup and restore need a local disk and a path on the server, so the server turns them off in production (they answer 501); download files from the app instead.
+- **No disk or memory shared between requests.** Sessions, rate limits, trusted browsers, login challenges and shares all live in MongoDB. Drive backup and restore were removed (they needed a path on the server's own disk); the old URLs answer 410. **Export** builds a zip in the browser instead, and **Import** adds a zip back through the normal upload (so the same 4 MB and storage limits apply).
 - **Atlas M0:** 512 MB of storage and a connection cap (500). Warden holds at most 5 connections per function instance.
 - **Client IP:** Vercel overwrites `X-Forwarded-For` with the real client address ([request headers](https://vercel.com/docs/headers/request-headers)). Warden trusts exactly one proxy hop, so the rate limiter counts per real visitor and a forged header gains nothing.
 

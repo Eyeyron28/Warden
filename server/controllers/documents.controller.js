@@ -6,7 +6,7 @@ const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
 const { encryptFile, decryptFile } = require('../utils/crypto');
-const { encryptThumbnail, decryptThumbnail, hasThumbnail } = require('../utils/thumbnails');
+const { encryptThumbnail, decryptThumbnail, hasThumbnail, PREVIEW_FAILURE_REASONS } = require('../utils/thumbnails');
 const {
   httpError,
   parentOf,
@@ -24,7 +24,7 @@ const {
   listFolderPaths,
   deleteFolderTree,
 } = require('../utils/folders');
-const { sniffImageType, IMAGE_TYPES } = require('../utils/sniff');
+const { sniffImageType, sniffPreviewKind, IMAGE_TYPES } = require('../utils/sniff');
 const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
 const Folder = require('../models/Folder');
 
@@ -115,6 +115,10 @@ function toListSummary(doc, sharedIds = null) {
     size: doc.size ?? (Buffer.isBuffer(doc.encryptedBlob) ? doc.encryptedBlob.length : null),
     // What the bytes say (null until classified). The declared type is the client's claim only.
     sniffedType: doc.sniffedType ?? null,
+    // What kind of preview the bytes allow (null until known), and whether one was tried and failed.
+    previewKind: doc.previewKind ?? null,
+    thumbFailed: Boolean(doc.thumbFailedAt),
+    thumbFailReason: doc.thumbFailedAt ? doc.thumbFailReason ?? null : null,
     mimeType: doc.mimeType,
     // Whether the file is in a link that is still active (for the list's shared indicator).
     shared: sharedIds ? sharedIds.has(String(doc._id)) : false,
@@ -185,6 +189,7 @@ const createDocument = asyncHandler(async (req, res) => {
     mimeType: mimetype,
     // Classified from the bytes, not the name or the claimed type.
     sniffedType: sniffImageType(buffer),
+    previewKind: sniffPreviewKind(buffer),
     originDevice: 'pc', // phone client is future work
     expiryDate: expiryDate || undefined,
     syncStatus: 'pending',
@@ -214,6 +219,9 @@ const LIST_PROJECTION = {
   updatedAt: 1,
   mimeType: 1,
   sniffedType: 1,
+  previewKind: 1,
+  thumbFailedAt: 1,
+  thumbFailReason: 1,
   size: { $binarySize: '$encryptedBlob' },
 };
 
@@ -747,9 +755,47 @@ const putThumbnail = asyncHandler(async (req, res) => {
   }
 
   document.set(thumbnail);
+  // A preview now exists: forget any earlier failure.
+  document.thumbFailedAt = null;
+  document.thumbFailReason = null;
+  if (!document.previewKind || document.previewKind === 'none') document.previewKind = 'image';
   await document.save();
 
   res.status(200).json({ id: document._id, hasThumb: true });
+});
+
+/**
+ * POST /api/documents/:id/thumbnail-failed
+ * Body: { reason, kind? } - the browser tried to draw a preview and could not (or saw
+ * the file is not one it may draw). Recorded so the file is not retried on every run.
+ * `reason` must be one of PREVIEW_FAILURE_REASONS; `kind` ('image' | 'pdf' | 'none') is what
+ * the browser's own byte-sniff said, and lets the list stop counting the file.
+ */
+const markThumbnailFailed = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+  const { reason, kind } = req.body || {};
+  if (typeof reason !== 'string' || !PREVIEW_FAILURE_REASONS.includes(reason)) {
+    throw badRequest('Unknown reason.');
+  }
+  const set = { thumbFailedAt: new Date(), thumbFailReason: reason };
+  if (kind === 'image' || kind === 'pdf' || kind === 'none') set.previewKind = kind;
+  if (reason === 'unsupported-type') set.previewKind = 'none';
+  const result = await Document.updateOne({ _id: req.params.id, userId: req.userId, deletedAt: null }, { $set: set }, { timestamps: false });
+  if (!result.matchedCount) throw documentNotFound();
+  res.status(200).json({ id: req.params.id, thumbFailed: true, thumbFailReason: set.thumbFailReason });
+});
+
+/**
+ * POST /api/documents/thumbnails/retry
+ * Forgets recorded preview failures for this account (so "Try again" really tries again).
+ */
+const retryFailedThumbnails = asyncHandler(async (req, res) => {
+  const result = await Document.updateMany(
+    { userId: req.userId, deletedAt: null, thumbFailedAt: { $ne: null } },
+    { $set: { thumbFailedAt: null, thumbFailReason: null } },
+    { timestamps: false }
+  );
+  res.status(200).json({ cleared: result.modifiedCount ?? result.matchedCount ?? 0 });
 });
 
 /**
@@ -781,6 +827,8 @@ module.exports = {
   viewDocument,
   getThumbnail,
   putThumbnail,
+  markThumbnailFailed,
+  retryFailedThumbnails,
   deleteDocument,
   listPhotos,
   getStorage,

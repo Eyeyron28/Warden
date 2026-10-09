@@ -25,6 +25,7 @@ const FilesPage = lazy(() => import('./pages/FilesPage.jsx'));
 const PhotosPage = lazy(() => import('./pages/PhotosPage.jsx'));
 const TrashPage = lazy(() => import('./pages/TrashPage.jsx'));
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
+const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const SharesPage = lazy(() => import('./pages/SharesPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
 const PairPage = lazy(() => import('./pages/PairPage.jsx'));
@@ -120,6 +121,7 @@ function App() {
           <Route path="/photos" element={<PhotosPage />} />
           <Route path="/shared" element={<SharesPage />} />
           <Route path="/trash" element={<TrashPage />} />
+          <Route path="/export" element={<ExportPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
         <Route path="/vault" element={<Navigate to="/files" replace />} />
