@@ -1,72 +1,29 @@
 const mongoose = require('mongoose');
 
-// Created by POST /api/pair/complete once the phone-side scan-and-verify
-// flow confirms the master password against the vault and the phone
-// commits to storing its own wrapped copy of the DEK locally.
+// Created by POST /api/pair/complete. It holds NO key material: the vault key
+// is handed to the phone once, over TLS, and the phone wraps it under its own
+// PIN in its own storage. Nothing here lets anyone open a document.
 const pairedDeviceSchema = new mongoose.Schema({
-  // Whose account this device is paired with. requireDeviceAuth
-  // (middleware/requireDeviceAuth.js) resolves this to req.userId on every
-  // sync request, same as a PC session resolves req.userId from its own
-  // Session document - a deviceToken is just a much longer-lived,
-  // device-specific credential for the same account.
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true,
-  },
-  // Set during pairing, e.g. "Josh's Phone" - purely a label for the
-  // owner's benefit, never used for auth.
-  deviceName: {
-    type: String,
-    required: false,
-  },
+  // Whose account this device is paired with. requireDeviceAuth resolves this
+  // to req.userId on every sync request.
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  // A label for the owner's benefit ("Josh's Phone"); never used for auth.
+  deviceName: { type: String, required: false },
+  // Which browser paired (from its User-Agent), shown in the list and the email.
+  browserLabel: { type: String, required: false },
 
-  // Bearer credential for POST /api/sync/pull and /push (see
-  // middleware/requireDeviceAuth.js). Proves future sync requests come
-  // from this legitimately paired device without needing the master
-  // password again - same "long-lived opaque token, looked up directly"
-  // pattern as PairingToken.token and RecoveryRequestToken.token, not hashed for
-  // the same reason those aren't: it's a random 256-bit value, not a
-  // user-chosen secret that could appear elsewhere.
-  deviceToken: {
-    type: String,
-    required: true,
-    unique: true,
-  },
+  // SHA-256 of the bearer token for the sync API (utils/deviceTokens.js); the
+  // raw token lives only on the phone. Removed on revoke, so a revoked token
+  // matches nothing. The index only covers rows that have one.
+  tokenHash: { type: String },
 
-  // Same wrap-the-DEK pattern as the password/recovery KEKs on User: a
-  // COPY of the vault's DEK, wrapped under a key derived from the
-  // phone's own PIN (set during pairing), so the phone can decrypt its
-  // locally-synced documents using only something it holds itself -
-  // no dependency on the PC being reachable after the initial pairing.
-  wrappedDEKPhonePin: {
-    type: String,
-    required: true,
-  },
-  wrappedDEKPhonePinIv: {
-    type: String,
-    required: true,
-  },
-  wrappedDEKPhonePinAuthTag: {
-    type: String,
-    required: true,
-  },
-  wrappedDEKPhonePinSalt: {
-    type: String,
-    required: true,
-  },
-
-  pairedAt: {
-    type: Date,
-    default: Date.now,
-  },
-  // Lets the owner revoke a paired phone's access (from the PC) without
-  // needing the phone present - mirrors PairingToken.used.
-  revoked: {
-    type: Boolean,
-    default: false,
-  },
+  pairedAt: { type: Date, default: Date.now },
+  // Updated (at most once a minute) whenever the device calls the sync API.
+  lastSeenAt: { type: Date, default: null },
+  revoked: { type: Boolean, default: false },
+  revokedAt: { type: Date, default: null },
 });
+
+pairedDeviceSchema.index({ tokenHash: 1 }, { unique: true, partialFilterExpression: { tokenHash: { $type: 'string' } } });
 
 module.exports = mongoose.model('PairedDevice', pairedDeviceSchema);

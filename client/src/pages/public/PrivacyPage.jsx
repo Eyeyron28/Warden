@@ -46,11 +46,10 @@ export const SECTIONS = [
             the plain key. For your own share list we keep the shared files&apos; names encrypted under your vault key.
           </li>
           <li>
-            <strong>Paired devices</strong>: the name you give a paired phone and when it was paired. The phone
-            itself keeps encrypted copies of your documents and a copy of your vault key locked by its PIN.
+            <strong>Paired devices</strong>: the name you give a paired phone, the browser it paired from, when it was paired and when it last synced. We store only a hash of the phone&apos;s sync token. We do not keep the phone&apos;s PIN or any copy of your vault key locked by it: the phone makes that copy itself and keeps it only on the phone, together with encrypted copies of your documents. Someone who copies a lost phone&apos;s storage could guess its PIN offline, which is why a PIN needs at least 6 characters, obvious ones are refused and each guess is made slow.
           </li>
           <li>
-            <strong>One-time codes</strong>: when you log in, recover access with a paired phone, delete your
+            <strong>One-time codes</strong>: when you log in, pair a phone, recover access with a paired phone, delete your
             account, or open a share link restricted to your email address, a 6-digit code is emailed to you and expires after a few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
             expires.
           </li>

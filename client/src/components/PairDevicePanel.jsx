@@ -1,236 +1,184 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { CheckCircle, DeviceMobile } from '@phosphor-icons/react';
+import { CheckCircle } from '@phosphor-icons/react';
 
-import { initPairing, getPairingStatus } from '../services/pairingService.js';
+import OtpChallengePanel from './OtpChallengePanel.jsx';
+import { requestPairCode, resendPairCode, initPairing, getPairingStatus } from '../services/pairingService.js';
 import { extractErrorMessage } from '../services/api.js';
-import styles from './PairDevicePanel.module.css';
+import { pairingUrl } from '../utils/phoneUrls.js';
+import styles from '../pages/DevicesPage.module.css';
 
 const POLL_INTERVAL_MS = 2500;
 
 function formatCountdown(msRemaining) {
   const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
 }
 
 /**
- * Owner-side pairing UI: generates a pairing code, renders it as a QR,
- * counts down its 5-minute window, and polls GET /api/pair/status/:token
- * every couple seconds so the screen moves from "Waiting for phone..."
- * to "Paired successfully" on its own.
+ * Owner-side pairing: ask for a code (emailed to the account), enter it, and a
+ * 5-minute QR appears. A stolen session alone cannot pair a phone because the
+ * code goes to the mailbox. The QR holds `<public origin>/pair/<token>`: the
+ * server's validated PUBLIC_APP_URL in production, this page's own origin in
+ * development - never an address found on the network.
  *
- * The QR encodes a full, directly-openable URL -
- * `https://<LAN host>:<frontend port>/pair/:token` - rather than a JSON
- * payload for some dedicated in-app scanner: the phone's own native camera
- * app can open it straight into pages/PairPage.jsx with zero
- * Warden-specific scanning code and no new dependency. There is
- * deliberately no API address in the link: PairPage sends the master
- * password, so it talks only to the origin it was loaded from, which is
- * this same frontend host (the dev server proxies /api to the backend).
- *
- * Deliberately NOT window.location.origin here, unlike ShareModal's
- * shareUrl. ShareModal can get away with window.location.origin because
- * a share link's generator and recipient sometimes share an origin (or
- * at least both have a real reason to be on whatever host the owner is
- * browsing from). Pairing is different: it ALWAYS involves two
- * physically different devices, and the owner's own tab is very often
- * open on "localhost:5173" (the natural thing to type on the PC itself)
- * - which means nothing to a phone scanning the code, since "localhost"
- * always resolves to "this device," never "the PC." The QR's host must
- * come from the same LAN-resolved address the backend already computed
- * for apiBase (see resolveApiBase in pairing.controller.js, with its own
- * fail-loudly-if-undetermined guarantee), not from window.location.
+ * Steps: idle -> code (emailed code) -> qr (countdown, polling) -> success |
+ * expired. Generating a new QR always starts again from the emailed code.
  */
-function PairDevicePanel({ onClose }) {
-  const [status, setStatus] = useState('loading'); // loading | waiting | success | expired | error
+function PairDevicePanel({ onPaired }) {
+  const [step, setStep] = useState('idle'); // idle | sending | code | qr | success | expired
   const [error, setError] = useState('');
-  const [pairingToken, setPairingToken] = useState(null);
-  const [apiBase, setApiBase] = useState(null);
-  const [expiresAt, setExpiresAt] = useState(null);
+  const [challenge, setChallenge] = useState(null);
+  const [pairing, setPairing] = useState(null); // { token, expiresAt }
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [msRemaining, setMsRemaining] = useState(0);
-
-  const pollRef = useRef(null);
-  const countdownRef = useRef(null);
+  const timers = useRef({ poll: null, tick: null });
 
   const stopTimers = () => {
-    clearInterval(pollRef.current);
-    clearInterval(countdownRef.current);
-    pollRef.current = null;
-    countdownRef.current = null;
+    clearInterval(timers.current.poll);
+    clearInterval(timers.current.tick);
+    timers.current = { poll: null, tick: null };
   };
+  useEffect(() => stopTimers, []);
 
-  const startPairing = useCallback(async () => {
+  const askForCode = useCallback(async () => {
     stopTimers();
-    setStatus('loading');
     setError('');
+    setStep('sending');
+    setPairing(null);
     setQrDataUrl(null);
-
     try {
-      const result = await initPairing();
-      setPairingToken(result.pairingToken);
-      setApiBase(result.apiBase);
-      setExpiresAt(result.expiresAt);
-      setStatus('waiting');
+      setChallenge(await requestPairCode());
+      setStep('code');
     } catch (err) {
-      setError(extractErrorMessage(err, 'Could not start pairing.'));
-      setStatus('error');
+      setError(extractErrorMessage(err, 'We couldn’t send the code. Please try again.'));
+      setStep('idle');
     }
   }, []);
 
+  // Render the QR whenever a pairing code is issued.
   useEffect(() => {
-    startPairing();
-    return stopTimers;
-  }, [startPairing]);
-
-  // Renders the QR client-side (qrcode npm package, same as document
-  // sharing) whenever a fresh pairing code is issued.
-  useEffect(() => {
-    if (!pairingToken || !apiBase) {
-      setQrDataUrl(null);
-      return undefined;
-    }
-
+    if (!pairing) return undefined;
     let cancelled = false;
-    // Same host apiBase itself uses (the backend's LAN-resolved address),
-    // not window.location.hostname - see the comment above the component
-    // for why the owner's own tab (often "localhost") can't be trusted here.
-    const lanHost = new URL(apiBase).hostname;
-    const port = window.location.port ? `:${window.location.port}` : '';
-    // Root cause of a past bug: this used to hardcode "http://" here, so
-    // after the app moved to HTTPS the QR kept pointing phones at plain
-    // HTTP against a server that no longer spoke it. Using the current
-    // page's own protocol keeps this correct automatically whenever the
-    // app's scheme changes again, instead of going stale a second time.
-    const protocol = window.location.protocol;
-    const pairUrl = `${protocol}//${lanHost}${port}/pair/${pairingToken}`;
-    QRCode.toDataURL(pairUrl, { margin: 1, width: 220 })
-      .then((url) => {
-        if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setQrDataUrl(null);
-      });
-
+    QRCode.toDataURL(pairing.url, { margin: 1, width: 400 })
+      .then((url) => !cancelled && setQrDataUrl(url))
+      .catch(() => !cancelled && setQrDataUrl(null));
     return () => {
       cancelled = true;
     };
-  }, [pairingToken, apiBase]);
+  }, [pairing]);
 
-  // Countdown + status polling, only while actively waiting on a code.
+  // Countdown and status polling while the QR is on screen.
   useEffect(() => {
-    if (status !== 'waiting' || !pairingToken || !expiresAt) return undefined;
-
-    const expiresAtMs = new Date(expiresAt).getTime();
-
+    if (step !== 'qr' || !pairing) return undefined;
+    const expiresAtMs = new Date(pairing.expiresAt).getTime();
     const tick = () => {
       const remaining = expiresAtMs - Date.now();
       setMsRemaining(remaining);
       if (remaining <= 0) {
-        setStatus('expired');
+        setStep('expired');
         stopTimers();
       }
     };
     tick();
-    countdownRef.current = setInterval(tick, 1000);
-
-    const poll = async () => {
+    timers.current.tick = setInterval(tick, 1000);
+    timers.current.poll = setInterval(async () => {
       try {
-        const result = await getPairingStatus(pairingToken);
+        const result = await getPairingStatus(pairing.token);
         if (result.used) {
-          setStatus('success');
+          setStep('success');
           stopTimers();
+          onPaired?.();
         } else if (result.expired) {
-          setStatus('expired');
+          setStep('expired');
           stopTimers();
         }
       } catch {
-        // A transient network hiccup while polling shouldn't kill the QR
-        // already on screen - just try again on the next interval.
+        // A hiccup while polling must not kill the QR on screen; the next tick tries again.
       }
-    };
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
+    }, POLL_INTERVAL_MS);
     return stopTimers;
-  }, [status, pairingToken, expiresAt]);
+  }, [step, pairing, onPaired]);
 
   return (
-    <div className={styles.panel}>
-      {status === 'loading' && <p className={styles.hint}>Generating pairing code...</p>}
+    <div className={styles.pairBody}>
+      {error && <p className={styles.error} role="alert">{error}</p>}
 
-      {status === 'error' && (
+      {(step === 'idle' || step === 'sending') && (
         <>
-          <p className={styles.error} role="alert">
-            {error}
+          <p className={styles.text}>
+            To add a phone, we email a code to your account first, so nobody who only has your open browser can pair one. Then a QR
+            code appears for the phone to scan.
           </p>
-          <div className={styles.buttonRow}>
-            <button type="button" className={styles.cancelButton} onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" className={styles.submitButton} onClick={startPairing}>
-              Try again
-            </button>
-          </div>
+          <button type="button" className={styles.primary} onClick={askForCode} disabled={step === 'sending'}>
+            {step === 'sending' ? 'Sending the code…' : 'Email me a code'}
+          </button>
         </>
       )}
 
-      {status === 'waiting' && (
-        <>
-          <p className={styles.instructions}>
-            Scan this code with your phone's camera to pair it with this vault. For now, your phone
-            must be on the same network as this PC.
-          </p>
-
-          {qrDataUrl && (
-            <div className={styles.qrWrap}>
-              <img src={qrDataUrl} alt="Pairing QR code" className={styles.qrImage} />
-            </div>
-          )}
-
-          <p className={styles.countdown}>Expires in {formatCountdown(msRemaining)}</p>
-          <p className={styles.waitingLine}>Waiting for phone...</p>
-
-          <div className={styles.buttonRow}>
-            <button type="button" className={styles.cancelButton} onClick={onClose}>
-              Cancel
-            </button>
-          </div>
-        </>
+      {step === 'code' && challenge && (
+        <div className={styles.otpWrap}>
+          <p className={styles.small}>We emailed you a six-digit code. It only works for pairing a device.</p>
+          <OtpChallengePanel
+            challenge={challenge}
+            onSubmitCode={async (code, token) => initPairing(token, code)}
+            onResend={(token) => resendPairCode(token)}
+            onVerified={(result) => {
+              setPairing({
+                token: result.pairingToken,
+                expiresAt: result.expiresAt,
+                url: pairingUrl(result.appUrl, result.pairingToken),
+              });
+              setStep('qr');
+            }}
+            onBack={() => setStep('idle')}
+            onDead={(message) => {
+              setError(message);
+              setStep('idle');
+            }}
+            submitLabel="Show the QR code"
+          />
+        </div>
       )}
 
-      {status === 'expired' && (
+      {step === 'qr' && (
         <>
-          <div className={styles.expiredBanner}>
-            <DeviceMobile size={20} weight="light" className={styles.expiredIcon} />
-            <p>This pairing code expired before a phone used it.</p>
-          </div>
-          <div className={styles.buttonRow}>
-            <button type="button" className={styles.cancelButton} onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" className={styles.submitButton} onClick={startPairing}>
-              Generate a new code
-            </button>
-          </div>
-        </>
-      )}
-
-      {status === 'success' && (
-        <>
-          <div className={styles.successBanner}>
-            <CheckCircle size={20} weight="fill" className={styles.successIcon} />
-            <div className={styles.successCopy}>
-              <p className={styles.successTitle}>Paired successfully</p>
-              <p className={styles.successBody}>Your phone is now paired with this vault.</p>
+          <p className={styles.text}>Scan this with your phone’s camera and follow the steps there. You will need your master password.</p>
+          <div className={styles.qrBlock}>
+            <div className={styles.qrWrap}>{qrDataUrl && <img src={qrDataUrl} alt="Pairing QR code" className={styles.qrImage} />}</div>
+            <div className={styles.qrSide}>
+              <p className={styles.countdown} role="timer" aria-live="off">Expires in {formatCountdown(msRemaining)}</p>
+              <p className={styles.waiting}>Waiting for the phone…</p>
+              <button type="button" className={styles.secondary} onClick={askForCode}>
+                New code
+              </button>
+              <p className={styles.small}>A new QR needs a new emailed code.</p>
             </div>
           </div>
-          <div className={styles.buttonRow}>
-            <button type="button" className={styles.cancelButton} onClick={onClose}>
-              Done
-            </button>
+        </>
+      )}
+
+      {step === 'expired' && (
+        <>
+          <p className={styles.text} role="status">That code expired before a phone used it.</p>
+          <button type="button" className={styles.primary} onClick={askForCode}>
+            Email me a new code
+          </button>
+        </>
+      )}
+
+      {step === 'success' && (
+        <>
+          <div className={styles.banner} role="status">
+            <CheckCircle size={20} weight="fill" className={styles.bannerIcon} />
+            <div>
+              <p className={styles.bannerTitle}>Paired successfully</p>
+              <p className={styles.text}>The phone is now in the list below. We also emailed you about it.</p>
+            </div>
           </div>
+          <button type="button" className={styles.secondary} onClick={() => setStep('idle')}>
+            Pair another phone
+          </button>
         </>
       )}
     </div>

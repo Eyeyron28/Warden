@@ -71,6 +71,7 @@ function fakeModel(world, table, extras = {}) {
   const applyUpdate = (doc, update) => {
     for (const [key, amount] of Object.entries(update.$inc || {})) doc[key] = (doc[key] || 0) + amount;
     Object.assign(doc, update.$set || {});
+    for (const key of Object.keys(update.$unset || {})) delete doc[key];
   };
   const base = {
     create: async (doc) => {
@@ -128,11 +129,34 @@ function fakeModel(world, table, extras = {}) {
       world.tables[table] = keep;
       return { deletedCount };
     },
-    aggregate: () => {
-      const q = { session: () => q, then: (ok, bad) => Promise.resolve([]).then(ok, bad) };
+    // $match / $sort ({ _id: 1 }) / $limit / $project (1, or { $binarySize }) only; any other stage gives [].
+    aggregate: (pipeline = []) => {
+      const run = () => {
+        let out = rows();
+        for (const stage of pipeline) {
+          if (stage.$match) out = out.filter((r) => matches(r, stage.$match));
+          else if (stage.$sort) {
+            const [[field, dir]] = Object.entries(stage.$sort);
+            out = [...out].sort((a, b) => (String(a[field]) < String(b[field]) ? -dir : String(a[field]) > String(b[field]) ? dir : 0));
+          } else if (stage.$limit) out = out.slice(0, stage.$limit);
+          else if (stage.$project) {
+            out = out.map((r) => {
+              const shaped = { _id: r._id };
+              for (const [field, spec] of Object.entries(stage.$project)) {
+                if (spec === 1) shaped[field] = r[field];
+                else if (spec.$binarySize) shaped[field] = (r[spec.$binarySize.$ifNull?.[0].slice(1) || spec.$binarySize.slice(1)] || Buffer.alloc(0)).length;
+              }
+              return shaped;
+            });
+          } else return [];
+        }
+        return out;
+      };
+      const q = { session: () => q, then: (ok, bad) => Promise.resolve(run()).then(ok, bad) };
       return q;
     },
     distinct: async (field, filter = {}) => [...new Set(rows().filter((r) => matches(r, filter)).map((r) => r[field]))],
+    syncIndexes: async () => [],
     exists: async (filter) => (rows().some((r) => matches(r, filter)) ? { _id: 1 } : null),
     countDocuments: (filter = {}) => query(() => rows().filter((r) => matches(r, filter)).length),
   };
@@ -190,7 +214,7 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, ip = '203.0.113.9' } = {}) {
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, file, ip = '203.0.113.9' } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
@@ -201,7 +225,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, query, secure, files, ip }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure, files, file, ip }, res, (err) => { out.error = err; });
   return out;
 }
 

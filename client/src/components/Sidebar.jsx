@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
+import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
   DownloadSimple,
   CaretDoubleLeft,
@@ -40,7 +40,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
   const onFiles = location.pathname.startsWith('/files');
   const currentFolder = onFiles ? params.get('path') || '' : '';
   const [treeOpen, setTreeOpen] = useState(true);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [tip, setTip] = useState(null); // { text, top, left }
 
   const rail = collapsed && !drawer;
@@ -145,28 +144,10 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           {label('Export')}
         </NavLink>
 
-        {rail ? (
-          <Link onClick={closeDrawer} to="/files?panel=devices" className={styles.item} {...tipFor('Devices')}>
-            <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
-            <span className={styles.srOnly}>Devices</span>
-          </Link>
-        ) : (
-          <div className={styles.group}>
-            <button type="button" className={styles.item} onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}>
-              <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
-              <span className={styles.itemLabel}>Devices</span>
-              <CaretDown size={14} weight="bold" className={moreOpen ? '' : styles.caretClosed} />
-            </button>
-            {moreOpen && (
-              <div className={styles.children}>
-                <Link onClick={closeDrawer} to="/files?panel=pair" className={styles.childItem}>
-                  <DeviceMobile size={14} aria-hidden="true" /> Pair a device
-                </Link>
-                <Link onClick={closeDrawer} to="/files?panel=devices" className={styles.childItem}>Paired devices</Link>
-              </div>
-            )}
-          </div>
-        )}
+        <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices')}>
+          <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
+          {label('Devices')}
+        </NavLink>
 
         <div className={styles.spacer} />
 

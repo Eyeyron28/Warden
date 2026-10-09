@@ -47,7 +47,7 @@ test('rejects anything that is not just an https origin', () => {
   }
 });
 
-test('production requires it; development falls back to the LAN address', () => {
+test('production requires it; development falls back to the local dev server, never a detected LAN address', () => {
   withEnv({ PUBLIC_APP_URL: undefined, NODE_ENV: 'production', VERCEL: undefined }, () => {
     assert.throws(() => assertPublicAppUrlConfig(), /required in production/);
     assert.equal(getPublicAppUrl(), null);
@@ -56,7 +56,8 @@ test('production requires it; development falls back to the LAN address', () => 
     assert.throws(() => assertPublicAppUrlConfig(), /required in production/, 'Vercel counts as production');
   });
   withEnv({ PUBLIC_APP_URL: undefined, NODE_ENV: 'development', VERCEL: undefined, LAN_IP: '192.168.1.50' }, () => {
-    assert.deepEqual(assertPublicAppUrlConfig(), { source: 'lan', origin: 'https://192.168.1.50:5173' });
+    // (a LAN_IP variable is ignored: nothing reads it any more)
+    assert.deepEqual(assertPublicAppUrlConfig(), { source: 'dev', origin: 'https://localhost:5173' });
   });
   withEnv({ PUBLIC_APP_URL: 'https://warden.example.com', NODE_ENV: 'production' }, () => {
     assert.deepEqual(assertPublicAppUrlConfig(), { source: 'env', origin: 'https://warden.example.com' });

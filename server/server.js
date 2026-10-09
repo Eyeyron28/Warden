@@ -13,7 +13,6 @@ const { isDatabaseReachable } = require('./config/db');
 const { assertProductionConfig } = require('./utils/productionConfig');
 const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
-const { detectLanIp } = require('./utils/lanIp');
 const { assertPublicAppUrlConfig, describePublicAppUrl } = require('./utils/publicAppUrl');
 const { assertOtpConfig, otpEnabled, otpTtlMinutes } = require('./utils/otpConfig');
 
@@ -84,23 +83,14 @@ app.set('trust proxy', trustProxyHops());
 // removing X-Powered-By, CSP, etc), on defaults. First in the chain so even
 // requests CORS goes on to reject carry them. Helmet only sets response
 // headers - it doesn't touch the CORS handshake below. No origin or IP is
-// configured here: nothing needs one, and this PC's LAN address changes
-// between networks (see utils/lanIp.js).
+// configured here: nothing needs one.
 app.use(helmet());
 app.use(cors(corsOptions));
-// Vercel Hobby caps request bodies at 4.5MB, and documents.routes.js now
-// caps a single upload at 4MB (see MAX_FILE_SIZE_BYTES there) to stay
-// under that with room for the surrounding multipart overhead. This
-// limit covers the OTHER body-heavy path, POST /api/sync/push, which
-// receives an encrypted document as base64 inside a JSON body - base64
-// inflates raw bytes by ~4/3, so a 4MB document arrives as roughly 5.3MB
-// of base64 alone. 6mb covers that with headroom while still rejecting a
-// genuinely oversized body with a clean 413 (via this same errorHandler)
-// rather than accepting anything without limit. Applied globally rather
-// than scoped per-route since every other JSON body in this app (auth,
-// document metadata edits, share/pairing/device actions) is tiny by
-// comparison and a 6mb ceiling on them is generous, not risky.
-app.use(express.json({ limit: '6mb' }));
+// Vercel caps request AND response bodies at 4.5MB. Documents are sent as
+// multipart (4MB file cap, see routes/documents.routes.js and sync.routes.js),
+// never as base64 in JSON, so every JSON body in this app is tiny: 100kb is
+// generous, and a larger one is rejected with a clean 413.
+app.use(express.json({ limit: '100kb' }));
 // NoSQL operator-injection guard: strips keys starting with "$" (or containing
 // ".") from req.body, req.query and req.params before any route sees them, so
 // {"$ne": null} in place of a string can never reach a Mongoose filter. It
@@ -176,21 +166,9 @@ module.exports = app;
 // via nodemon), never when required as a module (by a test, or by the
 // Vercel entry point above).
 if (require.main === module) {
-  // mkcert-generated cert, valid only for the SANs it was issued with:
-  // localhost, 127.0.0.1, 192.168.100.115, 10.58.146.172, 192.168.1.38
-  // (added when the LAN IP changed after switching Wi-Fi networks - a
-  // request to an IP outside this list fails TLS validation with
-  // SEC_E_WRONG_PRINCIPAL/ERR_CERT_COMMON_NAME_INVALID, which then makes
-  // GET /api/auth/me look "unreachable" to the frontend, even though the
-  // account itself is untouched).
-  //
-  // Auto-detecting the LAN IP (utils/lanIp.js) fixes the frontend/pairing/
-  // sharing side of this going stale on a network change, but it does NOT
-  // fix certificate coverage - mkcert still only trusts the exact IPs
-  // listed when it was generated. If a genuinely new IP is ever used,
-  // regenerate with `mkcert -key-file localhost+3-key.pem -cert-file
-  // localhost+3.pem localhost 127.0.0.1 <every LAN IP still in use, plus
-  // the new one>` (run from certs/) and update CORS_ORIGINS to match.
+  // mkcert-generated cert (scripts/ensure-cert.js): localhost and 127.0.0.1,
+  // plus any hosts listed in DEV_CERT_HOSTS. To try a real phone on the local
+  // network, use the deployed HTTPS URL instead (see DEPLOY.md).
   const httpsOptions = {
     key: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3-key.pem')),
     cert: fs.readFileSync(path.join(__dirname, '..', 'certs', 'localhost+3.pem')),
@@ -212,23 +190,6 @@ if (require.main === module) {
             : 'Login: email one-time code is DISABLED (OTP_ENABLED=false, development only)'
         );
 
-        // Diagnostic only - pairing/sharing resolve this fresh per-request
-        // (resolveLanIp), not from this snapshot. Logged once here so a
-        // stale network or an unexpected adapter pick is obvious from
-        // startup output alone, without needing to trigger a pairing/
-        // share request to check.
-        if (process.env.LAN_IP) {
-          console.log(`LAN IP: ${process.env.LAN_IP} (manual override via LAN_IP in .env)`);
-        } else {
-          const detected = detectLanIp();
-          if (detected) {
-            console.log(`LAN IP: ${detected.ip} (auto-detected, adapter: "${detected.adapter}")`);
-          } else {
-            console.log(
-              'LAN IP: could not auto-detect one - phone pairing and network share links will fail until LAN_IP is set in .env.'
-            );
-          }
-        }
       });
     })
     .catch(() => {

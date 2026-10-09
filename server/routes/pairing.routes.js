@@ -1,19 +1,32 @@
 const express = require('express');
 
 const requireSession = require('../middleware/requireSession');
-const { initPairing, getPairingStatus } = require('../controllers/pairing.controller');
+const createRateLimiter = require('../middleware/rateLimit');
+const {
+  requestPairCode,
+  resendPairCode,
+  initPairing,
+  getPairingStatus,
+} = require('../controllers/pairing.controller');
 
 // Owner-only, unlike POST /api/pair/complete (routes/pairComplete.routes.js)
-// which is mounted at this same /api/pair prefix. requireSession is
-// applied per-route here rather than via a blanket router.use() - an
-// unconditional router.use(requireSession) would run for ANY path
-// Express forwards into this router, including /complete, since Express
-// only strips the mount prefix before delegating and does not know in
-// advance which of the two sibling routers actually owns a given
-// sub-path. Scoping it to each route instead means this router simply
-// never touches a /complete request at all, regardless of mount order.
+// which is mounted at this same /api/pair prefix. requireSession is applied
+// per route: a blanket router.use(requireSession) would also run for
+// /complete, which has no session.
 const router = express.Router();
-router.post('/init', requireSession, initPairing);
+
+// Per account, on top of the emailed-code budget (5 mails an hour) and the
+// code's own 5 guesses.
+const byAccount = createRateLimiter({
+  name: 'pair-owner',
+  max: 30,
+  windowMs: 60 * 60 * 1000,
+  keyFn: (req) => (req.userId ? String(req.userId) : null),
+});
+
+router.post('/code', requireSession, byAccount, requestPairCode);
+router.post('/resend-code', requireSession, byAccount, resendPairCode);
+router.post('/init', requireSession, byAccount, initPairing);
 router.get('/status/:token', requireSession, getPairingStatus);
 
 module.exports = router;

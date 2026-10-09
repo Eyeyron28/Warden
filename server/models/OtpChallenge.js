@@ -16,7 +16,7 @@ const otpChallengeSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   // What this code is FOR. Every lookup includes it, so a login code can never
   // authorise deleting an account, nor a delete code log anyone in.
-  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset'], default: 'login', required: true },
+  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset', 'pair-device'], default: 'login', required: true },
   // 'share-email' codes belong to one visitor's access session on one share
   // (userId is the share's OWNER, so deleting the account removes them too).
   shareId: { type: String, default: null, index: true },

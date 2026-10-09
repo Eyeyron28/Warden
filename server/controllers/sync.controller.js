@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const { assertCanStore } = require('../utils/storage');
 const { cleanStoredName } = require('../utils/fileNames');
-const { serializeThumbnail } = require('../utils/thumbnails');
 const { ensureFolderPath, listFolderPaths, toDocumentFolder } = require('../utils/folders');
 
 // Routes are async, but Express doesn't forward rejected promises to
@@ -11,178 +10,209 @@ const { ensureFolderPath, listFolderPaths, toDocumentFolder } = require('../util
 // every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function badRequest(message) {
+function httpError(status, message) {
   const error = new Error(message);
-  error.status = 400;
+  error.status = status;
   return error;
 }
+const badRequest = (message) => httpError(400, message);
 
 const DEFAULT_MIME_TYPE = 'application/octet-stream';
 
 /**
- * Full sync payload for one document, including the encrypted blob -
- * unlike documents.controller.js's toListSummary, which is metadata-only.
- * encryptedBlob is base64-encoded since it's crossing JSON, not the raw
- * Buffer the server stores it as.
+ * Sync, shaped for a serverless host.
+ *
+ * Vercel caps a function's request body AND response body at 4.5 MB
+ * (vercel.com/docs/functions/limitations, "Request body size"). A file can be
+ * up to 4 MiB, and base64 inside JSON would make that ~5.3 MB, so ciphertext
+ * never travels as JSON here:
+ *   - the phone lists METADATA in pages (small, bounded by `limit`);
+ *   - then fetches each document's ciphertext on its own, as raw bytes
+ *     (<= 4 MiB, under the cap);
+ *   - and pushes one document per request as multipart (<= 4 MiB + a few
+ *     hundred bytes of envelope).
+ * Each call is independent and stateless, so a phone that is days behind, or
+ * that dropped its connection halfway, simply asks again from where it was.
  */
-function toSyncPayload(doc) {
+const MAX_BLOB_BYTES = 4 * 1024 * 1024;
+const DEFAULT_PAGE = 100;
+const MAX_PAGE = 200;
+
+function toSyncItem(doc) {
   return {
-    id: doc._id,
+    id: String(doc._id),
     filename: doc.filename,
     folder: doc.folder,
-    encryptedBlob: doc.encryptedBlob.toString('base64'),
+    size: doc.size ?? 0,
+    checksum: doc.checksum,
     iv: doc.iv,
     authTag: doc.authTag,
-    checksum: doc.checksum,
     mimeType: doc.mimeType,
-    expiryDate: doc.expiryDate,
-    originDevice: doc.originDevice,
-    syncStatus: doc.syncStatus,
-    createdAt: doc.createdAt,
-    // Still ciphertext (thumbCipher/thumbIv/thumbAuthTag) - copied as stored,
-    // and only present when the document has a preview. Scoped by userId
-    // like every other field here, since the query above is.
-    ...serializeThumbnail(doc),
+    expiryDate: doc.expiryDate || null,
+    updatedAt: doc.updatedAt,
+    // The phone's own id, when it pushed this document: lets it recognise its own
+    // upload (whose response it may have lost) instead of downloading a copy.
+    clientId: doc.clientId || null,
+    // Set for a document that is in Trash: the phone removes its copy; if it is
+    // restored later this goes back to null and the phone fetches it again.
+    deletedAt: doc.deletedAt || null,
   };
 }
 
 /**
- * POST /api/sync/pull
- * requireDeviceAuth. Body: { knownDocumentIds: string[] }
- * Returns full data for every Document not already in that list - "what
- * does the phone not have yet". No conflict resolution or deletion sync:
- * the phone decides what it's missing purely from its own local id list,
- * this just fills the gap.
+ * GET /api/sync/documents?cursor=<id>&limit=<n>
+ * requireDeviceAuth. A page of metadata for EVERY document on the account
+ * (trashed ones included, flagged by deletedAt), in id order. `nextCursor` is
+ * the last id of a full page, or null on the last page. Ciphertext is not in
+ * here. A document missing from a completed pass was removed for good.
  */
-const pullDocuments = asyncHandler(async (req, res) => {
-  const { knownDocumentIds } = req.body;
-  if (knownDocumentIds !== undefined && !Array.isArray(knownDocumentIds)) {
-    throw badRequest('knownDocumentIds must be an array.');
+const listSyncDocuments = asyncHandler(async (req, res) => {
+  const { cursor } = req.query;
+  if (cursor !== undefined && (typeof cursor !== 'string' || !mongoose.Types.ObjectId.isValid(cursor))) {
+    throw badRequest('cursor must be a document id.');
   }
+  const asked = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), MAX_PAGE) : DEFAULT_PAGE;
 
-  // Local-only ids (e.g. the dev test page's crypto.randomUUID() sample
-  // documents) are never valid Mongo ObjectIds - filtering them out here
-  // avoids a Mongoose cast error rather than requiring the phone to sort
-  // its own ids into "real" vs "local-only" before asking.
-  const knownIds = (knownDocumentIds || []).filter(
-    (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)
-  );
+  const match = { userId: req.userId };
+  if (cursor) match._id = { $gt: new mongoose.Types.ObjectId(cursor) };
 
-  const [newDocuments, index, folderPaths] = await Promise.all([
-    Document.find({ userId: req.userId, deletedAt: null, _id: { $nin: knownIds } }).sort({ createdAt: -1 }),
-    // Metadata-only listing of EVERY document on this account - this is
-    // what lets the phone notice PC-side deletes (an id it holds that's
-    // missing here) and renames/moves (same id, different filename/
-    // folder/expiryDate), which the "new to you" list above can never
-    // express.
-    Document.find({ userId: req.userId, deletedAt: null }, 'filename folder expiryDate'),
-    listFolderPaths(req.userId),
+  const rows = await Document.aggregate([
+    { $match: match },
+    { $sort: { _id: 1 } },
+    { $limit: limit + 1 },
+    {
+      $project: {
+        filename: 1,
+        folder: 1,
+        checksum: 1,
+        iv: 1,
+        authTag: 1,
+        mimeType: 1,
+        expiryDate: 1,
+        updatedAt: 1,
+        deletedAt: 1,
+        clientId: 1,
+        size: { $binarySize: { $ifNull: ['$encryptedBlob', ''] } },
+      },
+    },
   ]);
 
-  const folders = folderPaths.filter((name) => name !== 'root');
-
+  const page = rows.slice(0, limit);
   res.status(200).json({
-    documents: newDocuments.map(toSyncPayload),
-    index: index.map((doc) => ({
-      id: doc._id,
-      filename: doc.filename,
-      folder: doc.folder,
-      expiryDate: doc.expiryDate,
-    })),
-    folders,
+    items: page.map(toSyncItem),
+    nextCursor: rows.length > limit ? String(page[page.length - 1]._id) : null,
+    serverTime: new Date().toISOString(),
   });
 });
 
 /**
- * POST /api/sync/push
- * requireDeviceAuth. Body: { newDocuments: [{ localId?, filename, folder,
- * encryptedBlob (base64), iv, authTag, checksum, expiryDate?, mimeType? }] }
- * Content arrives already encrypted BY THE PHONE under the DEK it
- * unwrapped locally - plaintext never crosses this endpoint, and the
- * server has no session-derived key here to decrypt with even if it
- * wanted to (requireDeviceAuth is not requireSession).
- *
- * mimeType is optional since the phone has no upload UI yet (documents
- * pushed for now come from the dev test page's local-only samples) - it
- * falls back to a generic binary type when absent.
- *
- * `localId`, if given, is echoed back in the response's idMap so the
- * caller can replace its local-only IndexedDB record (keyed by that
- * local id) with the canonical server _id, instead of holding an
- * orphaned local-only copy alongside the now-real one.
+ * GET /api/sync/folders
+ * requireDeviceAuth. Every folder path on the account (excluding "root").
  */
-const pushDocuments = asyncHandler(async (req, res) => {
-  const { newDocuments = [], newFolders = [] } = req.body;
-  if (!Array.isArray(newDocuments) || !Array.isArray(newFolders)) {
-    throw badRequest('newDocuments and newFolders must be arrays.');
-  }
-  if (newDocuments.length === 0 && newFolders.length === 0) {
-    throw badRequest('Nothing to push.');
-  }
-
-  // Empty folders created on the phone. Same implicit-creation rule as
-  // every other path (utils/folders.js ensureFolderPath): a phone can't
-  // create "josh" next to an existing "Josh" - it resolves into it.
-  for (const name of newFolders) {
-    if (typeof name !== 'string') continue;
-    // eslint-disable-next-line no-await-in-loop
-    await ensureFolderPath(req.userId, name);
-  }
-
-  const idMap = [];
-
-  for (const item of newDocuments) {
-    const {
-      localId,
-      filename,
-      folder,
-      encryptedBlob,
-      iv,
-      authTag,
-      checksum,
-      expiryDate,
-      mimeType,
-    } = item || {};
-
-    // encryptedBlob may be '' (a 0-byte file encrypts to an empty ciphertext).
-    // Every field is type-checked as a string before it reaches Mongoose.
-    const stringFields = [filename, encryptedBlob, iv, authTag, checksum];
-    const optionalStrings = [localId, folder, expiryDate, mimeType];
-    if (
-      !stringFields.every((value) => typeof value === 'string') ||
-      !optionalStrings.every((value) => value === undefined || value === null || typeof value === 'string')
-    ) {
-      throw badRequest('Each document field must be a string.');
-    }
-    if (!filename || !iv || !authTag || !checksum) {
-      throw badRequest(
-        'Each document requires filename, encryptedBlob, iv, authTag, and checksum.'
-      );
-    }
-
-    // eslint-disable-next-line no-await-in-loop
-    await assertCanStore(req.userId, Math.floor((encryptedBlob.length * 3) / 4));
-
-    // eslint-disable-next-line no-await-in-loop -- small batches, sequential writes are fine here
-    const document = await Document.create({
-      userId: req.userId,
-      filename: cleanStoredName(filename),
-      // eslint-disable-next-line no-await-in-loop
-      folder: toDocumentFolder(await ensureFolderPath(req.userId, folder || '')),
-      encryptedBlob: Buffer.from(encryptedBlob, 'base64'),
-      iv,
-      authTag,
-      checksum,
-      mimeType: mimeType || DEFAULT_MIME_TYPE,
-      originDevice: 'phone',
-      expiryDate: expiryDate || undefined,
-      syncStatus: 'synced',
-    });
-
-    idMap.push({ localId: localId ?? null, id: document._id });
-  }
-
-  res.status(201).json({ idMap });
+const listSyncFolders = asyncHandler(async (req, res) => {
+  const folderPaths = await listFolderPaths(req.userId);
+  res.status(200).json({ folders: folderPaths.filter((name) => name !== 'root') });
 });
 
-module.exports = { pullDocuments, pushDocuments };
+/**
+ * GET /api/sync/documents/:id/content
+ * requireDeviceAuth. One document's ciphertext as raw bytes (the iv and auth tag
+ * are in its metadata). Another account's id, a trashed document and an unknown
+ * id are all the same 404.
+ */
+const getSyncDocumentContent = asyncHandler(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw httpError(404, 'Document not found.');
+  const doc = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
+  if (!doc || !Buffer.isBuffer(doc.encryptedBlob)) throw httpError(404, 'Document not found.');
+  if (doc.encryptedBlob.length > MAX_BLOB_BYTES) {
+    // Cannot happen for anything stored through the app; refuse rather than send a response the host would cut off.
+    throw httpError(413, 'This document is too large to sync.');
+  }
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', String(doc.encryptedBlob.length));
+  res.status(200).end(doc.encryptedBlob);
+});
+
+/**
+ * POST /api/sync/documents  (multipart/form-data)
+ * requireDeviceAuth. Fields: filename, iv, authTag, checksum, clientId, and
+ * optionally folder, expiryDate, mimeType; the ciphertext is the "file" part.
+ * Content arrives already encrypted BY THE PHONE under the vault key it holds;
+ * the server never sees plaintext here.
+ *
+ * `clientId` (the phone's own id for the document) makes this safe to repeat:
+ * if the response was lost and the phone sends it again, the document it already
+ * created is returned instead of a second copy.
+ */
+const pushSyncDocument = asyncHandler(async (req, res) => {
+  const file = req.file;
+  if (!file) throw badRequest('The encrypted file is missing.');
+  const { filename, iv, authTag, checksum, clientId, folder, expiryDate, mimeType } = req.body;
+
+  const required = [filename, iv, authTag, checksum, clientId];
+  const optional = [folder, expiryDate, mimeType];
+  if (
+    !required.every((value) => typeof value === 'string' && value) ||
+    !optional.every((value) => value === undefined || typeof value === 'string')
+  ) {
+    throw badRequest('filename, iv, authTag, checksum and clientId are required text fields.');
+  }
+  if (clientId.length > 80) throw badRequest('clientId is too long.');
+
+  const existing = await Document.findOne({ userId: req.userId, clientId });
+  if (existing) {
+    return res.status(200).json({ id: String(existing._id), clientId, duplicate: true });
+  }
+
+  await assertCanStore(req.userId, file.buffer.length);
+
+  const document = await Document.create({
+    userId: req.userId,
+    filename: cleanStoredName(filename),
+    folder: toDocumentFolder(await ensureFolderPath(req.userId, folder || '')),
+    encryptedBlob: file.buffer,
+    iv,
+    authTag,
+    checksum,
+    mimeType: mimeType || DEFAULT_MIME_TYPE,
+    originDevice: 'phone',
+    expiryDate: expiryDate || undefined,
+    syncStatus: 'synced',
+    clientId,
+  });
+
+  res.status(201).json({ id: String(document._id), clientId, duplicate: false });
+});
+
+/**
+ * POST /api/sync/folders   Body: { name }
+ * requireDeviceAuth. An empty folder created on the phone. Same implicit-
+ * creation rule as every other path: it resolves into an existing folder of the
+ * same name (any case) rather than making a look-alike.
+ */
+const pushSyncFolder = asyncHandler(async (req, res) => {
+  const { name } = req.body;
+  if (typeof name !== 'string' || !name.trim()) throw badRequest('A folder name is required.');
+  await ensureFolderPath(req.userId, name);
+  res.status(201).json({ success: true });
+});
+
+/** The old unpaginated endpoints: gone, with a message the phone can show. */
+const syncMoved = (req, res) => {
+  res.status(410).json({
+    success: false,
+    error: { message: 'This version of Warden on your phone is out of date. Reload the app to update it, then sync again.' },
+  });
+};
+
+module.exports = {
+  listSyncDocuments,
+  listSyncFolders,
+  getSyncDocumentContent,
+  pushSyncDocument,
+  pushSyncFolder,
+  syncMoved,
+  MAX_BLOB_BYTES,
+  MAX_PAGE,
+};

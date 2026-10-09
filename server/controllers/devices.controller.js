@@ -7,24 +7,18 @@ const PairedDevice = require('../models/PairedDevice');
 // every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function badRequest(message) {
+function httpError(status, message) {
   const error = new Error(message);
-  error.status = 400;
+  error.status = status;
   return error;
 }
 
-function assertValidId(id, label = 'device') {
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw badRequest(`Invalid ${label} id.`);
-  }
-}
+const deviceNotFound = () => httpError(404, 'Device not found.');
 
 /**
  * GET /api/devices
- * Owner-only. Metadata only - deviceName, pairedAt, revoked - never
- * wrappedDEKPhonePin or its iv/authTag/salt, and never deviceToken: the
- * owner's UI only ever needs to decide whether to revoke a device, not
- * to hold its key material or sync credential.
+ * Owner-only. Name, browser, paired / last-seen times and status - never a
+ * token or hash.
  */
 const listDevices = asyncHandler(async (req, res) => {
   const devices = await PairedDevice.find({ userId: req.userId }).sort({ pairedAt: -1 });
@@ -32,31 +26,36 @@ const listDevices = asyncHandler(async (req, res) => {
     devices.map((device) => ({
       id: device._id,
       deviceName: device.deviceName,
+      browserLabel: device.browserLabel,
       pairedAt: device.pairedAt,
+      lastSeenAt: device.lastSeenAt,
       revoked: device.revoked,
+      revokedAt: device.revokedAt,
     }))
   );
 });
 
 /**
  * POST /api/devices/:id/revoke
- * Idempotent, same reasoning as revokeShare/revokeShareById in
- * shares.controller.js: the caller wants an end state ("this device can
- * no longer sync"), not a transition, so an already-revoked or unknown
- * id both just return success rather than needing to be distinguished.
+ * Owner-only. Removes the stored token hash, so the phone's token matches
+ * nothing from the next request on (401). An id that is unknown, malformed or
+ * belongs to another account is a 404 - never a silent success. Revoking a
+ * device of yours that is already revoked is fine (200).
  *
- * This is the actual security boundary: requireDeviceAuth (middleware/
- * requireDeviceAuth.js) checks this same `revoked` flag on every
- * POST /api/sync/pull and /push, so a revoked device's still-valid-
- * looking deviceToken (sitting in its own IndexedDB from pairing) stops
- * working the moment this flips.
+ * What this cannot do: the phone keeps its own encrypted local copy until it is
+ * wiped or used online (the app tells the owner so).
  */
 const revokeDevice = asyncHandler(async (req, res) => {
-  assertValidId(req.params.id);
-  await PairedDevice.updateOne(
-    { _id: req.params.id, userId: req.userId },
-    { $set: { revoked: true } }
-  );
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw deviceNotFound();
+  const device = await PairedDevice.findOne({ _id: req.params.id, userId: req.userId });
+  if (!device) throw deviceNotFound();
+
+  if (!device.revoked || device.tokenHash) {
+    await PairedDevice.updateOne(
+      { _id: device._id, userId: req.userId },
+      { $set: { revoked: true, revokedAt: device.revokedAt || new Date() }, $unset: { tokenHash: '' } }
+    );
+  }
   res.status(200).json({ success: true });
 });
 

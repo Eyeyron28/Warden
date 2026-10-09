@@ -520,6 +520,8 @@ test('every query that serves the vault is filtered to non-trashed documents', (
   for (const file of [['controllers', 'sync.controller.js'], ['controllers', 'shares.controller.js']]) {
     const text = read(...file);
     for (const [, call] of text.matchAll(/Document\.(?:find|findOne|aggregate)\(\[?\{([^}]*\{[^}]*\}[^}]*|[^}]*)\}/g)) {
+      // (the phone-push idempotency lookup by clientId deliberately includes Trash: a repeat must find the document it made)
+      if (/clientId/.test(call)) continue;
       assert.match(call, /deletedAt/, `${file.join('/')} query without deletedAt: ${call}`);
     }
   }

@@ -1,4 +1,31 @@
-import { scrypt } from 'scrypt-js';
+import scryptJs from 'scrypt-js';
+
+import { checkPin } from '../utils/pinRules.js';
+
+const { syncScrypt } = scryptJs;
+
+/**
+ * One scrypt derivation. In a browser it runs in a Web Worker (services/
+ * scryptWorker.js: synchronous scrypt, no main-thread stall and none of
+ * scrypt-js's setTimeout pauses); where there is no Worker (the Node test
+ * runner) it runs in place.
+ */
+function runScrypt(password, salt, N, r, p, length) {
+  if (typeof Worker === 'undefined') return Promise.resolve(syncScrypt(password, salt, N, r, p, length));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./scryptWorker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = (event) => {
+      worker.terminate();
+      if (event.data.ok) resolve(event.data.key);
+      else reject(new Error(event.data.message));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || 'Key derivation failed.'));
+    };
+    worker.postMessage({ password, salt, N, r, p, length });
+  });
+}
 
 /**
  * Phone-side crypto: unwraps the DEK locally using the PIN set during
@@ -18,6 +45,22 @@ import { scrypt } from 'scrypt-js';
 const SCRYPT_N = 2 ** 15;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
+
+/**
+ * How a phone PIN is turned into a key. Stored WITH every wrap (the `kdf` field
+ * of the device record), so a wrap always opens with the cost it was made with
+ * and the cost can be raised later without breaking old ones.
+ *
+ * Version 2: scrypt N=2^16, r=8, p=1 (64 MiB of memory, about twice the work of
+ * the first version) with its own salt context. A device record with no `kdf`
+ * is a version-1 wrap: N=2^15, and the key shared with the server's scheme.
+ * 64 MiB is also the ceiling for a JavaScript scrypt on a phone browser, which
+ * is why the cost is not pushed higher.
+ */
+export const PIN_KDF = Object.freeze({ v: 2, name: 'scrypt', N: 2 ** 16, r: 8, p: 1 });
+export const LEGACY_PIN_KDF = Object.freeze({ v: 1, name: 'scrypt', N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+
+const saltContext = (kdf) => (kdf.v === 1 ? 'encryption-key' : 'warden-phone-pin-v2');
 const ENCRYPTION_KEY_KEYLEN = 32; // 256-bit key, required by AES-256
 const GCM_TAG_LENGTH_BITS = 128; // 16-byte AES-GCM auth tag, same as server's authTag
 const GCM_IV_LENGTH_BYTES = 12; // 96-bit IV, same as server's GCM_IV_LENGTH
@@ -54,22 +97,23 @@ function bytesToBase64(bytes) {
  * @param {string} saltHex
  * @returns {Promise<Uint8Array>} 32-byte KEK
  */
-async function deriveKey(secret, saltHex) {
+async function deriveKey(secret, saltHex, kdf = LEGACY_PIN_KDF) {
   const password = new TextEncoder().encode(secret);
-  // Must match scryptDerive()'s `${salt}:${context}` salt-input format in
-  // server/utils/crypto.js, with the same "encryption-key" context label
-  // deriveEncryptionKey uses (as opposed to "password-hash").
-  const salt = new TextEncoder().encode(`${saltHex}:encryption-key`);
-  return scrypt(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P, ENCRYPTION_KEY_KEYLEN);
+  // Version 1 matches scryptDerive()'s `${salt}:${context}` input in
+  // server/utils/crypto.js (context "encryption-key"); it is also what the
+  // phone-recovery one-time token uses. Version 2 is client-only.
+  const salt = new TextEncoder().encode(`${saltHex}:${saltContext(kdf)}`);
+  return runScrypt(password, salt, kdf.N, kdf.r, kdf.p, ENCRYPTION_KEY_KEYLEN);
 }
 
 /**
  * @param {string} pin
- * @param {string} saltHex - `wrappedDEKPhonePinSalt` from pairing
+ * @param {string} saltHex - `wrappedDEKPhonePinSalt` of the device record
+ * @param {{ v: number, N: number, r: number, p: number }} [kdf] - the record's `kdf`; absent means version 1
  * @returns {Promise<Uint8Array>} 32-byte KEK
  */
-export async function deriveKeyFromPin(pin, saltHex) {
-  return deriveKey(pin, saltHex);
+export async function deriveKeyFromPin(pin, saltHex, kdf = LEGACY_PIN_KDF) {
+  return deriveKey(pin, saltHex, kdf);
 }
 
 /**
@@ -129,18 +173,23 @@ export async function unwrapDEK(wrappedKeyBase64, ivBase64, authTagBase64, kek) 
 }
 
 /**
- * Full local-unlock flow: derive the KEK from the PIN, unwrap the DEK,
- * and hold it in the module-level variable above for this page's use.
- * Throws "Incorrect PIN." (via unwrapDEK) on a wrong PIN - deliberately
- * no lockout logic here, this is a phone convenience layer, not the
- * vault's primary security boundary (the real boundary is the master
- * password this device's PIN was set up with).
+ * Full local-unlock flow: derive the KEK from the PIN with the cost the wrap was
+ * made with, unwrap the DEK, and hold it in the module-level variable above for
+ * this page's use. Throws "Incorrect PIN." on a wrong PIN. Attempt limiting
+ * lives with the PIN screen (utils/pinLockout.js).
+ *
+ * Says whether the wrap should be redone: it was made with the old cost, or the
+ * PIN that just opened it no longer meets the rules (shorter than 6, or on the
+ * block list). The caller then makes the owner choose a new PIN and calls
+ * rewrapWithNewPin.
  *
  * @param {string} pin
- * @param {{ wrappedDEKPhonePin: string, wrappedDEKPhonePinIv: string, wrappedDEKPhonePinAuthTag: string, wrappedDEKPhonePinSalt: string }} deviceAuth
+ * @param {{ wrappedDEKPhonePin: string, wrappedDEKPhonePinIv: string, wrappedDEKPhonePinAuthTag: string, wrappedDEKPhonePinSalt: string, kdf?: object }} deviceAuth
+ * @returns {Promise<{ needsNewPin: boolean, reason: 'old-kdf' | 'weak-pin' | null }>}
  */
 export async function unlockLocalVault(pin, deviceAuth) {
-  const kek = await deriveKeyFromPin(pin, deviceAuth.wrappedDEKPhonePinSalt);
+  const kdf = deviceAuth.kdf || LEGACY_PIN_KDF;
+  const kek = await deriveKeyFromPin(pin, deviceAuth.wrappedDEKPhonePinSalt, kdf);
   const dek = await unwrapDEK(
     deviceAuth.wrappedDEKPhonePin,
     deviceAuth.wrappedDEKPhonePinIv,
@@ -148,6 +197,38 @@ export async function unlockLocalVault(pin, deviceAuth) {
     kek
   );
   unwrappedDEK = dek;
+  if (!deviceAuth.kdf || deviceAuth.kdf.v < PIN_KDF.v || deviceAuth.kdf.N < PIN_KDF.N) {
+    return { needsNewPin: true, reason: 'old-kdf' };
+  }
+  if (!checkPin(pin).ok) return { needsNewPin: true, reason: 'weak-pin' };
+  return { needsNewPin: false, reason: null };
+}
+
+/**
+ * Wraps a vault key under a PIN with the current cost and a fresh salt and iv.
+ * Used when pairing (the key just arrived from the server) and when an old wrap
+ * is upgraded. Returns the fields of the device record that describe the wrap.
+ *
+ * @param {Uint8Array} dek
+ * @param {string} pin
+ */
+export async function wrapDekForPin(dek, pin) {
+  const salt = generateSaltHex();
+  const kek = await deriveKeyFromPin(pin, salt, PIN_KDF);
+  const wrapped = await wrapDEK(dek, kek);
+  return {
+    wrappedDEKPhonePin: wrapped.wrappedKey,
+    wrappedDEKPhonePinIv: wrapped.iv,
+    wrappedDEKPhonePinAuthTag: wrapped.authTag,
+    wrappedDEKPhonePinSalt: salt,
+    kdf: { ...PIN_KDF },
+  };
+}
+
+/** Re-wraps the key already unlocked in memory under a new PIN (the forced PIN change). */
+export async function rewrapWithNewPin(newPin) {
+  if (!unwrappedDEK) throw new Error('Local vault is locked.');
+  return wrapDekForPin(unwrappedDEK, newPin);
 }
 
 export function isLocallyUnlocked() {

@@ -29,7 +29,7 @@ const {
  * challenge never involves the vault key at all).
  */
 
-const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset' };
+const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', pairDevice: 'pair-device' };
 
 const MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
 const MAX_RESENDS = 3; // per challenge
@@ -63,6 +63,15 @@ function emailFor(purpose, code, ttlMinutes) {
 ${expires} ` +
         "If you didn't ask to reset your Warden password, ignore this email: your password has not changed. " +
         'Never share this code with anyone.',
+    };
+  }
+  if (purpose === PURPOSES.pairDevice) {
+    return {
+      subject: 'Your Warden code for pairing a device',
+      text:
+        `Your Warden code for pairing a new device is ${code}.\n\n${expires} ` +
+        "If you didn't ask to pair a device, ignore this email and change your password: " +
+        'someone may be signed in to your account. Never share this code with anyone.',
     };
   }
   if (purpose === PURPOSES.deleteAccount) {

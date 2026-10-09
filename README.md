@@ -18,7 +18,7 @@ Then, any time you want to work on Warden:
 npm run dev
 ```
 
-This starts both the backend (`server/`, `nodemon server.js`) and the frontend (`client/`, `vite --host` so it's also reachable from a phone on the same LAN) together in one terminal, with output labeled `[server]` / `[client]` so it's clear which log line came from which process. `Ctrl+C` stops both cleanly.
+This starts both the backend (`server/`, `nodemon server.js`) and the frontend (`client/`, `vite --host`) together in one terminal, with output labeled `[server]` / `[client]` so it's clear which log line came from which process. `Ctrl+C` stops both cleanly.
 
 This root `package.json` is only a coordinating layer, built with [`concurrently`](https://www.npmjs.com/package/concurrently) - it doesn't change anything inside `server/package.json` or `client/package.json`. Running them separately in two terminals still works exactly as before, if you'd rather do that:
 

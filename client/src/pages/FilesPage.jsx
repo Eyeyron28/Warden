@@ -25,8 +25,6 @@ import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import PreviewsNotice from '../components/PreviewsNotice.jsx';
 import Modal from '../components/Modal.jsx';
-import PairDevicePanel from '../components/PairDevicePanel.jsx';
-import PairedDevicesPanel from '../components/PairedDevicesPanel.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import EditDocumentModal from '../components/EditDocumentModal.jsx';
 import FolderBreadcrumb from '../components/FolderBreadcrumb.jsx';
@@ -71,8 +69,6 @@ import styles from './FilePages.module.css';
 // already clears it, and the route guard is about to unmount this page.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-const PANELS = ['pair', 'devices'];
-
 const expiryLabel = (days) => (days === 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}`);
 
 // Name takes the rest; these are fixed but proportional to the screen, so wide
@@ -96,7 +92,6 @@ function FilesPage() {
   const { searchTerm, showToast, refreshSidebar } = useShell();
 
   const currentPath = normalizeFolderPath(params.get('path') || '');
-  const panel = PANELS.includes(params.get('panel')) ? params.get('panel') : null;
 
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -562,12 +557,10 @@ function FilesPage() {
     refreshFolders();
   };
 
-  // ---- panels (?panel=pair and ?panel=devices, linked from the sidebar) ----
-  const closePanel = () => {
-    const next = new URLSearchParams(params);
-    next.delete('panel');
-    setParams(next, { replace: true });
-  };
+  // Old links to the pair / paired-devices panels now land on the Devices page.
+  useEffect(() => {
+    if (['pair', 'devices'].includes(params.get('panel'))) navigate('/devices', { replace: true });
+  }, [params, navigate]);
   // ---- menus: one set of actions for the "..." button, right-click, long-press and Shift+F10 ----
   const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
 
@@ -853,17 +846,6 @@ function FilesPage() {
               </div>
             </>
           )}
-        </Modal>
-      )}
-
-      {panel === 'pair' && (
-        <Modal title="Pair a device" onClose={closePanel}>
-          <PairDevicePanel onClose={closePanel} />
-        </Modal>
-      )}
-      {panel === 'devices' && (
-        <Modal title="Paired devices" onClose={closePanel}>
-          <PairedDevicesPanel />
         </Modal>
       )}
 

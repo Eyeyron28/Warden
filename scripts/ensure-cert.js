@@ -1,20 +1,15 @@
 #!/usr/bin/env node
 // Runs automatically before every `npm run dev` (see the root package.json
-// "predev" script). Keeps certs/localhost+3.pem valid for whatever network
-// this PC is on right now, without anyone having to remember to re-run
-// mkcert by hand after switching Wi-Fi networks or tethering to a phone -
-// the exact failure mode documented in server/server.js's cert comment
-// (a request to an IP outside the cert's SAN list fails TLS validation,
-// which makes the frontend wrongly show first-run setup instead of
-// unlock, even though the vault itself is fine).
+// "predev" script). Keeps certs/localhost+3.pem valid for localhost, 127.0.0.1
+// and any extra hosts listed (comma separated) in DEV_CERT_HOSTS. Nothing is
+// detected from the network: to open the dev site from another device, list its
+// address in DEV_CERT_HOSTS; to try a real phone, use the deployed HTTPS URL.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const forge = require('node-forge');
-
-const { detectLanIp } = require('../server/utils/lanIp');
 
 const CERTS_DIR = path.join(__dirname, '..', 'certs');
 const CERT_PATH = path.join(CERTS_DIR, 'localhost+3.pem');
@@ -67,40 +62,26 @@ function regenerateCert(names) {
 }
 
 function main() {
-  const detected = detectLanIp();
-  if (!detected) {
-    // Nothing to ensure coverage for - not this script's problem to solve
-    // (server.js already logs and fails loudly at request time if a LAN
-    // address is genuinely needed and none can be found).
-    return;
-  }
+  const wanted = (process.env.DEV_CERT_HOSTS || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => /^[A-Za-z0-9.:-]+$/.test(name));
+  if (wanted.length === 0) return;
 
   const existingSans = readExistingSans();
-
-  if (existingSans !== null && existingSans.includes(detected.ip)) {
-    // Already covered - exit quietly, no output, nothing to do.
-    return;
-  }
+  if (existingSans !== null && wanted.every((name) => existingSans.includes(name))) return;
 
   if (!mkcertAvailable()) {
     console.error(
-      `[ensure-cert] Detected LAN IP ${detected.ip} is not covered by the current certificate, ` +
-        'but mkcert is not installed (or not on PATH), so it cannot be regenerated automatically. ' +
-        'Install mkcert (https://github.com/FiloSottile/mkcert) and run `npm run dev` again, or ' +
-        'regenerate the cert by hand - continuing with the existing certificate for now, which ' +
-        `will show a browser warning on ${detected.ip}.`
+      '[ensure-cert] DEV_CERT_HOSTS lists hosts the current certificate does not cover, but mkcert is not ' +
+        'installed (or not on PATH). Install mkcert (https://github.com/FiloSottile/mkcert) and run `npm run dev` ' +
+        'again; continuing with the existing certificate, which will show a browser warning on those hosts.'
     );
     return;
   }
 
-  const namesToRequest = Array.from(
-    new Set([...(existingSans ?? BASE_NAMES), ...BASE_NAMES, detected.ip])
-  );
-
-  const ok = regenerateCert(namesToRequest);
-  if (ok) {
-    console.log(`[ensure-cert] Certificate updated to include ${detected.ip}`);
-  }
+  const names = Array.from(new Set([...(existingSans ?? BASE_NAMES), ...BASE_NAMES, ...wanted]));
+  if (regenerateCert(names)) console.log(`[ensure-cert] Certificate updated to include ${wanted.join(', ')}`);
 }
 
 main();

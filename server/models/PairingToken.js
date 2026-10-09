@@ -1,44 +1,28 @@
 const mongoose = require('mongoose');
 
-// Short-lived and single-use, deliberately separate from PairedDevice
-// (the durable record of an actually-paired phone) and from Share
-// (a link handed to someone else, valid for up to 30 days). Pairing is a
-// live, in-person action between two devices the owner already
-// controls, so it gets a 5-minute window instead - long enough to open
-// the phone's camera, too short to be worth attacking.
+// Short-lived and single-use, deliberately separate from PairedDevice (the
+// durable record of an actually-paired phone). Pairing is a live, in-person
+// action between two devices the owner controls, so it gets a 5-minute window.
+//
+// Only the SHA-256 of the token is stored (utils/deviceTokens.js): the raw value
+// exists on the owner's screen (in the QR) and nowhere else. Mongo removes the
+// row shortly after it expires (TTL index), used or not.
 const pairingTokenSchema = new mongoose.Schema(
   {
-    // Whose account this QR is pairing a device to - set at POST
-    // /api/pair/init (already requireSession-gated) from req.userId.
-    // POST /api/pair/complete resolves the account from THIS field, never
-    // from a session (the phone doesn't have one) and never from a
-    // singleton lookup - see controllers/pairing.controller.js.
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true,
-    },
-    token: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    expiresAt: {
-      type: Date,
-      required: true,
-    },
-    // Single-use: once the phone completes pairing with this token, it
-    // flips to true and the token can never be used again, even if
-    // still within its expiry window.
-    used: {
-      type: Boolean,
-      default: false,
-    },
+    // Whose account this QR pairs a device to - set at POST /api/pair/init
+    // (session + emailed code) and the ONLY way POST /api/pair/complete finds
+    // the account: the phone has no session.
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    tokenHash: { type: String, required: true, unique: true },
+    expiresAt: { type: Date, required: true },
+    // Single-use: flips to true when a phone completes pairing with it.
+    used: { type: Boolean, default: false },
+    // Wrong master passwords typed against THIS token; the 5th kills it.
+    failedAttempts: { type: Number, default: 0 },
   },
-  {
-    timestamps: { createdAt: true, updatedAt: false },
-  }
+  { timestamps: { createdAt: true, updatedAt: false } }
 );
+
+pairingTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('PairingToken', pairingTokenSchema);

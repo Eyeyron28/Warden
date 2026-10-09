@@ -17,7 +17,7 @@ export const LIMITS = [
   {
     title: 'A compromised or shared device',
     body:
-      'Anyone using your unlocked browser can open your documents. A paired phone keeps encrypted copies of your files and a copy of your vault key locked only by its PIN, so a short PIN on a lost phone is a weak lock.',
+      'Anyone using your unlocked browser can open your documents. A paired phone keeps encrypted copies of your files and a copy of your vault key locked only by its PIN, so a lost phone is only as safe as its PIN (at least 6 characters, obvious ones refused, slow to guess). Remove it on the Devices page and change your password.',
   },
   {
     title: 'Weak or reused passwords',

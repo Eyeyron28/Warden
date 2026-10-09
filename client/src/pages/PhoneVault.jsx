@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckSquare, DeviceMobile, Lifebuoy, LockKey, Trash } from '@phosphor-icons/react';
 
@@ -19,6 +19,8 @@ import {
   getAllLocalFolders,
   saveLocalFolder,
   deleteLocalFolder,
+  updateDeviceAuth,
+  wipeLocalVault,
 } from '../services/localVault.js';
 import {
   unlockLocalVault,
@@ -26,14 +28,24 @@ import {
   decryptDocument,
   encryptDocument,
   computeChecksum,
-  base64ToBytes,
-  bytesToBase64,
+  rewrapWithNewPin,
   deriveKeyFromToken,
   wrapDEK,
   getUnwrappedDEK,
   generateSaltHex,
 } from '../services/localCrypto.js';
-import { pullDocuments, pushDocuments, deleteDocumentOnPC, deleteFolderOnPC } from '../services/syncService.js';
+import {
+  listDocumentPage,
+  listServerFolders,
+  fetchDocumentContent,
+  pushDocument,
+  pushFolder,
+  deleteDocumentOnPC,
+  deleteFolderOnPC,
+} from '../services/syncService.js';
+import { runSync } from '../utils/phoneSync.js';
+import { checkPin } from '../utils/pinRules.js';
+import { afterRightPin, afterWrongPin, describeWait, readLockout } from '../utils/pinLockout.js';
 import {
   normalizeFolderPath,
   splitPath,
@@ -45,6 +57,15 @@ import { submitPhoneRecovery } from '../services/phoneRecoveryService.js';
 import { sameOriginApiBase } from '../utils/apiOrigin.js';
 import { extractErrorMessage } from '../services/api.js';
 import styles from './PhoneVault.module.css';
+
+/** One line for what a running sync is doing. */
+function progressText(progress) {
+  const position = `${Math.min(progress.done + 1, progress.total)} of ${progress.total}`;
+  const name = progress.current ? ` - ${progress.current}` : '';
+  if (progress.phase === 'listing') return `Checking your account... (${progress.done} files seen)`;
+  if (progress.phase === 'downloading') return progress.total === 0 ? 'Nothing new to download.' : `Downloading ${position}${name}`;
+  return progress.total === 0 ? 'Nothing to upload.' : `Uploading ${position}${name}`;
+}
 
 /**
  * The phone's own local vault view (/phone) - entirely outside the
@@ -67,12 +88,22 @@ function PhoneVault() {
   // `/pair/:token`. Still fully usable if typed in by hand instead.
   const recoverTokenFromUrl = searchParams.get('recover') || '';
 
-  const [phase, setPhase] = useState('checking'); // checking | no-device | locked | unlocked
+  const [phase, setPhase] = useState('checking'); // checking | no-device | locked | locked-out | new-pin | unlocked
   const [deviceAuth, setDeviceAuth] = useState(null);
 
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
+  const [now, setNow] = useState(Date.now()); // ticks while a wrong-PIN wait is running
+  // The forced new PIN (an old wrap, or a PIN that no longer meets the rules).
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
+  const [newPinReason, setNewPinReason] = useState(null);
+  const [newPinError, setNewPinError] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
+  const oldPin = useRef('');
+  const [resetOpen, setResetOpen] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
   const [documents, setDocuments] = useState([]);
   const [localFolders, setLocalFolders] = useState([]);
@@ -108,6 +139,10 @@ function PhoneVault() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
   const [syncMessage, setSyncMessage] = useState('');
+  const [syncProgress, setSyncProgress] = useState(null); // { phase, done, total, current }
+  const [syncFailures, setSyncFailures] = useState([]);
+  const [revokedNotice, setRevokedNotice] = useState('');
+  const syncAbort = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +163,7 @@ function PhoneVault() {
           // goes to this page's own origin instead (utils/apiOrigin.js) -
           // the origin that paired is the one whose IndexedDB this is.
           setDeviceAuth({ ...mostRecent, apiBase: sameOriginApiBase() });
-          setPhase('locked');
+          setPhase(readLockout(mostRecent.unlock).lockedOut ? 'locked-out' : 'locked');
         }
       })
       .catch(() => {
@@ -164,21 +199,125 @@ function PhoneVault() {
     if (phase === 'unlocked' && recoverTokenFromUrl) setRecoveryOpen(true);
   }, [phase, recoverTokenFromUrl]);
 
+  // Online / offline, so the screen can say so instead of failing quietly.
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+
+  // While a wrong-PIN wait is running, tick once a second so the countdown moves.
+  const lockout = readLockout(deviceAuth?.unlock, now);
+  useEffect(() => {
+    if (phase !== 'locked' || lockout.waitMs <= 0) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, [phase, lockout.waitMs]);
+
+  const saveUnlockState = async (unlock) => {
+    setDeviceAuth((current) => ({ ...current, unlock }));
+    try {
+      await updateDeviceAuth(deviceAuth.deviceId, { unlock });
+    } catch {
+      // The in-memory copy still limits this page; nothing more can be done if storage refuses.
+    }
+  };
+
   const handleUnlock = async (event) => {
     event.preventDefault();
     if (unlocking || !pin) return;
+    const current = readLockout(deviceAuth.unlock);
+    if (current.lockedOut) {
+      setPhase('locked-out');
+      return;
+    }
+    if (current.waitMs > 0) return;
 
     setUnlocking(true);
     setPinError('');
     try {
-      await unlockLocalVault(pin, deviceAuth);
-      setPin('');
-      setPhase('unlocked');
+      const outcome = await unlockLocalVault(pin, deviceAuth);
+      await saveUnlockState(afterRightPin());
+      setNow(Date.now());
+      if (outcome.needsNewPin) {
+        // An old wrap (cheaper key derivation) or a PIN that no longer meets the rules:
+        // the vault is open, but a new PIN must be chosen before it is used.
+        oldPin.current = pin;
+        setNewPinReason(outcome.reason);
+        setPin('');
+        setPhase('new-pin');
+      } else {
+        setPin('');
+        setPhase('unlocked');
+      }
     } catch (err) {
-      setPinError(err.message || 'Incorrect PIN.');
+      if (err?.message === 'Incorrect PIN.') {
+        const next = afterWrongPin(deviceAuth.unlock);
+        await saveUnlockState(next);
+        setNow(Date.now());
+        const after = readLockout(next);
+        if (after.lockedOut) {
+          setPin('');
+          setPhase('locked-out');
+        } else {
+          setPinError(`Incorrect PIN. ${after.triesLeft} ${after.triesLeft === 1 ? 'try' : 'tries'} left before this phone locks.`);
+        }
+      } else {
+        setPinError('This browser could not unlock the vault. Reload the page and try again.');
+      }
     } finally {
       setUnlocking(false);
     }
+  };
+
+  const newPinCheck = checkPin(newPin);
+  const handleSetNewPin = async (event) => {
+    event.preventDefault();
+    if (savingPin) return;
+    if (!newPinCheck.ok) {
+      setNewPinError(newPinCheck.message || 'Choose a PIN that meets the rules above.');
+      return;
+    }
+    if (newPin === oldPin.current) {
+      setNewPinError('Choose a different PIN from the old one.');
+      return;
+    }
+    if (newPin !== newPinConfirm) {
+      setNewPinError('The two PINs do not match.');
+      return;
+    }
+    setSavingPin(true);
+    setNewPinError('');
+    try {
+      // Re-wrapped here, in this browser, from the key already open in memory; nothing is sent anywhere.
+      const wrap = await rewrapWithNewPin(newPin);
+      await updateDeviceAuth(deviceAuth.deviceId, wrap);
+      setDeviceAuth((current) => ({ ...current, ...wrap }));
+      oldPin.current = '';
+      setNewPin('');
+      setNewPinConfirm('');
+      setPhase('unlocked');
+    } catch {
+      setNewPinError('Could not save the new PIN on this phone. Try again.');
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
+  // The way back after a lockout or a removed pairing: wipe this phone's copy, then pair again from Devices.
+  const handleResetDevice = async () => {
+    lockLocalVault();
+    await wipeLocalVault();
+    setResetOpen(false);
+    setDeviceAuth(null);
+    setDocuments([]);
+    setLocalFolders([]);
+    setRevokedNotice('');
+    setPhase('no-device');
   };
 
   const handleLock = () => {
@@ -463,125 +602,61 @@ function PhoneVault() {
   };
 
   const handleSync = async () => {
+    if (syncing) return;
     setSyncing(true);
     setSyncError('');
     setSyncMessage('');
-    try {
-      const localDocs = await getAllLocalDocuments();
-      const knownDocumentIds = localDocs.map((doc) => doc.id);
+    setSyncFailures([]);
+    setSyncProgress({ phase: 'listing', done: 0, total: 0 });
+    const controller = new AbortController();
+    syncAbort.current = controller;
+    const { apiBase, deviceToken } = deviceAuth;
+    const options = { signal: controller.signal };
 
-      const { documents: pulled, index, folders: serverFolders } = await pullDocuments(
-        deviceAuth.apiBase,
-        deviceAuth.deviceToken,
-        knownDocumentIds
+    const result = await runSync({
+      signal: controller.signal,
+      onProgress: setSyncProgress,
+      api: {
+        listDocumentPage: ({ cursor, limit }) => listDocumentPage(apiBase, deviceToken, { cursor, limit, ...options }),
+        listFolders: () => listServerFolders(apiBase, deviceToken, options),
+        fetchContent: (id) => fetchDocumentContent(apiBase, deviceToken, id, options),
+        pushDocument: (doc) => pushDocument(apiBase, deviceToken, doc, options),
+        pushFolder: (name) => pushFolder(apiBase, deviceToken, name, options),
+      },
+      store: {
+        getDocs: getAllLocalDocuments,
+        putDoc: saveDocumentLocally,
+        deleteDoc: deleteLocalDocument,
+        remapDoc: remapLocalDocumentId,
+        getFolders: getAllLocalFolders,
+        putFolder: saveLocalFolder,
+        deleteFolder: deleteLocalFolder,
+      },
+    });
+
+    await loadDocuments();
+    setSyncFailures(result.failures);
+    if (result.status === 'revoked') {
+      setRevokedNotice(result.message);
+    } else if (result.status === 'offline') {
+      setSyncError(
+        "You're offline, or the server can't be reached right now. What is already on this phone still works; try Sync again when you're back online."
       );
-      for (const doc of pulled) {
-        // eslint-disable-next-line no-await-in-loop -- small batches, sequential IndexedDB writes are fine here
-        await saveDocumentLocally({
-          id: doc.id,
-          filename: doc.filename,
-          folder: doc.folder,
-          expiryDate: doc.expiryDate,
-          encryptedBlob: base64ToBytes(doc.encryptedBlob).buffer,
-          iv: doc.iv,
-          authTag: doc.authTag,
-          checksum: doc.checksum,
-          mimeType: doc.mimeType,
-          syncStatus: 'synced',
-        });
-      }
-
-      // Reconcile what the phone already had against the PC's full index:
-      // a synced document missing from it was deleted on the PC, and one
-      // whose filename/folder/expiry differ was edited there. Documents
-      // still 'pending' exist only on this phone and are never pruned.
-      const serverIndex = new Map(index.map((entry) => [String(entry.id), entry]));
-      let removedCount = 0;
-      for (const doc of localDocs) {
-        if (doc.syncStatus !== 'synced') continue;
-        const remote = serverIndex.get(String(doc.id));
-        if (!remote) {
-          // eslint-disable-next-line no-await-in-loop
-          await deleteLocalDocument(doc.id);
-          removedCount += 1;
-        } else if (
-          remote.filename !== doc.filename ||
-          remote.folder !== doc.folder ||
-          (remote.expiryDate || null) !== (doc.expiryDate || null)
-        ) {
-          // eslint-disable-next-line no-await-in-loop
-          await saveDocumentLocally({
-            ...doc,
-            filename: remote.filename,
-            folder: remote.folder,
-            expiryDate: remote.expiryDate,
-          });
-        }
-      }
-
-      // Same for empty-folder records: mirror the PC's list, keep pending ones.
-      const localFolderRecords = await getAllLocalFolders();
-      const serverFolderSet = new Set(serverFolders);
-      for (const record of localFolderRecords) {
-        if (record.syncStatus === 'synced' && !serverFolderSet.has(record.name)) {
-          // eslint-disable-next-line no-await-in-loop
-          await deleteLocalFolder(record.name);
-        }
-      }
-      const localFolderNames = new Set(localFolderRecords.map((record) => record.name));
-      for (const name of serverFolders) {
-        if (!localFolderNames.has(name)) {
-          // eslint-disable-next-line no-await-in-loop
-          await saveLocalFolder({ name, syncStatus: 'synced' });
-        }
-      }
-
-      const pending = localDocs.filter((doc) => doc.syncStatus === 'pending');
-      const pendingFolders = localFolderRecords.filter((record) => record.syncStatus === 'pending');
-      let pushedCount = 0;
-
-      if (pending.length > 0 || pendingFolders.length > 0) {
-        const newDocuments = pending.map((doc) => ({
-          localId: doc.id,
-          filename: doc.filename,
-          folder: doc.folder,
-          encryptedBlob: bytesToBase64(new Uint8Array(doc.encryptedBlob)),
-          iv: doc.iv,
-          authTag: doc.authTag,
-          checksum: doc.checksum,
-          expiryDate: doc.expiryDate,
-          mimeType: doc.mimeType,
-        }));
-
-        const result = await pushDocuments(
-          deviceAuth.apiBase,
-          deviceAuth.deviceToken,
-          newDocuments,
-          pendingFolders.map((record) => record.name)
-        );
-        for (const { localId, id } of result.idMap) {
-          const original = pending.find((doc) => doc.id === localId);
-          if (original && id) {
-            // eslint-disable-next-line no-await-in-loop -- small batches, sequential IndexedDB writes are fine here
-            await remapLocalDocumentId(localId, { ...original, id, syncStatus: 'synced' });
-          }
-        }
-        for (const record of pendingFolders) {
-          // eslint-disable-next-line no-await-in-loop
-          await saveLocalFolder({ name: record.name, syncStatus: 'synced' });
-        }
-        pushedCount = result.idMap.length;
-      }
-
-      await loadDocuments();
+    } else if (result.status === 'outdated') {
+      setSyncError(result.message);
+    } else if (result.status === 'cancelled') {
+      setSyncMessage('Sync stopped. Nothing is lost: the next sync carries on from where this one got to.');
+    } else {
+      const parts = [`pulled ${result.pulled}`, `pushed ${result.pushed}`, `removed ${result.removed}`];
+      if (result.updated > 0) parts.push(`updated ${result.updated}`);
       setSyncMessage(
-        `Synced: pulled ${pulled.length}, pushed ${pushedCount}, removed ${removedCount}.`
+        result.status === 'partial' ? `Synced with problems: ${parts.join(', ')}.` : `Synced: ${parts.join(', ')}.`
       );
-    } catch (err) {
-      setSyncError(extractErrorMessage(err, 'Sync failed.'));
-    } finally {
-      setSyncing(false);
+      updateDeviceAuth(deviceAuth.deviceId, { lastSyncAt: new Date().toISOString() }).catch(() => {});
     }
+    syncAbort.current = null;
+    setSyncProgress(null);
+    setSyncing(false);
   };
 
   // Folder tree for the current path - derived from document folder strings
@@ -673,8 +748,8 @@ function PhoneVault() {
             <DeviceMobile size={40} weight="light" className={styles.emptyIcon} />
             <h1 className={styles.emptyTitle}>This device isn't paired yet</h1>
             <p className={styles.emptyBody}>
-              Pair this phone with your vault first - from your PC, open "Pair a device" and scan
-              the QR code.
+              Pair this phone with your vault first - on your computer, open Devices, choose "Pair a phone" and scan
+              the QR code with this phone.
             </p>
           </div>
         )}
@@ -696,7 +771,7 @@ function PhoneVault() {
                 <input
                   id="local-pin"
                   type="password"
-                  inputMode="numeric"
+                  inputMode="text"
                   className={styles.textInput}
                   value={pin}
                   onChange={(event) => {
@@ -706,12 +781,94 @@ function PhoneVault() {
                   placeholder="Enter your PIN"
                   autoFocus
                   autoComplete="off"
+                  disabled={lockout.waitMs > 0}
                 />
-                {pinError && <p className={styles.fieldError}>{pinError}</p>}
+                {pinError && <p className={styles.fieldError} role="alert">{pinError}</p>}
+                {lockout.waitMs > 0 && (
+                  <p className={styles.fieldError} role="status">
+                    Too many wrong PINs. Wait {describeWait(lockout.waitMs)} before trying again.
+                  </p>
+                )}
+                {lockout.failures > 0 && lockout.waitMs <= 0 && !pinError && (
+                  <p className={styles.hint}>
+                    {lockout.triesLeft} {lockout.triesLeft === 1 ? 'try' : 'tries'} left before this phone locks.
+                  </p>
+                )}
               </div>
 
-              <button type="submit" className={styles.submitButton} disabled={unlocking || !pin}>
+              <button type="submit" className={styles.submitButton} disabled={unlocking || !pin || lockout.waitMs > 0}>
                 <span>{unlocking ? 'Unlocking...' : 'Unlock'}</span>
+                <ArrowRight size={18} weight="bold" />
+              </button>
+            </form>
+          </div>
+        )}
+
+        {phase === 'locked-out' && (
+          <div className={styles.formPanel}>
+            <div className={styles.copy}>
+              <h1 className={styles.title}>This phone is locked</h1>
+              <p className={styles.subtitle}>
+                The PIN was wrong 10 times. To use Warden on this phone again, remove its copy here and pair it again from your computer
+                (Devices, then Pair a phone). Your files are safe on your account.
+              </p>
+            </div>
+            <p className={styles.hint}>Anything added on this phone that has not been synced yet will be lost.</p>
+            <button type="button" className={styles.submitButton} onClick={() => setResetOpen(true)}>
+              <span>Remove this phone’s copy</span>
+            </button>
+          </div>
+        )}
+
+        {phase === 'new-pin' && (
+          <div className={styles.formPanel}>
+            <div className={styles.copy}>
+              <h1 className={styles.title}>Choose a new PIN</h1>
+              <p className={styles.subtitle}>
+                {newPinReason === 'weak-pin'
+                  ? 'The PIN you just used is shorter or easier to guess than the new rules allow (at least 6 characters, nothing obvious like 123456).'
+                  : 'Warden now protects the key on this phone more strongly. Choose a new PIN of at least 6 characters, and not an obvious one.'}
+              </p>
+            </div>
+            <form className={styles.form} onSubmit={handleSetNewPin} noValidate>
+              <div className={styles.field}>
+                <label htmlFor="new-pin" className={styles.fieldLabel}>New PIN</label>
+                <input
+                  id="new-pin"
+                  type="password"
+                  className={styles.textInput}
+                  value={newPin}
+                  onChange={(event) => {
+                    setNewPin(event.target.value);
+                    setNewPinError('');
+                  }}
+                  placeholder="At least 6 characters"
+                  autoFocus
+                  autoComplete="off"
+                  aria-describedby="new-pin-hint"
+                />
+                <p id="new-pin-hint" className={newPinCheck.message ? styles.fieldError : styles.hint} data-strength={newPinCheck.strength} role="status">
+                  {newPin.length === 0 || newPinCheck.ok ? newPinCheck.hint : newPinCheck.message}
+                </p>
+              </div>
+              <div className={styles.field}>
+                <label htmlFor="new-pin-confirm" className={styles.fieldLabel}>Confirm new PIN</label>
+                <input
+                  id="new-pin-confirm"
+                  type="password"
+                  className={styles.textInput}
+                  value={newPinConfirm}
+                  onChange={(event) => {
+                    setNewPinConfirm(event.target.value);
+                    setNewPinError('');
+                  }}
+                  placeholder="Re-enter the new PIN"
+                  autoComplete="off"
+                />
+                {newPinError && <p className={styles.fieldError} role="alert">{newPinError}</p>}
+              </div>
+              <button type="submit" className={styles.submitButton} disabled={savingPin || !newPinCheck.ok || newPin !== newPinConfirm}>
+                <span>{savingPin ? 'Saving…' : 'Save the new PIN'}</span>
                 <ArrowRight size={18} weight="bold" />
               </button>
             </form>
@@ -752,9 +909,15 @@ function PhoneVault() {
                     <span>Select</span>
                   </button>
                 )}
-                <button type="button" className={styles.syncButton} onClick={handleSync} disabled={syncing}>
-                  {syncing ? 'Syncing...' : 'Sync now'}
-                </button>
+                {syncing ? (
+                  <button type="button" className={styles.syncButton} onClick={() => syncAbort.current?.abort()}>
+                    Stop sync
+                  </button>
+                ) : (
+                  <button type="button" className={styles.syncButton} onClick={handleSync}>
+                    Sync now
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.syncButton}
@@ -833,8 +996,41 @@ function PhoneVault() {
               </div>
             )}
 
+            {!online && (
+              <p className={styles.offlineNote} role="status">
+                You’re offline. Everything already on this phone still opens; changes sync when you’re back online.
+              </p>
+            )}
+            {revokedNotice && (
+              <div className={styles.revokedBox} role="alert">
+                <p>{revokedNotice}</p>
+                <p className={styles.hint}>
+                  The files already on this phone stay readable with your PIN until you remove this phone’s copy.
+                </p>
+                <button type="button" className={styles.syncButton} onClick={() => setResetOpen(true)}>
+                  Remove this phone’s copy
+                </button>
+              </div>
+            )}
+            {syncing && syncProgress && (
+              <div className={styles.progressBlock} role="status" aria-live="polite">
+                <p className={styles.syncMessage}>{progressText(syncProgress)}</p>
+                {syncProgress.total > 0 && syncProgress.phase !== 'listing' && (
+                  <progress className={styles.bar} max={syncProgress.total} value={syncProgress.done} aria-label="Sync progress" />
+                )}
+              </div>
+            )}
             {syncMessage && <p className={styles.syncMessage}>{syncMessage}</p>}
-            {syncError && <p className={styles.fieldError}>{syncError}</p>}
+            {syncError && <p className={styles.fieldError} role="alert">{syncError}</p>}
+            {syncFailures.length > 0 && (
+              <ul className={styles.failureList}>
+                {syncFailures.map((failure, index) => (
+                  <li key={`${failure.name}-${index}`}>
+                    <strong>{failure.name}</strong> - {failure.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
             {viewError && <p className={styles.fieldError}>{viewError}</p>}
 
             <FolderBreadcrumb path={currentPath} onNavigate={setCurrentPath} />
@@ -957,6 +1153,23 @@ function PhoneVault() {
           </div>
         )}
       </main>
+
+      {resetOpen && (
+        <Modal title="Remove this phone’s copy?" onClose={() => setResetOpen(false)}>
+          <p className={styles.confirmText}>
+            This deletes the encrypted files stored on this phone and signs it out of your account. Files that were never synced
+            will be lost. You can pair the phone again from your computer’s Devices page.
+          </p>
+          <div className={styles.confirmButtons}>
+            <button type="button" className={styles.viewButton} onClick={() => setResetOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className={styles.confirmYes} onClick={handleResetDevice}>
+              Remove it
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {bulkPlan && (
         <Modal title="Delete selection?" onClose={() => setBulkPlan(null)}>

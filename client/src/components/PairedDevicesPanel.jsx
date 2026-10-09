@@ -1,34 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Trash } from '@phosphor-icons/react';
 
 import { listDevices, revokeDevice } from '../services/devicesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
-import styles from './PairedDevicesPanel.module.css';
+import styles from '../pages/DevicesPage.module.css';
 
 /**
- * Owner-side device management: lists every PairedDevice and lets the
- * owner cut one off. Revoking flips PairedDevice.revoked - the actual
- * security boundary is requireDeviceAuth (server/middleware/
- * requireDeviceAuth.js) checking that same flag on every sync request, so
- * a revoked device's deviceToken (still sitting in its own IndexedDB)
- * stops working immediately, not just on its next pairing attempt.
+ * Every phone paired with this account: name, browser, when it paired, when it
+ * last synced, and whether it is still allowed to. Removing one takes away its
+ * sync token at once (the phone's next request is refused). What it cannot take
+ * back is the encrypted copy the phone already holds, and the dialog says so.
+ *
+ * `reloadKey` changes when a new phone has just paired, to refresh the list.
  */
-function PairedDevicesPanel() {
+function PairedDevicesPanel({ reloadKey = 0 }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [confirmingRevokeId, setConfirmingRevokeId] = useState(null);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [revokingId, setRevokingId] = useState(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
-      const data = await listDevices();
-      setDevices(data);
+      setDevices(await listDevices());
     } catch (err) {
-      setError(extractErrorMessage(err, 'Could not load paired devices.'));
+      setError(extractErrorMessage(err, 'Could not load your devices.'));
     } finally {
       setLoading(false);
     }
@@ -36,89 +33,81 @@ function PairedDevicesPanel() {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, reloadKey]);
 
-  const handleRevokeClick = (deviceId) => {
-    if (confirmingRevokeId === deviceId) {
-      setConfirmingRevokeId(null);
-      handleRevoke(deviceId);
-    } else {
-      setConfirmingRevokeId(deviceId);
-    }
-  };
-
-  const handleRevoke = async (deviceId) => {
-    setRevokingId(deviceId);
+  const handleRevoke = async (id) => {
+    setRevokingId(id);
     setError('');
     try {
-      await revokeDevice(deviceId);
-      setDevices((prev) =>
-        prev.map((device) => (device.id === deviceId ? { ...device, revoked: true } : device))
-      );
+      await revokeDevice(id);
+      setConfirmingId(null);
+      await refresh();
     } catch (err) {
-      setError(extractErrorMessage(err, 'Could not revoke this device.'));
+      // A 404 means it is already gone (removed elsewhere): show the list as it is now.
+      if (err?.response?.status === 404) {
+        setConfirmingId(null);
+        await refresh();
+      } else {
+        setError(extractErrorMessage(err, 'Could not remove this device.'));
+      }
     } finally {
       setRevokingId(null);
     }
   };
 
   return (
-    <div className={styles.panel}>
-      {loading && <p className={styles.hint}>Loading...</p>}
-
-      {!loading && error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-
-      {!loading && !error && devices.length === 0 && (
-        <p className={styles.hint}>No devices have been paired yet.</p>
-      )}
+    <div className={styles.pairBody}>
+      {loading && <p className={styles.small}>Loading…</p>}
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      {!loading && !error && devices.length === 0 && <p className={styles.text}>No phone is paired yet.</p>}
 
       {devices.length > 0 && (
         <ul className={styles.list}>
-          {devices.map((device) => (
-            <li key={device.id} className={styles.row}>
-              <div className={styles.meta}>
-                <span className={styles.deviceName}>{device.deviceName || 'Unnamed device'}</span>
-                <span className={styles.sub}>Paired {formatDateTime(device.pairedAt)}</span>
-              </div>
-
-              {device.revoked ? (
-                <span className={styles.revokedLabel}>Revoked</span>
-              ) : confirmingRevokeId !== device.id ? (
-                <button
-                  type="button"
-                  className={styles.revokeButton}
-                  onClick={() => handleRevokeClick(device.id)}
-                  aria-label={`Revoke ${device.deviceName || 'this device'}`}
-                >
-                  <Trash size={14} />
-                  <span>Revoke</span>
-                </button>
-              ) : (
-                <div className={styles.confirmRow}>
-                  <span className={styles.confirmLabel}>Revoke?</span>
-                  <button
-                    type="button"
-                    className={styles.confirmYes}
-                    onClick={() => handleRevokeClick(device.id)}
-                    disabled={revokingId === device.id}
-                  >
-                    {revokingId === device.id ? 'Revoking...' : 'Confirm'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.confirmNo}
-                    onClick={() => setConfirmingRevokeId(null)}
-                  >
-                    Cancel
-                  </button>
+          {devices.map((device) => {
+            const name = device.deviceName || 'Unnamed device';
+            return (
+              <li key={device.id} className={styles.device}>
+                <div className={styles.meta}>
+                  <span className={styles.deviceName}>
+                    {name}
+                    <span className={`${styles.badge} ${device.revoked ? '' : styles.badgeActive}`}>{device.revoked ? 'Removed' : 'Active'}</span>
+                  </span>
+                  <span className={styles.sub}>
+                    {device.browserLabel ? `${device.browserLabel} · ` : ''}Paired {formatDateTime(device.pairedAt)}
+                  </span>
+                  <span className={styles.sub}>
+                    {device.revoked
+                      ? `Removed ${formatDateTime(device.revokedAt) || ''}`.trim()
+                      : `Last seen ${device.lastSeenAt ? formatDateTime(device.lastSeenAt) : 'never (it has not synced yet)'}`}
+                  </span>
                 </div>
-              )}
-            </li>
-          ))}
+
+                {!device.revoked && confirmingId !== device.id && (
+                  <button type="button" className={styles.revokeButton} onClick={() => setConfirmingId(device.id)} aria-label={`Remove ${name}`}>
+                    Remove
+                  </button>
+                )}
+
+                {!device.revoked && confirmingId === device.id && (
+                  <div className={styles.confirm} role="alertdialog" aria-label={`Remove ${name}?`}>
+                    <p>
+                      <strong>Remove {name}?</strong> It will not be able to sync any more, starting with its next request. It keeps its own
+                      encrypted copy of your files, readable with its PIN, until that copy is removed on the phone itself (the phone offers to
+                      the next time it tries to sync). If the phone is lost, also change your password.
+                    </p>
+                    <div className={styles.row}>
+                      <button type="button" className={styles.confirmYes} onClick={() => handleRevoke(device.id)} disabled={revokingId === device.id}>
+                        {revokingId === device.id ? 'Removing…' : 'Yes, remove it'}
+                      </button>
+                      <button type="button" className={styles.secondary} onClick={() => setConfirmingId(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

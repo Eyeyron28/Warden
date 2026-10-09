@@ -1,40 +1,46 @@
 const PairedDevice = require('../models/PairedDevice');
+const { hashToken } = require('../utils/deviceTokens');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
 // this handler can just `throw` instead of a try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// "Last seen" is written at most this often per device, so a sync of many
+// requests is one write, not hundreds.
+const LAST_SEEN_EVERY_MS = 60 * 1000;
+
+function deviceRejected(message) {
+  const error = new Error(message);
+  error.status = 401;
+  // DEVICE_REVOKED reaches the client (errorHandler allowlist) so the phone can
+  // stop and say so, instead of retrying.
+  error.code = 'DEVICE_REVOKED';
+  return error;
+}
+
 /**
- * Guards the sync endpoints (POST /api/sync/pull, /push). Reads a bearer
- * deviceToken - issued once, at pairing time, by POST /api/pair/complete -
- * and resolves it against PairedDevice, same shape as requireSession but
- * a different credential and a different store: a device token is
- * long-lived (until the owner revokes it) rather than a session, since
- * the phone has no equivalent of "logging in" each time it wants to sync.
+ * Guards the sync endpoints. Reads a bearer device token - issued once, at
+ * pairing, by POST /api/pair/complete - and resolves it against PairedDevice
+ * by its SHA-256 (the raw token is never stored). A revoked device has no
+ * stored hash at all, so its token matches nothing the moment it is revoked.
  *
- * Sets req.userId from the paired device's own `userId` field - a device
- * token is scoped to exactly the account it was paired under, the same
- * way a session token is scoped to the account that logged in.
+ * Sets req.userId from the paired device's own `userId`: a device token is
+ * scoped to exactly the account it was paired under.
  *
- * A missing/unknown/revoked token is treated identically - all three mean
- * "this device cannot sync" - so this never leaks which case applies.
+ * A missing, malformed, unknown or revoked token is treated identically.
  */
 const requireDeviceAuth = asyncHandler(async (req, res, next) => {
-  const authHeader = req.headers.authorization || '';
-  const [scheme, token] = authHeader.split(' ');
+  const [scheme, token] = (req.headers.authorization || '').split(' ');
+  const tokenHash = scheme === 'Bearer' ? hashToken(token) : null;
+  if (!tokenHash) throw deviceRejected('This device is not paired, or it was removed from the account.');
 
-  if (scheme !== 'Bearer' || !token) {
-    const error = new Error('Missing or invalid Authorization header.');
-    error.status = 401;
-    throw error;
-  }
+  const device = await PairedDevice.findOne({ tokenHash });
+  if (!device || device.revoked) throw deviceRejected('This device is not paired, or it was removed from the account.');
 
-  const device = await PairedDevice.findOne({ deviceToken: token });
-  if (!device || device.revoked) {
-    const error = new Error('This device is not paired, or its access was revoked.');
-    error.status = 401;
-    throw error;
+  const now = new Date();
+  if (!device.lastSeenAt || now.getTime() - device.lastSeenAt.getTime() >= LAST_SEEN_EVERY_MS) {
+    await PairedDevice.updateOne({ _id: device._id }, { $set: { lastSeenAt: now } });
   }
 
   req.pairedDevice = device;
@@ -43,3 +49,4 @@ const requireDeviceAuth = asyncHandler(async (req, res, next) => {
 });
 
 module.exports = requireDeviceAuth;
+module.exports.LAST_SEEN_EVERY_MS = LAST_SEEN_EVERY_MS;

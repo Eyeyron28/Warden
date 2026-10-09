@@ -36,17 +36,10 @@ const RECOVERY_REQUEST_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes, same as Pairi
 // already-verified one, a malformed one and a real send all look identical.
 const RESEND_GENERIC_MESSAGE = 'If this account exists and is not yet verified, a new link has been sent.';
 
-// /phone and /verify-email are React Router routes
-// served by Vite, not this Express app - links built here have to point
-// there, never at this API's own port. PUBLIC_APP_URL (set in production/
-// Vercel) takes priority; resolveLanIp + this fixed dev port is the local-
-// dev fallback, same pattern pairing.controller.js and shares.controller.js
-// already use for their own links. Replacing the LAN-IP side of this with
-// something that works once genuinely hosted (not just "PUBLIC_APP_URL is
-// set") is the deferred phone-pairing/sharing redesign - this function
-// itself is new, needed just to get signup/reset emails working at all.
-// The origin itself now comes from utils/publicAppUrl.js (validated at
-// startup, never built from request headers).
+// /phone and /verify-email are React Router routes served by the web app, not
+// this Express app - links built here have to point there. The origin comes
+// from utils/publicAppUrl.js (validated at startup, never built from request
+// headers).
 function resolvePublicAppUrl() {
   return getPublicAppUrl();
 }

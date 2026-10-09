@@ -113,11 +113,28 @@ Run this on the real URL, with a throwaway email address you control.
    - **Forgot password:** on the login page choose "Forgot password", enter the email: a 6-digit code arrives. Enter it, choose "I have my recovery key", enter the key you saved and a new password: you land on the login page with a success message and a notification email arrives (no links in it). Log in with the new password and the emailed code; your files are still there. (Use a throwaway account: the other choice, "I don't have my recovery key", erases the vault.)
 10. [ ] **Delete the account** (password, emailed code, type your email). You get a confirmation email and cannot log in again.
 
+## 9b. Testing pairing on a real phone
+
+Pairing and sync work against the live URL; nothing about them depends on being on the same network as a computer. You need the deployed site (HTTPS is what Vercel serves, and the browser only allows the vault's crypto and offline storage on HTTPS), a computer logged in to the account, and a phone.
+
+1. [ ] On the computer open **Devices**, choose **Email me a code**, enter the 6-digit code from your inbox. A QR with a 5-minute countdown appears. (A code that is not entered, or a QR that is not scanned, simply expires.)
+2. [ ] Scan the QR with the phone's **camera app**. It opens `<PUBLIC_APP_URL>/pair/…` in the phone's browser. Check the address bar shows your real domain, not an IP address.
+3. [ ] Enter the master password and choose a PIN. A PIN under 6 characters, or one like `123456`, is refused with a reason. Pairing takes a few seconds (the phone makes its own PIN-locked copy of the key). Your inbox gets "A new device was paired".
+4. [ ] **Install the PWA** (optional but how it will really be used): Chrome on Android, menu, **Install app** / **Add to Home screen**; Safari on iOS, Share, **Add to Home Screen**. Open it from the home screen and go to `/phone`. The phone's data lives in the browser profile it was paired in, so pair from the same place you will use it (the installed app and the browser tab can have separate storage on iOS: pair in the one you will use).
+5. [ ] Enter the PIN. Note how long unlocking takes: the key derivation is scrypt N=2^16 (64 MiB, r=8, p=1) in a Web Worker. On a recent desktop it is about 0.75 s. If it feels slow on your phone, lowering `N` in `client/src/services/localCrypto.js` (`PIN_KDF`) only affects phones paired or re-PIN'd afterwards: every wrap stores its own parameters.
+6. [ ] Tap **Sync now**: progress shows "Downloading n of m". The files appear and open.
+7. [ ] **Offline test:** turn on airplane mode. The phone shows "You're offline"; files already synced still open. Add a file with **New, Upload file**. Turn the network back on, **Sync now**: the file is pushed (the Devices page shows a new "Last seen").
+8. [ ] Trash a file on the computer, sync the phone: it disappears. Restore it, sync: it comes back.
+9. [ ] On the computer, **Remove** the phone on Devices. Sync on the phone: it says it is no longer paired and offers to remove its local copy. (Files already on it stay readable with the PIN until you do; if the phone was lost, also change your password.)
+10. [ ] Wrong PIN 3 times: a wait appears and grows; after 10 the phone is locked and the only way back is "Remove this phone's copy", then pair again.
+
+Phone sync limits on Vercel Hobby: each request and response is under 4.5 MB (a file is at most 4 MiB, sent as raw bytes), so a sync of many files is many small requests; if a sync is interrupted, run it again and it continues where it stopped.
+
 ## 10. Limits to know about (Vercel Hobby)
 
 Figures are from Vercel's documentation, read on 2026-10-07; limits change, so re-check the linked pages.
 
-- **Request and response body: 4.5 MB** per function call ([Functions limits](https://vercel.com/docs/functions/limitations)). Warden caps an upload at 4 MB (the file plus a small multipart envelope fits under 4.5 MB). Phone sync sends documents as base64 inside JSON (about 4/3 the size), so over Vercel a phone sync push is limited to roughly 3.3 MB of file; a larger one is refused by Vercel with a 413 before Warden sees it.
+- **Request and response body: 4.5 MB** per function call ([Functions limits](https://vercel.com/docs/functions/limitations)). Warden caps an upload at 4 MB (the file plus a small multipart envelope fits under 4.5 MB). Phone sync therefore never puts a document in JSON (base64 would make 4 MB into about 5.3 MB): it lists metadata in pages of at most 200, downloads each document's ciphertext on its own request as raw bytes (4 MiB at most), and pushes one document per request as multipart. The JSON body limit is 100 kB.
 - **Duration:** with Fluid compute, Hobby has a 300 s default and maximum. Warden sets 30 s in `vercel.json`, far above a login (one scrypt derivation takes well under a second) or any other operation here.
 - **Memory:** 2 GB and 1 vCPU on Hobby. Uploads are processed in memory.
 - **Cron:** once per day at most, with up to an hour of scheduling slack ([usage and limits](https://vercel.com/docs/cron-jobs/usage-and-pricing)). Cron calls carry `Authorization: Bearer <CRON_SECRET>` ([managing cron jobs](https://vercel.com/docs/cron-jobs/manage-cron-jobs)).

@@ -107,6 +107,9 @@ const documentSchema = new mongoose.Schema(
     // is restored or purged. deletedAt marks it trashed; purgeAt is when it is
     // removed for good (TTL index below); trashBatchId groups documents that were
     // trashed together WITH a folder (null for a file trashed on its own).
+    // The phone's own id for a document it pushed (a UUID), so a push that is
+    // repeated after a lost response returns the same document, not a copy.
+    clientId: { type: String, default: undefined },
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },
@@ -143,6 +146,7 @@ documentSchema.pre('validate', function requireEncryptedBlob(next) {
 documentSchema.index({ userId: 1, folder: 1 });
 documentSchema.index({ userId: 1, checksum: 1 });
 documentSchema.index({ userId: 1, deletedAt: 1 });
+documentSchema.index({ userId: 1, clientId: 1 }, { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } });
 documentSchema.index({ trashBatchId: 1 }, { sparse: true });
 // MongoDB removes the whole document (ciphertext and thumbnail included) when
 // purgeAt passes. Documents that are not in Trash have no purgeAt, so never expire.

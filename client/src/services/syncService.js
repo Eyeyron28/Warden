@@ -4,75 +4,95 @@ import { assertSameOrigin } from '../utils/apiOrigin.js';
 
 /**
  * Phone-side sync calls. Deliberately NOT using the shared services/api.js
- * axios instance: these carry a deviceToken bearer (see server/middleware/
+ * axios instance: these carry a device token bearer (server/middleware/
  * requireDeviceAuth.js), not the session token services/api.js attaches.
  *
- * `apiBase` is passed in explicitly but must be this page's own origin -
- * every function asserts it (utils/apiOrigin.js), so the device token can
- * only ever go to the server this page was loaded from, never to an
- * address taken from a link or from storage. */
-
-/**
- * POST {apiBase}/api/sync/pull
- * @param {string} apiBase
- * @param {string} deviceToken
- * @param {string[]} knownDocumentIds - ids this phone already has locally
- * @returns {Promise<{
- *   documents: Array<object>,
- *   index: Array<{ id: string, filename: string, folder: string, expiryDate: string|null }>,
- *   folders: string[],
- * }>} `documents`: full data for documents new to the phone. `index`:
- *   metadata for EVERY document currently on the PC - anything the phone
- *   holds that's missing from it was deleted PC-side. `folders`: every
- *   folder path on the PC (excluding "root").
+ * `apiBase` must be this page's own origin - every function asserts it
+ * (utils/apiOrigin.js), so the device token only ever goes to the server this
+ * page was loaded from.
+ *
+ * Shaped for a host that caps request and response bodies at 4.5 MB: metadata
+ * in pages, ciphertext one document at a time as raw bytes (see
+ * server/controllers/sync.controller.js).
  */
-export async function pullDocuments(apiBase, deviceToken, knownDocumentIds) {
+
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const auth = (deviceToken) => ({ Authorization: `Bearer ${deviceToken}` });
+
+/** GET /api/sync/documents - one page of metadata for every document, trashed ones flagged. */
+export async function listDocumentPage(apiBase, deviceToken, { cursor, limit = 100, signal } = {}) {
   assertSameOrigin(apiBase);
-  const { data } = await axios.post(
-    `${apiBase}/api/sync/pull`,
-    { knownDocumentIds },
-    { headers: { Authorization: `Bearer ${deviceToken}` } }
-  );
+  const { data } = await axios.get(`${apiBase}/api/sync/documents`, {
+    params: { ...(cursor ? { cursor } : {}), limit },
+    headers: auth(deviceToken),
+    timeout: REQUEST_TIMEOUT_MS,
+    signal,
+  });
+  return data;
+}
+
+/** GET /api/sync/folders */
+export async function listServerFolders(apiBase, deviceToken, { signal } = {}) {
+  assertSameOrigin(apiBase);
+  const { data } = await axios.get(`${apiBase}/api/sync/folders`, { headers: auth(deviceToken), timeout: REQUEST_TIMEOUT_MS, signal });
+  return data.folders;
+}
+
+/** GET /api/sync/documents/:id/content - the ciphertext as an ArrayBuffer. */
+export async function fetchDocumentContent(apiBase, deviceToken, id, { signal } = {}) {
+  assertSameOrigin(apiBase);
+  const { data } = await axios.get(`${apiBase}/api/sync/documents/${encodeURIComponent(id)}/content`, {
+    headers: auth(deviceToken),
+    responseType: 'arraybuffer',
+    timeout: REQUEST_TIMEOUT_MS * 2,
+    signal,
+  });
   return data;
 }
 
 /**
- * DELETE {apiBase}/api/documents/:id - the same endpoint the PC uses,
- * authorized here by deviceToken instead of a session token.
+ * POST /api/sync/documents - one already-encrypted document, as multipart.
+ * `clientId` makes a repeat after a lost response harmless.
+ */
+export async function pushDocument(apiBase, deviceToken, doc, { signal } = {}) {
+  assertSameOrigin(apiBase);
+  const form = new FormData();
+  form.append('clientId', doc.clientId);
+  form.append('filename', doc.filename);
+  form.append('folder', doc.folder && doc.folder !== 'root' ? doc.folder : '');
+  form.append('iv', doc.iv);
+  form.append('authTag', doc.authTag);
+  form.append('checksum', doc.checksum);
+  if (doc.mimeType) form.append('mimeType', doc.mimeType);
+  if (doc.expiryDate) form.append('expiryDate', doc.expiryDate);
+  // The file part goes last so the small fields are parsed before the bytes.
+  form.append('file', new Blob([doc.encryptedBlob], { type: 'application/octet-stream' }), 'ciphertext');
+  const { data } = await axios.post(`${apiBase}/api/sync/documents`, form, {
+    headers: auth(deviceToken),
+    timeout: REQUEST_TIMEOUT_MS * 2,
+    signal,
+  });
+  return data;
+}
+
+/** POST /api/sync/folders - an empty folder created on the phone. */
+export async function pushFolder(apiBase, deviceToken, name, { signal } = {}) {
+  assertSameOrigin(apiBase);
+  await axios.post(`${apiBase}/api/sync/folders`, { name }, { headers: auth(deviceToken), timeout: REQUEST_TIMEOUT_MS, signal });
+}
+
+/**
+ * DELETE {apiBase}/api/documents/:id - the same endpoint the PC uses (it moves
+ * the file to Trash), authorized here by the device token.
  */
 export async function deleteDocumentOnPC(apiBase, deviceToken, id) {
   assertSameOrigin(apiBase);
-  await axios.delete(`${apiBase}/api/documents/${id}`, {
-    headers: { Authorization: `Bearer ${deviceToken}` },
-  });
+  await axios.delete(`${apiBase}/api/documents/${id}`, { headers: auth(deviceToken), timeout: REQUEST_TIMEOUT_MS });
 }
 
-/**
- * DELETE {apiBase}/api/documents/folders?path= - removes the PC's empty-
- * folder markers under `path` (documents themselves are deleted separately).
- */
+/** DELETE {apiBase}/api/documents/folders?path= - removes the PC's empty-folder markers under `path`. */
 export async function deleteFolderOnPC(apiBase, deviceToken, path) {
   assertSameOrigin(apiBase);
-  await axios.delete(`${apiBase}/api/documents/folders`, {
-    params: { path },
-    headers: { Authorization: `Bearer ${deviceToken}` },
-  });
-}
-
-/**
- * POST {apiBase}/api/sync/push
- * @param {string} apiBase
- * @param {string} deviceToken
- * @param {Array<object>} newDocuments - already encrypted by the phone
- * @param {string[]} [newFolders] - empty folder paths created on the phone
- * @returns {Promise<{ idMap: Array<{ localId: string|null, id: string }> }>}
- */
-export async function pushDocuments(apiBase, deviceToken, newDocuments, newFolders = []) {
-  assertSameOrigin(apiBase);
-  const { data } = await axios.post(
-    `${apiBase}/api/sync/push`,
-    { newDocuments, newFolders },
-    { headers: { Authorization: `Bearer ${deviceToken}` } }
-  );
-  return data;
+  await axios.delete(`${apiBase}/api/documents/folders`, { params: { path }, headers: auth(deviceToken), timeout: REQUEST_TIMEOUT_MS });
 }

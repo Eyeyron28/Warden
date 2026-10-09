@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, CheckCircle, LinkBreak } from '@phosphor-icons/react';
+import { ArrowRight, CheckCircle } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import PasswordField from '../components/PasswordField.jsx';
 import { completePairing } from '../services/pairCompleteService.js';
 import { saveDeviceAuthLocally } from '../services/localVault.js';
+import { base64ToBytes, wrapDekForPin } from '../services/localCrypto.js';
+import { checkPin } from '../utils/pinRules.js';
 import { extractErrorMessage } from '../services/api.js';
 import { sameOriginApiBase } from '../utils/apiOrigin.js';
 import styles from './PairPage.module.css';
-
-const MIN_PHONE_PIN_LENGTH = 4;
 
 /**
  * The phone-side pairing page (/pair/:token), opened by scanning the QR
@@ -45,7 +45,6 @@ function PairPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [tokenInvalid, setTokenInvalid] = useState(false);
 
   // Pairing already left this device's PIN-unlock credentials in
   // IndexedDB (saveDeviceAuthLocally, below) - the vault is ready to use
@@ -58,12 +57,9 @@ function PairPage() {
     return () => clearTimeout(timer);
   }, [success, navigate]);
 
-  const pinTooShort = phonePin.length > 0 && phonePin.length < MIN_PHONE_PIN_LENGTH;
+  const pinCheck = checkPin(phonePin);
   const pinMismatch = confirmPin.length > 0 && phonePin !== confirmPin;
-  const canSubmit =
-    masterPassword.trim().length > 0 &&
-    phonePin.length >= MIN_PHONE_PIN_LENGTH &&
-    phonePin === confirmPin;
+  const canSubmit = masterPassword.trim().length > 0 && pinCheck.ok && phonePin === confirmPin;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -73,38 +69,33 @@ function PairPage() {
     setError('');
 
     try {
+      // The PIN stays on this phone: only the password and the QR's token go to the server.
       const result = await completePairing(apiBase, {
         pairingToken: token,
         masterPassword,
-        phonePin,
         deviceName: deviceName.trim() || undefined,
       });
+
+      // The vault key arrives once, over TLS, and is wrapped here under the PIN
+      // (slow on purpose - see PIN_KDF). The server never learns the PIN and
+      // keeps no copy of this wrap.
+      const dek = base64ToBytes(result.dek);
+      const wrap = await wrapDekForPin(dek, phonePin);
+      dek.fill(0);
 
       await saveDeviceAuthLocally({
         deviceId: result.deviceId,
         deviceToken: result.deviceToken,
-        wrappedDEKPhonePin: result.wrappedDEKPhonePin,
-        wrappedDEKPhonePinIv: result.wrappedDEKPhonePinIv,
-        wrappedDEKPhonePinAuthTag: result.wrappedDEKPhonePinAuthTag,
-        wrappedDEKPhonePinSalt: result.wrappedDEKPhonePinSalt,
+        ...wrap,
         apiBase,
       });
 
       setSuccess(true);
     } catch (err) {
-      // A 404 means the token itself is dead (never existed, expired, or
-      // already used) - no amount of retrying the form fixes that, the
-      // owner has to generate a new QR. Anything else (401 wrong
-      // password, a validation 400, a network hiccup) stays on the form
-      // so the password specifically can be retried without forcing a
-      // rescan - only the password field is cleared, the PIN the user
-      // already chose is left alone.
-      if (err?.response?.status === 404) {
-        setTokenInvalid(true);
-      } else {
-        setError(extractErrorMessage(err, 'Could not pair this device. Try again.'));
-        setMasterPassword('');
-      }
+      // One generic answer covers a wrong password, a dead or used QR and too
+      // many tries, so the password is cleared and the message says what to do.
+      setError(extractErrorMessage(err, 'Could not pair this device. Try again.'));
+      setMasterPassword('');
     } finally {
       setSubmitting(false);
     }
@@ -118,18 +109,7 @@ function PairPage() {
       </header>
 
       <main className={styles.content}>
-        {tokenInvalid && (
-          <div className={styles.invalidState}>
-            <LinkBreak size={40} weight="light" className={styles.invalidIcon} />
-            <h1 className={styles.invalidTitle}>This pairing code is no longer valid.</h1>
-            <p className={styles.invalidBody}>
-              It may have expired or already been used. Ask the vault owner to generate a new code
-              and scan it again.
-            </p>
-          </div>
-        )}
-
-        {!tokenInvalid && success && (
+        {success && (
           <div className={styles.successState}>
             <CheckCircle size={40} weight="fill" className={styles.successIcon} />
             <h1 className={styles.successTitle}>Paired successfully</h1>
@@ -140,7 +120,7 @@ function PairPage() {
           </div>
         )}
 
-        {!tokenInvalid && !success && (
+        {!success && (
           <div className={styles.formPanel}>
             <div className={styles.copy}>
               <h1 className={styles.title}>Pair this device</h1>
@@ -171,14 +151,18 @@ function PairPage() {
                   className={styles.textInput}
                   value={phonePin}
                   onChange={(event) => setPhonePin(event.target.value)}
-                  placeholder="At least 4 characters"
+                  placeholder="At least 6 characters"
                   autoComplete="off"
+                  aria-describedby="phone-pin-hint"
                 />
-                {pinTooShort && (
-                  <p className={styles.fieldError}>
-                    PIN must be at least {MIN_PHONE_PIN_LENGTH} characters.
-                  </p>
-                )}
+                <p
+                  id="phone-pin-hint"
+                  className={pinCheck.message ? styles.fieldError : styles.optional}
+                  data-strength={pinCheck.strength}
+                  role="status"
+                >
+                  {phonePin.length === 0 || pinCheck.ok ? pinCheck.hint : pinCheck.message}
+                </p>
               </div>
 
               <div className={styles.field}>

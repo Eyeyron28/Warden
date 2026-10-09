@@ -131,6 +131,10 @@ export async function remapLocalDocumentId(localId, canonicalDoc) {
  * POST /api/pair/complete, plus the apiBase it paired against (needed
  * later to know which PC to talk to) and `pairedAt` bookkeeping.
  *
+ * The wrap fields come from services/localCrypto.js wrapDekForPin (the vault key
+ * under this phone's own PIN, with the `kdf` that made it); the server keeps no
+ * copy of them.
+ *
  * @param {{
  *   deviceId: string,
  *   deviceToken: string,
@@ -138,12 +142,41 @@ export async function remapLocalDocumentId(localId, canonicalDoc) {
  *   wrappedDEKPhonePinIv: string,
  *   wrappedDEKPhonePinAuthTag: string,
  *   wrappedDEKPhonePinSalt: string,
+ *   kdf: object,
  *   apiBase: string,
  * }} deviceAuth
  */
 export async function saveDeviceAuthLocally(deviceAuth) {
   const db = await getDB();
   await db.put(DEVICE_AUTH_STORE, { ...deviceAuth, pairedAt: new Date().toISOString() });
+}
+
+/**
+ * Merges fields into this device's record (a re-wrapped PIN, the wrong-PIN
+ * counters, the last sync time) without touching the rest.
+ *
+ * @param {string} deviceId
+ * @param {object} patch
+ */
+export async function updateDeviceAuth(deviceId, patch) {
+  const db = await getDB();
+  const tx = db.transaction(DEVICE_AUTH_STORE, 'readwrite');
+  const current = await tx.store.get(deviceId);
+  if (current) await tx.store.put({ ...current, ...patch });
+  await tx.done;
+  return current ? { ...current, ...patch } : undefined;
+}
+
+/**
+ * Removes everything this phone holds for the account: documents, folders and
+ * pairing records. The way back after a lockout or a revoked pairing is a fresh
+ * pair from the owner's Devices page.
+ */
+export async function wipeLocalVault() {
+  const db = await getDB();
+  const tx = db.transaction([DOCUMENTS_STORE, DEVICE_AUTH_STORE, FOLDERS_STORE], 'readwrite');
+  await Promise.all([tx.objectStore(DOCUMENTS_STORE).clear(), tx.objectStore(DEVICE_AUTH_STORE).clear(), tx.objectStore(FOLDERS_STORE).clear()]);
+  await tx.done;
 }
 
 /**
