@@ -14,7 +14,7 @@ import axios from 'axios';
 import ImageViewer from './preview/ImageViewer.jsx';
 import PdfViewer from './preview/PdfViewer.jsx';
 import { DocxViewer, MediaViewer, NoPreview, TextViewer } from './preview/SimpleViewers.jsx';
-import { downloadBytes, fetchDocumentBytes } from '../services/documentsService.js';
+import { downloadBytes, fetchDocumentBytes, recordDownload } from '../services/documentsService.js';
 import { subscribeToken } from '../services/session.js';
 import { MAX_PREVIEW_BYTES, sniffPreviewType } from '../utils/previewType.js';
 import { formatDateTime } from '../utils/formatDate.js';
@@ -184,7 +184,10 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
       let bytes = bytesRef.current;
       let name = nameRef.current;
       if (!bytes) {
-        ({ bytes, filename: name } = await fetchDocumentBytes(doc.id));
+        ({ bytes, filename: name } = await fetchDocumentBytes(doc.id, { purpose: 'download' }));
+      } else {
+        // Saved from what the preview already holds: tell the server so it still counts as a download.
+        recordDownload(doc.id);
       }
       downloadBytes(bytes, name ?? doc.filename);
     } catch {

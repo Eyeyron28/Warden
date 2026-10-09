@@ -6,7 +6,7 @@ import SensitiveInput from '../../components/SensitiveInput.jsx';
 import OtpChallengePanel from '../../components/OtpChallengePanel.jsx';
 import { loginVault, resendOtp, verifyOtp } from '../../services/authService.js';
 import { extractErrorMessage } from '../../services/api.js';
-import { setToken } from '../../services/session.js';
+import { adoptTokenFromOtherTabs, setToken, takeSessionNotice } from '../../services/session.js';
 import { formatClock } from '../../utils/otpInput.js';
 import { safeRedirectPath } from '../../utils/safeRedirect.js';
 import { useSessionToken } from '../../utils/useSessionToken.js';
@@ -55,6 +55,12 @@ function LoginPage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [challenge, setChallenge] = useState(null); // step 2 when set
   const settleTimer = useRef(null);
+  // "Your session expired. Sign in again." - shown once, when the server ended the session we were holding.
+  const [sessionNotice] = useState(() => takeSessionNotice());
+  // A second tab of a signed-in browser: pick the session up from the other tab instead of asking again.
+  useEffect(() => {
+    adoptTokenFromOtherTabs();
+  }, []);
 
   useEffect(() => () => clearTimeout(settleTimer.current), []);
 
@@ -176,6 +182,12 @@ function LoginPage() {
       }
     >
       <form className={forms.form} onSubmit={handleSubmit} noValidate>
+        {sessionNotice && !location.state?.passwordReset && (
+          <div className={forms.notice} role="status">
+            <Icon name="lock" />
+            <p>{sessionNotice}</p>
+          </div>
+        )}
         {location.state?.passwordReset && (
           <div className={forms.notice} role="status">
             <Icon name="check" />

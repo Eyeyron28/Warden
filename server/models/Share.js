@@ -50,6 +50,9 @@ const shareSchema = new mongoose.Schema({
   // maxDownloads the share and its copies are deleted.
   maxDownloads: { type: Number, default: null },
   downloadCount: { type: Number, default: 0 },
+  // How many times a visitor opened the link (not counting the owner), and when last.
+  openCount: { type: Number, default: 0 },
+  lastOpenedAt: { type: Date, default: null },
 
   // Optional recipient: the server will only release ciphertext to a visitor
   // who proves they can read this mailbox (a 6-digit emailed code).

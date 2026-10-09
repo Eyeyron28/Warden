@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import OtpChallengePanel from '../../components/OtpChallengePanel.jsx';
-import PhoneRecoveryModal from '../../components/PhoneRecoveryModal.jsx';
 import {
   requestPasswordReset,
   resendPasswordResetCode,
@@ -59,7 +58,6 @@ function ForgotPasswordPage() {
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
-  const [phoneOpen, setPhoneOpen] = useState(false);
   // Screens with no text field (the two choices, the warning) put focus on their first button.
   const firstButtonRef = useRef(null);
   useEffect(() => {
@@ -107,14 +105,14 @@ function ForgotPasswordPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, submitting, clearSecrets]);
 
-  // Esc is Back (not while the phone dialog, which has its own Esc, is open).
+  // Esc is Back.
   useEffect(() => {
     const onKey = (event) => {
-      if (event.key === 'Escape' && !phoneOpen && !event.defaultPrevented) goBack();
+      if (event.key === 'Escape' && !event.defaultPrevented) goBack();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goBack, phoneOpen]);
+  }, [goBack]);
 
   const startAgain = (message) => {
     clearSecrets();
@@ -419,7 +417,7 @@ function ForgotPasswordPage() {
               <li>all your files and folders</li>
               <li>everything in Trash</li>
               <li>every share link</li>
-              <li>every paired phone</li>
+              <li>every signed-in device and its activity log</li>
               <li>every trusted browser</li>
             </ul>
             <p className={styles.dangerBody}>
@@ -613,26 +611,7 @@ function ForgotPasswordPage() {
             <Icon name="arrowRight" size={16} />
           </button>
         </div>
-        <div className={styles.secondaryActions}>
-          <p className={forms.hint}>Have a paired phone? It can approve a new password without the email step.</p>
-          <button type="button" className={`${site.button} ${site.ghost}`} onClick={() => setPhoneOpen(true)}>
-            <Icon name="phone" size={18} />
-            Recover with my paired phone
-          </button>
-        </div>
       </div>
-
-      {phoneOpen && (
-        <PhoneRecoveryModal
-          initialEmail={email.trim()}
-          onClose={() => setPhoneOpen(false)}
-          onRecovered={(sessionToken) => {
-            setPhoneOpen(false);
-            setToken(sessionToken);
-            navigate('/files', { replace: true });
-          }}
-        />
-      )}
     </AuthLayout>
   );
 }

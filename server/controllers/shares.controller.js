@@ -16,6 +16,7 @@ const {
 } = require('../utils/shareCrypto');
 const limits = require('../utils/shareLimits');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
+const { recordEvent } = require('../utils/audit');
 const { removeShares } = require('../utils/shareCleanup');
 const { sha256 } = require('../utils/shareGate');
 
@@ -316,6 +317,7 @@ async function issueShare(req, res, documentIds) {
   // logged anywhere. no-store keeps it out of any HTTP cache. (For a password
   // share the browser uses it to wrap the key under the password, then shows a
   // link WITHOUT it.)
+  await recordEvent(req, 'share_created', { targetId: shareId });
   res.setHeader('Cache-Control', 'no-store');
   res.status(201).json({
     id: shareId,
@@ -558,6 +560,7 @@ const revokeShare = asyncHandler(async (req, res) => {
   if (counts.shares === 0) {
     throw shareNotFound();
   }
+  await recordEvent(req, 'share_revoked', { targetId: req.params.shareId });
   res.status(200).json({ success: true, usage: await usageFor(req.userId) });
 });
 
@@ -567,6 +570,7 @@ const revokeShare = asyncHandler(async (req, res) => {
  */
 const stopAllShares = asyncHandler(async (req, res) => {
   const counts = await removeShares({ ownerUserId: req.userId });
+  await recordEvent(req, 'shares_stopped_all');
   res.status(200).json({ success: true, stopped: counts.shares, usage: await usageFor(req.userId) });
 });
 

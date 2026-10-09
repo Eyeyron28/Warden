@@ -17,8 +17,9 @@ const GOOD = {
   MAIL_FROM: 'Warden <no-reply@example.com>',
   SIGNUP_MODE: 'invite',
   INVITE_CODE: 'a-long-random-invite-code',
+  AUDIT_HMAC_KEY: 'a-long-random-signing-key-for-the-activity-log-0123456789',
 };
-const KEYS = [...Object.keys(GOOD), 'OTP_ENABLED', 'STORAGE_QUOTA_MB', 'VERCEL'];
+const KEYS = [...Object.keys(GOOD), 'OTP_ENABLED', 'STORAGE_QUOTA_MB', 'VERCEL', 'AUDIT_RETENTION_DAYS'];
 
 function withEnv(env, fn) {
   const saved = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -42,7 +43,7 @@ test('a complete production configuration passes', () => {
 });
 
 test('each required setting is reported by name when missing or invalid', () => {
-  for (const key of ['MONGO_URI', 'PUBLIC_APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'SIGNUP_MODE', 'INVITE_CODE']) {
+  for (const key of ['MONGO_URI', 'PUBLIC_APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'SIGNUP_MODE', 'INVITE_CODE', 'AUDIT_HMAC_KEY']) {
     const env = { ...GOOD };
     delete env[key];
     assert.ok(names(env).includes(key), `${key} missing`);
@@ -54,6 +55,10 @@ test('each required setting is reported by name when missing or invalid', () => 
   assert.ok(names({ ...GOOD, INVITE_CODE: 'short' }).includes('INVITE_CODE'));
   assert.ok(names({ ...GOOD, MONGO_URI: 'postgres://x' }).includes('MONGO_URI'));
   for (const bad of ['0', '-5', 'abc']) assert.ok(names({ ...GOOD, STORAGE_QUOTA_MB: bad }).includes('STORAGE_QUOTA_MB'), bad);
+  // the key that signs the activity log: required, and long enough to mean something
+  assert.ok(names({ ...GOOD, AUDIT_HMAC_KEY: 'too-short' }).includes('AUDIT_HMAC_KEY'));
+  for (const bad of ['0', '400', 'x', '1.5']) assert.ok(names({ ...GOOD, AUDIT_RETENTION_DAYS: bad }).includes('AUDIT_RETENTION_DAYS'), bad);
+  assert.deepEqual(names({ ...GOOD, AUDIT_RETENTION_DAYS: '90' }), []);
 });
 
 test('messages name variables and never contain their values', () => {

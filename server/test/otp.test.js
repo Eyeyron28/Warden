@@ -95,6 +95,18 @@ stub('../utils/sessionStore', {
   destroyAllSessionsForUser: async () => {},
 });
 
+// Devices and the activity log are covered in devices-audit.test.js; here a login just needs a device.
+stub('../utils/deviceIdentity', {
+  resolveDevice: async () => ({ device: { _id: oid() }, isNew: false, hadOtherDevices: false }),
+  deviceFromCookie: async () => null,
+  touchDevice: async () => {},
+});
+stub('../utils/audit', {
+  recordEvent: async () => null,
+  countryFrom: () => null,
+  cityFrom: () => null,
+});
+
 const { unlock, verifyOtp, resendOtp } = require('../controllers/auth.controller');
 
 // ---------- helpers ----------
@@ -141,7 +153,10 @@ async function call(handler, body) {
       return this;
     },
   };
-  await handler({ body }, res, (err) => {
+  const cookies = {};
+  res.cookie = (name, value) => { cookies[name] = value; return res; };
+  res.clearCookie = () => res;
+  await handler({ body, headers: {}, secure: true }, res, (err) => {
     out.error = err;
   });
   return out;

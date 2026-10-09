@@ -5,8 +5,9 @@ import AppLayout from './components/AppLayout.jsx';
 import PublicLayout from './components/site/PublicLayout.jsx';
 import HomePage from './pages/public/HomePage.jsx';
 import { logoutVault } from './services/authService.js';
-import { clearToken } from './services/session.js';
-import { isPhoneDevice } from './utils/deviceDetection.js';
+import { adoptTokenFromOtherTabs, clearToken, expireSession, getToken } from './services/session.js';
+import { getMe } from './services/authService.js';
+import { checkStoredSession } from './services/sessionCheck.js';
 import { useSessionToken } from './utils/useSessionToken.js';
 
 // Every route except the home page is its own chunk, so the landing page
@@ -27,42 +28,10 @@ const TrashPage = lazy(() => import('./pages/TrashPage.jsx'));
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage.jsx'));
+const OverviewPage = lazy(() => import('./pages/OverviewPage.jsx'));
+const WasntMePage = lazy(() => import('./pages/auth/WasntMePage.jsx'));
 const SharesPage = lazy(() => import('./pages/SharesPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
-const PairPage = lazy(() => import('./pages/PairPage.jsx'));
-const PhoneVault = lazy(() => import('./pages/PhoneVault.jsx'));
-
-/**
- * "/" is the public home page for everyone - except a phone that has
- * already been paired in this browser, which still goes straight to its
- * own PIN-unlocked vault at /phone, as before. Any other phone sees the
- * landing page and can log in normally.
- */
-function RootRoute() {
-  const [isPhone] = useState(isPhoneDevice);
-  const [paired, setPaired] = useState(isPhone ? null : false);
-
-  useEffect(() => {
-    if (!isPhone) return undefined;
-    let cancelled = false;
-    // Loaded on demand: only phones need IndexedDB here, so the landing
-    // page's own bundle doesn't carry it.
-    import('./services/localVault.js')
-      .then(({ getAllDeviceAuth }) => getAllDeviceAuth())
-      .then((records) => !cancelled && setPaired(records.length > 0))
-      .catch(() => !cancelled && setPaired(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [isPhone]);
-
-  // While IndexedDB is still answering (`paired === null`) the landing page
-  // renders as normal: returning null here made the whole page pop in a
-  // moment later on phones and pushed the footer down (CLS ~0.7). A paired
-  // phone just sees the page briefly before being redirected.
-  if (paired) return <Navigate to="/phone" replace />;
-  return <HomePage />;
-}
 
 /**
  * The vault needs a session. Without one - never logged in, "Lock
@@ -73,8 +42,33 @@ function RootRoute() {
 function RequireSession({ children }) {
   const token = useSessionToken();
   const location = useLocation();
+  const ready = useSessionCheck();
+  // A token kept from before a reload (or handed over by another tab) is proved with the server first, so a
+  // dead one sends you to the login page with a message instead of a screen full of failed requests.
+  if (!ready) return null;
   if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
   return children;
+}
+
+// Checked once per page load, shared by every route that needs the session (services/sessionCheck.js).
+let sessionCheck = null;
+function checkSessionOnce() {
+  if (!sessionCheck) {
+    sessionCheck = checkStoredSession({ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: getMe, expire: expireSession });
+  }
+  return sessionCheck;
+}
+
+function useSessionCheck() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    checkSessionOnce().finally(() => !cancelled && setReady(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return ready;
 }
 
 function App() {
@@ -93,7 +87,7 @@ function App() {
     <Suspense fallback={null}>
       <Routes>
         <Route element={<PublicLayout />}>
-          <Route index element={<RootRoute />} />
+          <Route index element={<HomePage />} />
           {/* About and Contact are sections of the one-page landing site now;
               the old URLs still work and land on the right section. */}
           <Route path="about" element={<Navigate to="/#about" replace />} />
@@ -105,6 +99,7 @@ function App() {
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
           <Route path="verify-email" element={<VerifyEmailPage />} />
+          <Route path="wasnt-me" element={<WasntMePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
@@ -123,6 +118,7 @@ function App() {
           <Route path="/shared" element={<SharesPage />} />
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/export" element={<ExportPage />} />
+          <Route path="/overview" element={<OverviewPage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
@@ -131,11 +127,6 @@ function App() {
         {/* Outside the account flow entirely: a share-link recipient has
             never logged into this account and never will. */}
         <Route path="/shared/:shareId" element={<SharedDocumentPage />} />
-        {/* Same reasoning: a phone opening a pairing QR has no session. */}
-        <Route path="/pair/:token" element={<PairPage />} />
-        {/* The phone's own local vault, unlocked with its paired PIN and
-            backed by IndexedDB, not a PC session at all. */}
-        <Route path="/phone" element={<PhoneVault />} />
       </Routes>
     </Suspense>
   );

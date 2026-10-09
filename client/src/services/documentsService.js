@@ -184,10 +184,25 @@ export async function fetchDocumentBlob(id) {
  * stored name claims. Pass `signal` to cancel (e.g. when moving to the next file).
  * @returns {Promise<{ bytes: Uint8Array, filename: string }>}
  */
-export async function fetchDocumentBytes(id, { signal } = {}) {
-  const response = await api.get(`/documents/${id}/view`, { responseType: 'arraybuffer', signal });
+export async function fetchDocumentBytes(id, { signal, purpose } = {}) {
+  // purpose: "download" counts as a download, "silent" (an export, or drawing a preview) counts as nothing, and
+  // leaving it out is a normal view. The server reads it as ?for=.
+  const response = await api.get(`/documents/${id}/view`, {
+    responseType: 'arraybuffer',
+    signal,
+    ...(purpose ? { params: { for: purpose } } : {}),
+  });
   const filename = filenameFromDisposition(response.headers['content-disposition']);
   return { bytes: new Uint8Array(response.data), filename };
+}
+
+/** POST /api/documents/:id/downloaded - a download of bytes the preview already holds still counts as one. */
+export async function recordDownload(id) {
+  try {
+    await api.post(`/documents/${id}/downloaded`);
+  } catch {
+    // counting is best effort; the file was saved
+  }
 }
 
 /**

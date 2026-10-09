@@ -44,6 +44,10 @@ const sessionSchema = new mongoose.Schema({
   // `refreshSession` (utils/sessionStore.js) bumps this forward on every
   // authenticated request, same sliding-expiry behavior the in-memory
   // store had.
+  // The browser this session belongs to (models/Device.js), so that one device can be signed out
+  // without touching the others. Null for a session created before devices existed.
+  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
+  createdAt: { type: Date, default: Date.now },
   expiresAt: {
     type: Date,
     required: true,

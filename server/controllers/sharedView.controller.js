@@ -8,6 +8,7 @@ const { consumeBudget, isBudgetExhausted } = require('../middleware/rateLimit');
 const { removeShares } = require('../utils/shareCleanup');
 const gate = require('../utils/shareGate');
 const limits = require('../utils/shareLimits');
+const { recordEvent } = require('../utils/audit');
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -74,6 +75,9 @@ async function requireClearance(req, share) {
 const openAccess = asyncHandler(async (req, res) => {
   const share = await findLiveShare(req.params.shareId);
   const { accessToken } = await gate.issueAccess(share);
+  // An anonymous visitor: only the share's id and a coarse country are recorded, never who or where exactly.
+  await Share.updateOne({ shareId: share.shareId }, { $inc: { openCount: 1 }, $set: { lastOpenedAt: new Date() } });
+  await recordEvent(req, 'share_opened', { userId: share.ownerUserId, deviceId: null, targetId: share.shareId });
   noStore(res);
   res.status(200).json({
     accessToken,
@@ -219,6 +223,7 @@ const viewSharedFile = asyncHandler(async (req, res) => {
     await removeShares({ shareId: share.shareId });
   }
 
+  await recordEvent(req, 'share_downloaded', { userId: share.ownerUserId, deviceId: null, targetId: share.shareId });
   setOpaqueHeaders(res);
   res.setHeader('Content-Length', String(body.length));
   res.status(200).end(body);

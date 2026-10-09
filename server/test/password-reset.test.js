@@ -73,8 +73,8 @@ function addVaultStuff(userId) {
   t.folders.push({ _id: db.oid(), userId, name: 'Tax' });
   t.trashfolders.push({ _id: db.oid(), userId, name: 'Old' });
   t.shares.push({ _id: db.oid(), ownerUserId: userId });
-  t.paireddevices.push({ _id: db.oid(), userId });
-  t.pairingtokens.push({ _id: db.oid(), userId });
+  t.devices.push({ _id: db.oid(), userId, deviceIdHash: 'h', label: 'Chrome on Windows' });
+  t.auditevents.push({ _id: db.oid(), userId, seq: 1, type: 'login', hash: 'x' });
   t.backuplogs.push({ _id: db.oid(), userId });
   t.trusteddevices.push({ _id: db.oid(), userId, tokenHash: 'h', expiresAt: new Date(Date.now() + 1e9) });
   t.sessions.push({ _id: db.oid(), userId, expiresAt: new Date(Date.now() + 1e9) });
@@ -419,9 +419,11 @@ test('option B: confirmation email required; the vault is wiped; a NEW recovery 
   assert.equal(out.json.sessionToken, undefined);
 
   const mine = (rows) => rows.filter((r) => String(r.userId ?? r.ownerUserId) === String(user._id));
-  for (const table of ['documents', 'folders', 'trashfolders', 'shares', 'paireddevices', 'pairingtokens', 'backuplogs', 'trusteddevices', 'sessions', 'resettickets']) {
+  for (const table of ['documents', 'folders', 'trashfolders', 'shares', 'devices', 'backuplogs', 'trusteddevices', 'sessions', 'resettickets']) {
     assert.equal(mine(world.tables[table]).length, 0, `${table}: zero rows`);
   }
+  // The old log went with the vault; the only event is the new chain's first one: the password change itself.
+  assert.deepEqual(mine(world.tables.auditevents).map((e) => [e.seq, e.type]), [[1, 'password_changed']], 'a fresh activity log');
   const bens = (rows) => rows.filter((r) => String(r.userId ?? r.ownerUserId) === String(other.user._id));
   assert.equal(bens(world.tables.documents).length, 2, "ben's vault is untouched");
   assert.equal(bens(world.tables.shares).length, 1);
@@ -565,7 +567,7 @@ test('after every reset type: sessions and trusted browsers are gone, pending ti
     // the owner was told
     assert.ok(world.mails.some((m) => /password was changed/i.test(m.subject)), `${label}: notified`);
     // the trusted-browser cookie of THIS browser is cleared
-    assert.deepEqual(out.cleared, ['warden_td'], `${label}: cookie cleared`);
+    assert.ok(out.cleared.some((name) => /^warden_td_[0-9a-f]{16}$/.test(name)) && out.cleared.includes('warden_td'), `${label}: cookie cleared`);
   }
 });
 

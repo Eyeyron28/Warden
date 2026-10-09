@@ -43,8 +43,8 @@ const matches = (doc, filter) =>
   );
 
 const NAMES = [
-  'users', 'documents', 'folders', 'backuplogs', 'paireddevices', 'pairingtokens',
-  'recoveryrequesttokens', 'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices', 'resettickets',
+  'users', 'documents', 'folders', 'backuplogs', 'devices', 'auditevents',
+  'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices', 'resettickets',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -93,8 +93,7 @@ function fakeModel(name) {
 }
 
 const models = {
-  User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
-  PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
+  User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
@@ -138,7 +137,18 @@ stub('../utils/sessionStore', {
   destroyAllSessionsForUser: async () => {},
 });
 
-const { unlock, verifyOtp, recoverViaPhoneInit } = require('../controllers/auth.controller');
+// Devices and the activity log have their own tests (devices-audit.test.js); a login here just needs a device.
+stub('../utils/deviceIdentity', {
+  resolveDevice: async () => ({ device: { _id: oid() }, isNew: false, hadOtherDevices: false }),
+  deviceFromCookie: async () => null,
+  touchDevice: async () => {},
+});
+stub('../utils/audit', {
+  recordEvent: async () => null,
+  countryFrom: () => null,
+  cityFrom: () => null,
+});
+const { unlock, verifyOtp } = require('../controllers/auth.controller');
 const { deleteChallenge, resendDeleteCode, deleteAccount } = require('../controllers/account.controller');
 const { deleteAccountData } = require('../utils/accountDeletion');
 
@@ -172,9 +182,8 @@ function populate(user) {
   t.documents.push({ _id: oid(), userId: user._id, filename: 'in-folder.png', folder: 'Old', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4), deletedAt: new Date(), purgeAt: new Date(Date.now() + 86400000), trashBatchId: batchId });
   t.trashfolders.push({ _id: oid(), userId: user._id, batchId, path: 'Old', parentPath: '', name: 'Old', subPaths: ['Old'], itemCount: 1 });
   t.backuplogs.push({ _id: oid(), userId: user._id });
-  t.paireddevices.push({ _id: oid(), userId: user._id, deviceToken: 'dev' });
-  t.pairingtokens.push({ _id: oid(), userId: user._id });
-  t.recoveryrequesttokens.push({ _id: oid(), userId: user._id });
+  t.devices.push({ _id: oid(), userId: user._id, deviceIdHash: 'h', label: 'Chrome on Windows' });
+  t.auditevents.push({ _id: oid(), userId: user._id, seq: 1, type: 'login', hash: 'x' });
   // A share with every protection on, and everything that hangs off it.
   t.shares.push({
     _id: oid(), ownerUserId: user._id, shareId, sourceDocumentIds: [],
@@ -202,7 +211,7 @@ const rowsOwnedBy = (user) => {
   return {
     // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
     stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
-    byOwner: ['documents', 'folders', 'trashfolders', 'backuplogs', 'paireddevices', 'pairingtokens', 'recoveryrequesttokens', 'sessions', 'otpchallenges', 'trusteddevices']
+    byOwner: ['documents', 'folders', 'trashfolders', 'backuplogs', 'devices', 'auditevents', 'sessions', 'otpchallenges', 'trusteddevices']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
       + world.tables.shares.filter((r) => String(r.ownerUserId) === id).length,
   };
@@ -292,7 +301,7 @@ test('a login code cannot authorise deletion, and a delete code cannot log in', 
   // ...and the delete challenge still works for deletion.
   const real = await call(deleteAccount, { userId: user._id, body: { challengeToken: del.token, code: del.code, emailConfirmation: 'ana@example.com' } });
   assert.equal(real.status, 200);
-  assert.deepEqual(real.cleared, ['warden_td'], 'the trusted-browser cookie is cleared with the account');
+  assert.ok(real.cleared.some((name) => /^warden_td_[0-9a-f]{16}$/.test(name)) && real.cleared.includes('warden_td'), 'the accounts trusted-browser cookie (and the old shared one) are cleared with the account');
 });
 
 test("another account's delete challenge cannot be used, even with the right code and key", async () => {
@@ -308,7 +317,7 @@ test("another account's delete challenge cannot be used, even with the right cod
   });
   assert.equal(attack.error.status, 401);
   assert.equal(world.tables.users.length, 2);
-  assert.equal(rowsOwnedBy(ben).byOwner, 14, 'ben untouched');
+  assert.equal(rowsOwnedBy(ben).byOwner, 13, 'ben untouched');
 });
 
 test('wrong password, wrong code and wrong email confirmation each fail and delete nothing', async () => {
@@ -361,7 +370,7 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(world.tables.users.length, 1);
   assert.equal(world.tables.ratelimits.filter((r) => r.key === '203.0.113.7').length, 2, 'IP-keyed rows are not about a person and stay');
   // Ben's rows are exactly as before (compare after removing the rows that were ana's).
-  assert.equal(rowsOwnedBy(ben).byOwner, 14);
+  assert.equal(rowsOwnedBy(ben).byOwner, 13);
   assert.ok(world.tables.sharedfiles.length === 1 && world.tables.shares.length === 1, "only ben's share and its copy remain");
   assert.ok(benBefore.length > 0 && anaBefore.documents === 8);
 
@@ -402,7 +411,7 @@ test('without a transaction the order revokes access first and a retry finishes 
   await assert.rejects(deleteAccountData(ana._id, { email: ana.email, transaction: false }), /injected failure/);
   assert.equal(world.tables.shares.length, 0, 'share links already dead');
   assert.equal(world.tables.sharedfiles.length, 0);
-  assert.equal(world.tables.paireddevices.length, 0);
+  assert.equal(world.tables.devices.length, 0);
   assert.equal(world.tables.sessions.length, 0, 'every bearer token already dead');
   assert.equal(world.tables.documents.length, 0, 'no ciphertext left');
   assert.equal(world.tables.users.length, 1, 'the account itself goes last');
@@ -438,28 +447,6 @@ test('resending the delete code works for its owner only and keeps its purpose',
   assert.equal(ok.status, 200);
   assert.match(world.mails[world.mails.length - 1].subject, /account deletion/i);
   assert.equal(world.tables.otpchallenges[0].purpose, 'delete-account');
-});
-
-test('starting a phone recovery works and links to the validated public origin', async () => {
-  reset();
-  const ana = addUser('ana@example.com');
-  process.env.PUBLIC_APP_URL = 'https://warden.example.com';
-  try {
-    const known = await call(recoverViaPhoneInit, { body: { email: 'ana@example.com' } });
-    assert.equal(known.error, null);
-    assert.equal(known.status, 201);
-    assert.match(known.json.recoveryToken, /^[0-9a-f]{64}$/);
-    assert.equal(known.json.recoverUrl, `https://warden.example.com/phone?recover=${known.json.recoveryToken}`);
-    assert.equal(world.tables.recoveryrequesttokens.length, 1);
-    assert.equal(String(world.tables.recoveryrequesttokens[0].userId), String(ana._id));
-
-    const unknown = await call(recoverViaPhoneInit, { body: { email: 'nobody@example.com' } });
-    assert.equal(unknown.status, 201, 'an unknown email gets the same shape of answer');
-    assert.deepEqual(Object.keys(unknown.json).sort(), Object.keys(known.json).sort());
-    assert.equal(world.tables.recoveryrequesttokens.length, 1, '...but no token is created');
-  } finally {
-    delete process.env.PUBLIC_APP_URL;
-  }
 });
 
 test('no route can issue a session without the emailed code', () => {

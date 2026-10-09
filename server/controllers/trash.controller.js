@@ -1,4 +1,5 @@
 const trash = require('../utils/trash');
+const { recordEvent } = require('../utils/audit');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that.
@@ -27,9 +28,13 @@ const restoreItem = asyncHandler(async (req, res) => {
     throw error;
   }
   if (kind === 'file') {
-    res.status(200).json(await trash.restoreFile(req.userId, id));
+    const restored = await trash.restoreFile(req.userId, id);
+    await recordEvent(req, 'restore', { targetId: id });
+    res.status(200).json(restored);
   } else if (kind === 'folder') {
-    res.status(200).json(await trash.restoreFolder(req.userId, id));
+    const restored = await trash.restoreFolder(req.userId, id);
+    await recordEvent(req, 'restore');
+    res.status(200).json(restored);
   } else {
     const error = new Error('kind must be "file" or "folder".');
     error.status = 400;
@@ -43,6 +48,7 @@ const restoreItem = asyncHandler(async (req, res) => {
  */
 const deleteItem = asyncHandler(async (req, res) => {
   await trash.deletePermanently(req.userId, req.params.kind, req.params.id);
+  await recordEvent(req, 'delete', { targetId: req.params.kind === 'file' ? req.params.id : null });
   res.status(204).send();
 });
 
@@ -51,7 +57,9 @@ const deleteItem = asyncHandler(async (req, res) => {
  * Empties the Trash: every trashed item is deleted permanently.
  */
 const emptyTrash = asyncHandler(async (req, res) => {
-  res.status(200).json(await trash.emptyTrash(req.userId));
+  const emptied = await trash.emptyTrash(req.userId);
+  await recordEvent(req, 'trash_emptied');
+  res.status(200).json(emptied);
 });
 
 module.exports = { listTrash, restoreItem, deleteItem, emptyTrash };

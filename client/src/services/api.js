@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import { getToken, clearToken } from './session.js';
+import { getToken, clearToken, expireSession } from './session.js';
 
 // Relative, not an absolute host - resolves against whatever origin this
 // page itself was loaded from (localhost, a home Wi-Fi IP, a phone
@@ -38,7 +38,11 @@ api.interceptors.response.use(
       // e.g. deleting the account) only ends the session when the server says
       // the SESSION is the problem (code SESSION_INVALID).
       const sessionProblem = error.response?.data?.error?.code === 'SESSION_INVALID';
-      if (!error.config?.skipSessionClear || sessionProblem) clearToken();
+      if (!error.config?.skipSessionClear || sessionProblem) {
+        // A token that the server no longer accepts (expired, or signed out from another device): the login page says so.
+        if (getToken()) expireSession();
+        else clearToken();
+      }
     }
     return Promise.reject(error);
   }

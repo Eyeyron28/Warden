@@ -5,7 +5,8 @@ import { thumbnailResult } from './thumbnail.js';
 import { failedPreviews, isPreviewCandidate, runPreviews } from './previewWork.js';
 
 const deps = {
-  fetchBytes: fetchDocumentBytes,
+  // Drawing a preview is not the person opening the file: it counts as nothing.
+  fetchBytes: (id) => fetchDocumentBytes(id, { purpose: 'silent' }),
   drawThumbnail: (blob, kind) => thumbnailResult(blob, kind),
   uploadThumbnail: putThumbnail,
   recordFailure: markThumbnailFailed,

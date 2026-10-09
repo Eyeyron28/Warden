@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
+const { recordEvent } = require('../utils/audit');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
@@ -196,6 +197,7 @@ const createDocument = asyncHandler(async (req, res) => {
     ...(thumbnail || {}),
   });
 
+  await recordEvent(req, 'upload', { targetId: document._id });
   res.status(201).json({
     id: document._id,
     filename: document.filename,
@@ -405,6 +407,7 @@ const renameFolder = asyncHandler(async (req, res) => {
   const { newPath } = await runInTransaction((session) =>
     moveFolder(req.userId, srcPath, parent, newName, session)
   );
+  await recordEvent(req, 'rename');
   res.status(200).json({ path: newPath });
 });
 
@@ -428,6 +431,7 @@ const deleteFolder = asyncHandler(async (req, res) => {
   // Moves the folder and everything in it to Trash as one entry (restorable for
   // 30 days). A folder that is not there is a success: this is idempotent.
   await trashFolder(req.userId, folderPath.trim());
+  await recordEvent(req, 'delete');
   res.status(204).send();
 });
 
@@ -584,6 +588,12 @@ const moveItems = asyncHandler(async (req, res) => {
     results[index] = { ...base, name, status: 'moved' };
   }
 
+  for (const result of results) {
+    if (result.status === 'moved') {
+      // eslint-disable-next-line no-await-in-loop
+      await recordEvent(req, 'move', { targetId: result.type === 'file' ? result.id : null });
+    }
+  }
   res.status(200).json({
     destination: destPath,
     movedCount: results.filter((result) => result.status === 'moved').length,
@@ -615,12 +625,14 @@ const updateDocument = asyncHandler(async (req, res) => {
   }
 
   const { filename, folder, expiryDate } = req.body;
+  let renamed = false;
 
   if (filename !== undefined) {
     if (typeof filename !== 'string' || !filename.trim()) {
       throw badRequest('filename cannot be empty.');
     }
     document.filename = cleanStoredName(filename);
+    renamed = true;
   }
 
   // Changing a document's folder only happens through POST
@@ -646,6 +658,7 @@ const updateDocument = asyncHandler(async (req, res) => {
   }
 
   await document.save();
+  if (renamed) await recordEvent(req, 'rename', { targetId: document._id });
 
   // toListSummary recomputes daysUntilExpiry/expiryStatus from
   // document.expiryDate every time it's called, so this reflects
@@ -690,6 +703,19 @@ const viewDocument = asyncHandler(async (req, res) => {
   // The decrypted bytes go back as OPAQUE data: never the type the uploader
   // claimed, never inline. The browser decides what the file is by sniffing the
   // bytes themselves (client/src/utils/previewType.js) and builds its own Blob.
+  // What this request is for decides what it counts as. The browser says so with ?for=: "download" (the
+  // Download button), "silent" (an export, or drawing a preview: neither is the person opening the file),
+  // and anything else is a view. Counters live on the document; the activity log gets one event.
+  const purpose = req.query.for === 'download' || req.query.for === 'silent' ? req.query.for : 'view';
+  if (purpose !== 'silent') {
+    await Document.updateOne(
+      { _id: document._id, userId: req.userId },
+      { $set: { lastOpenedAt: new Date() }, $inc: purpose === 'download' ? { downloadCount: 1 } : { viewCount: 1 } },
+      { timestamps: false }
+    );
+    await recordEvent(req, purpose, { targetId: document._id });
+  }
+
   res.setHeader('Content-Type', 'application/octet-stream');
   // The stored name is never changed; the DOWNLOAD name is sanitised and, for a name with no
   // extension whose bytes are a known type, gains that type's extension (utils/fileNames.js).
@@ -697,6 +723,25 @@ const viewDocument = asyncHandler(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).send(plaintext);
+});
+
+/**
+ * POST /api/documents/:id/downloaded
+ * The preview already holds the decrypted file, so its Download button saves it without asking the server
+ * for the bytes again. This records that it happened (the counter and one `download` event). Another
+ * account's id, a trashed file and an unknown id are all the same 404.
+ */
+const recordDownload = asyncHandler(async (req, res) => {
+  assertValidId(req.params.id);
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).select('_id');
+  if (!document) throw documentNotFound();
+  await Document.updateOne(
+    { _id: document._id, userId: req.userId },
+    { $set: { lastOpenedAt: new Date() }, $inc: { downloadCount: 1 } },
+    { timestamps: false }
+  );
+  await recordEvent(req, 'download', { targetId: document._id });
+  res.status(204).send();
 });
 
 /**
@@ -811,6 +856,7 @@ const deleteDocument = asyncHandler(async (req, res) => {
     throw documentNotFound();
   }
 
+  await recordEvent(req, 'delete', { targetId: req.params.id });
   res.status(204).send();
 });
 
@@ -825,6 +871,7 @@ module.exports = {
   moveItems,
   updateDocument,
   viewDocument,
+  recordDownload,
   getThumbnail,
   putThumbnail,
   markThumbnailFailed,

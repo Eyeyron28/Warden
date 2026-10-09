@@ -153,46 +153,6 @@ export async function resetPasswordWithRecoveryKeyOnly({ email, recoveryKey, new
 }
 
 /**
- * POST /api/auth/recover-via-phone/init - starts a new 5-minute
- * paired-phone recovery window. Requires the account's email now (there's
- * no single implicit vault to fall back to). `recoverUrl` is null if the
- * server couldn't determine its own LAN IP - the frontend should fall
- * back to showing `recoveryToken` as a manually-typed code.
- * @param {string} email
- * @returns {Promise<{ recoveryToken: string, recoverUrl: string|null, expiresAt: string }>}
- */
-export async function initPhoneRecovery(email) {
-  const { data } = await api.post('/auth/recover-via-phone/init', { email });
-  return data;
-}
-
-/**
- * GET /api/auth/recover-via-phone/status/:token - polled by the PC while
- * its recovery code is on screen, waiting for the paired phone to respond.
- * @param {string} token
- * @returns {Promise<{ fulfilled: boolean, expired: boolean }>}
- */
-export async function getPhoneRecoveryStatus(token) {
-  const { data } = await api.get(`/auth/recover-via-phone/status/${token}`);
-  return data;
-}
-
-/**
- * POST /api/auth/recover-via-phone/complete - called once the phone has
- * fulfilled the request, to actually set the new master password.
- * @param {string} recoveryToken
- * @param {string} newPassword
- * @returns {Promise<{ otpRequired: true, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number } | { sessionToken: string }>}
- *   A 6-digit code is emailed first, exactly like a password login; the session only
- *   comes from POST /api/auth/verify-otp (a plain `{ sessionToken }` is only ever
- *   answered by a development server with OTP_ENABLED=false).
- */
-export async function completePhoneRecovery(recoveryToken, newPassword) {
-  const { data } = await api.post('/auth/recover-via-phone/complete', { recoveryToken, newPassword });
-  return data;
-}
-
-/**
  * POST /api/auth/logout
  * Explicitly ends the session server-side, so "Log out" actually kills
  * the old token instead of leaving it valid until its 30-min expiry.

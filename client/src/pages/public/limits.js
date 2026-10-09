@@ -2,7 +2,7 @@
 // section and in the Privacy page (and therefore in the signup dialog), so
 // the copy can't drift between them. Every line has to match the code:
 // see server/utils/sessionStore.js, controllers/shares.controller.js
-// (share links) and services/localVault.js.
+// (share links).
 export const LIMITS = [
   {
     title: 'A compromised server while you are signed in',
@@ -12,12 +12,12 @@ export const LIMITS = [
   {
     title: 'Losing both your password and your recovery key',
     body:
-      'With neither, and no paired phone, your vault cannot be recovered, by you or by us. An email reset only starts a new, empty vault.',
+      'With neither, your vault cannot be recovered, by you or by us. An email reset only starts a new, empty vault.',
   },
   {
     title: 'A compromised or shared device',
     body:
-      'Anyone using your unlocked browser can open your documents. A paired phone keeps encrypted copies of your files and a copy of your vault key locked only by its PIN, so a lost phone is only as safe as its PIN (at least 6 characters, obvious ones refused, slow to guess). Remove it on the Devices page and change your password.',
+      'Anyone using your unlocked browser can open your documents. Your session is only in that tab, but a computer you share can still be used while you are signed in, so sign out when you are done. Devices & activity shows every browser signed in to your account and lets you sign any of them out.',
   },
   {
     title: 'Weak or reused passwords',

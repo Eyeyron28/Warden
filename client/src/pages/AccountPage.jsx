@@ -11,7 +11,6 @@ import PasswordInput from './auth/PasswordInput.jsx';
 import { getMe } from '../services/authService.js';
 import { deleteAccount, requestDeleteCode, resendDeleteCode } from '../services/accountService.js';
 import { extractErrorMessage } from '../services/api.js';
-import { clearOfflineCopy } from '../utils/clearLocalData.js';
 import { clearToken } from '../services/session.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import site from '../components/site/site.module.css';
@@ -100,13 +99,11 @@ function AccountPage() {
     setDial('unlocking');
     try {
       await deleteAccount({ challengeToken: challenge.challengeToken, code, emailConfirmation: typedEmail.trim() });
-      // Let go of everything held for the account. The offline copy goes
-      // first (the landing page checks it), then we leave this page, and only
+      // Let go of everything held for the account. We leave this page first, and only
       // then does the session token go - clearing it while this route is still
       // mounted would bounce us to the login screen, so the navigation is
       // committed synchronously first. Dropping the token also empties the
       // decrypted thumbnail cache. The notice is plain text in router state.
-      await clearOfflineCopy();
       flushSync(() => navigate('/', { replace: true, state: { accountDeleted: true } }));
       clearToken();
     } catch (err) {
@@ -161,13 +158,12 @@ function AccountPage() {
               </p>
               <p className={styles.dangerBody}>
                 <strong>Deleted:</strong> your documents and their previews, your folders, every share link and its
-                encrypted copies, your paired devices&apos; access, your login codes, trusted
+                encrypted copies, your devices and activity log, your login codes, trusted
                 browsers and sessions, and the account itself (email, password hash and locked keys).
               </p>
               <p className={styles.dangerBody}>
                 <strong>Not deleted, because we don&apos;t hold it:</strong> emails we already sent you, files you
-                downloaded (including any zip you made with Export, which is not encrypted), and the offline copy on a phone you paired (clear that
-                phone&apos;s browser data yourself).
+                downloaded (including any zip you made with Export, which is not encrypted).
               </p>
               <button
                 type="button"

@@ -39,13 +39,23 @@ function matchExpr(doc, expr) {
   throw new Error(`fakeDb: unsupported $expr ${op}`);
 }
 
+const pathGet = (doc, key) => (key.includes('.') ? key.split('.').reduce((value, part) => (value == null ? undefined : value[part]), doc) : doc[key]);
+
 function matches(doc, filter) {
   return Object.entries(filter).every(([key, cond]) => {
     if (key === '$or') return cond.some((alternative) => matches(doc, alternative));
     if (key === '$expr') return matchExpr(doc, cond);
-    return matchValue(doc[key], cond);
+    const actual = pathGet(doc, key);
+    if (cond && typeof cond === 'object' && !isDate(cond) && !isId(cond) && !Buffer.isBuffer(cond)) {
+      if ('$exists' in cond) return (actual !== undefined) === Boolean(cond.$exists);
+      if ('$nin' in cond) return !cond.$nin.map(String).includes(String(actual));
+    }
+    return matchValue(actual, cond);
   });
 }
+
+// Unique indexes the code under test relies on (a create that repeats one fails like MongoDB's E11000).
+const UNIQUE = { auditevents: ['userId', 'seq'], devices: ['userId', 'deviceIdHash'] };
 
 /** One fake model backed by world.tables[table]. `extras` can add or override methods. */
 function fakeModel(world, table, extras = {}) {
@@ -59,9 +69,13 @@ function fakeModel(world, table, extras = {}) {
         return q;
       },
       session: () => q,
-      sort: () => {
+      sort: (spec) => {
         const original = result;
-        result = () => [...original()].reverse();
+        if (spec && typeof spec === 'object' && 'seq' in spec) {
+          result = () => [...original()].sort((a, b) => (a.seq - b.seq) * (spec.seq < 0 ? -1 : 1));
+        } else {
+          result = () => [...original()].reverse();
+        }
         return q;
       },
       then: (ok, bad) => Promise.resolve(result()).then(ok, bad),
@@ -75,6 +89,10 @@ function fakeModel(world, table, extras = {}) {
   };
   const base = {
     create: async (doc) => {
+      const unique = UNIQUE[table];
+      const clash = (candidate) =>
+        unique && rows().some((row) => unique.every((key) => String(row[key]) === String(candidate[key])));
+      if (!Array.isArray(doc) && clash(doc)) throw Object.assign(new Error('E11000 duplicate key error'), { code: 11000 });
       if (Array.isArray(doc)) {
         const made = doc.map((d) => ({ _id: oid(), ...d }));
         rows().push(...made);
@@ -92,7 +110,7 @@ function fakeModel(world, table, extras = {}) {
       const q = query(() => rows().find((r) => matches(r, filter)) || null);
       return q;
     },
-    findById: async (id) => rows().find((r) => String(r._id) === String(id)) || null,
+    findById: (id) => query(() => rows().find((r) => String(r._id) === String(id)) || null),
     findOneAndUpdate: async (filter, update, options) => {
       const doc = rows().find((r) => matches(r, filter));
       if (!doc) return null;
@@ -169,8 +187,7 @@ function stubModule(modulePath, exportsObject) {
 }
 
 const MODEL_TABLES = {
-  User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', PairedDevice: 'paireddevices',
-  PairingToken: 'pairingtokens', RecoveryRequestToken: 'recoveryrequesttokens', Share: 'shares',
+  User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
   RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
 };
@@ -214,7 +231,7 @@ function installMailer(world) {
 }
 
 /** Runs an Express handler against a fake request and reports what it did. */
-async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, file, ip = '203.0.113.9' } = {}) {
+async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, file, ip = '203.0.113.9', ...extra } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {
     setHeader(name, value) { out.headers[name.toLowerCase()] = value; },
@@ -225,7 +242,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, query, secure, files, file, ip }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure, files, file, ip, ...extra }, res, (err) => { out.error = err; });
   return out;
 }
 

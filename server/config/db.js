@@ -56,6 +56,12 @@ function connectDB() {
         // retried on the next connection since its marker isn't written.
         console.error(`Folder migration failed: ${err.message}`);
       }
+      try {
+        // eslint-disable-next-line global-require
+        await require('../utils/migrateRemovePhone')();
+      } catch (err) {
+        console.error(`Phone-vault removal migration failed: ${err.message}`);
+      }
       return conn;
     })
     .catch((err) => {

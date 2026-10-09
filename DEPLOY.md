@@ -60,6 +60,8 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `TRUST_PROXY_HOPS` | no | Optional. Leave it unset: the app uses **1** automatically on Vercel. If you set it, it must be `1`; any other value makes the rate limiter see the wrong IP address. |
 | `OTP_ENABLED` | no | **Do not set it.** The emailed login code is on by default, and the server refuses to start in production if it is `false`. |
 | `OTP_TTL_MINUTES` | no | Optional, 1 to 60 (default 5). |
+| `AUDIT_HMAC_KEY` | **Secret** | **Required in production** (the server refuses to start without it). At least 32 random characters, e.g. from a password manager. It signs each entry of the activity log so changes to the stored log can be detected. Keep it separate from `MONGO_URI`: it protects nothing if the same person holds both. Rotating it makes older entries show as "cannot be verified". |
+| `AUDIT_RETENTION_DAYS` | no | Optional. How long activity entries are kept (default 30). |
 | `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
 
 Never put these values in the repository, in screenshots or in chat. `server/.env` is git-ignored; keep it that way.
@@ -104,7 +106,7 @@ Run this on the real URL, with a throwaway email address you control.
 1. [ ] `https://<your-url>/api/health` returns `ok` and `reachable`.
 2. [ ] **Sign up**: the "Invite code" field is first and marked Required. A wrong code is refused under the field; the right code (spaces around it are fine) and a strong password create the account. Save the recovery key.
 3. [ ] The verification **email arrives** (check spam). Its link starts with your `PUBLIC_APP_URL`. Open it: "Email verified".
-4. [ ] **Log in**: the 6-digit code email arrives and the code works. Tick "Trust this browser".
+4. [ ] **Log in**: the 6-digit code email arrives and the code works. "Trust this browser for 30 days" is ticked by default (with the note about shared computers); leave it ticked.
 5. [ ] Open a new tab and log in again: no code is asked on this browser. In a private window the code **is** asked.
 6. [ ] **Upload** a small PDF and a file of about 3.9 MB (both work). A file over 4 MB is refused with "File exceeds the 4MB size limit."
 7. [ ] **Preview** the PDF; download it and check the name and extension.
@@ -113,22 +115,15 @@ Run this on the real URL, with a throwaway email address you control.
    - **Forgot password:** on the login page choose "Forgot password", enter the email: a 6-digit code arrives. Enter it, choose "I have my recovery key", enter the key you saved and a new password: you land on the login page with a success message and a notification email arrives (no links in it). Log in with the new password and the emailed code; your files are still there. (Use a throwaway account: the other choice, "I don't have my recovery key", erases the vault.)
 10. [ ] **Delete the account** (password, emailed code, type your email). You get a confirmation email and cannot log in again.
 
-## 9b. Testing pairing on a real phone
+## 9b. Devices, activity and Overview
 
-Pairing and sync work against the live URL; nothing about them depends on being on the same network as a computer. You need the deployed site (HTTPS is what Vercel serves, and the browser only allows the vault's crypto and offline storage on HTTPS), a computer logged in to the account, and a phone.
-
-1. [ ] On the computer open **Devices**, choose **Email me a code**, enter the 6-digit code from your inbox. A QR with a 5-minute countdown appears. (A code that is not entered, or a QR that is not scanned, simply expires.)
-2. [ ] Scan the QR with the phone's **camera app**. It opens `<PUBLIC_APP_URL>/pair/…` in the phone's browser. Check the address bar shows your real domain, not an IP address.
-3. [ ] Enter the master password and choose a PIN. A PIN under 6 characters, or one like `123456`, is refused with a reason. Pairing takes a few seconds (the phone makes its own PIN-locked copy of the key). Your inbox gets "A new device was paired".
-4. [ ] **Install the PWA** (optional but how it will really be used): Chrome on Android, menu, **Install app** / **Add to Home screen**; Safari on iOS, Share, **Add to Home Screen**. Open it from the home screen and go to `/phone`. The phone's data lives in the browser profile it was paired in, so pair from the same place you will use it (the installed app and the browser tab can have separate storage on iOS: pair in the one you will use).
-5. [ ] Enter the PIN. Note how long unlocking takes: the key derivation is scrypt N=2^16 (64 MiB, r=8, p=1) in a Web Worker. On a recent desktop it is about 0.75 s. If it feels slow on your phone, lowering `N` in `client/src/services/localCrypto.js` (`PIN_KDF`) only affects phones paired or re-PIN'd afterwards: every wrap stores its own parameters.
-6. [ ] Tap **Sync now**: progress shows "Downloading n of m". The files appear and open.
-7. [ ] **Offline test:** turn on airplane mode. The phone shows "You're offline"; files already synced still open. Add a file with **New, Upload file**. Turn the network back on, **Sync now**: the file is pushed (the Devices page shows a new "Last seen").
-8. [ ] Trash a file on the computer, sync the phone: it disappears. Restore it, sync: it comes back.
-9. [ ] On the computer, **Remove** the phone on Devices. Sync on the phone: it says it is no longer paired and offers to remove its local copy. (Files already on it stay readable with the PIN until you do; if the phone was lost, also change your password.)
-10. [ ] Wrong PIN 3 times: a wait appears and grows; after 10 the phone is locked and the only way back is "Remove this phone's copy", then pair again.
-
-Phone sync limits on Vercel Hobby: each request and response is under 4.5 MB (a file is at most 4 MiB, sent as raw bytes), so a sync of many files is many small requests; if a sync is interrupted, run it again and it continues where it stopped.
+1. [ ] Sign in, open **Devices & activity**. This browser is listed as "This device" with a label such as "Chrome on Windows" and your country (the city and country come from Vercel's own headers; no IP is shown or stored).
+2. [ ] Sign in from a second browser or a private window (the code email arrives; this is a new device, so a "New sign-in" email arrives too). Both devices are listed. Use **Sign out** on the second one and reload it: "Your session expired. Sign in again."
+3. [ ] Open and download a file, then check the timeline: "Opened" and "Downloaded" entries appear, with no file names stored (names are looked up when you read it).
+4. [ ] Press **Verify log**: it reports the chain intact.
+5. [ ] In the email's **This wasn't me** link: it opens a page that only explains and links to the password reset.
+6. [ ] Open **Overview**: most viewed, most downloaded, recently opened, files untouched for 180 days, share statistics. "My files" shows a "Frequently used" row after a few opens.
+7. [ ] Reload a page while signed in: you stay signed in (the token is in this tab's sessionStorage). Close the tab and reopen the site: you are signed out.
 
 ## 9c. Emails and share-link previews
 
@@ -137,9 +132,9 @@ Every email goes through `server/utils/emailTemplates.js` (HTML plus a plain-tex
 1. [ ] From `server/`, with the real SMTP settings in `.env`: `node scripts/send-test-emails.js you@gmail.com --force` (`--force` is needed on a production environment; the samples use a fixed example code, never a real one). 13 messages arrive, each subject prefixed `[test]`.
 2. [ ] Open them in Gmail on a computer and in the Gmail phone app, in light and in dark mode: the code sits alone in the highlighted box and a double-tap selects exactly the six digits; nothing runs off the screen at phone width; the inbox preview line reads well.
 3. [ ] They land in **Inbox**, not Spam. If they land in Spam, mark one "Not spam" and check the sender (SPF and DKIM are Gmail's own when you send through Gmail SMTP; a different `MAIL_FROM` address than the account you log in with is the usual cause).
-4. [ ] Trigger the real flows once (log in, "Forgot password", delete-account step 2, pair a device, a share restricted to an email) and check each uses the same layout.
+4. [ ] Trigger the real flows once (log in, "Forgot password", delete-account step 2, a share restricted to an email) and check each uses the same layout.
 
-What Warden sends: sign-in code, account-deletion code, password-reset code, pair-device code, share code (to the recipient), verify account, new verification link, "someone tried to sign up with your email", "your password was changed", "your account was deleted", "a new device was paired", "new trusted browser". Subjects are fixed text: never a code, a file name or an address. These are transactional messages, so there is no unsubscribe link.
+What Warden sends: sign-in code, account-deletion code, password-reset code, share code (to the recipient), verify account, new verification link, "someone tried to sign up with your email", "your password was changed", "your account was deleted", "a new device was paired", "new trusted browser". Subjects are fixed text: never a code, a file name or an address. These are transactional messages, so there is no unsubscribe link.
 
 **Share-link previews.** A chat app that fetches a share link to draw a preview card gets `shared-preview.html` (written by `npm run build`, served for `/shared/*` by the rewrite in `vercel.json`): a generic title and description, `noindex`, and only the fixed Warden icon. It never contains a file name, purpose or owner. The key after `#` is never sent to Warden: browsers do not transmit fragments.
 
@@ -160,3 +155,7 @@ Figures are from Vercel's documentation, read on 2026-10-07; limits change, so r
 Tested locally against a stand-in for Vercel (static files, headers and rewrites from `vercel.json`; `api/index.js` as the function; a 4.5 MB body limit; a proxy hop that sets `X-Forwarded-For`; a mail sink instead of Gmail) and a throwaway single-node MongoDB replica set: signup, email verification, code login, trusted browser, uploads under and over the limit, previews, a password-protected share in a private window, Trash and restore, account deletion, 20 parallel cold requests, rate-limit keying, service worker replacement, headers and CSP.
 
 **Not tested** (needs a real deployment): Vercel's actual routing and header application, real cold-start timing, Atlas M0 itself (connection counts and transactions on Atlas), real Gmail delivery, Vercel Cron, and the 4.5 MB limit as Vercel enforces it.
+
+## Where the sign-in token lives
+
+The session token is kept in the browser tab's sessionStorage so a reload keeps you signed in; closing the tab ends it, and it expires after 30 idle minutes on the server. The trade-off is that script running inside the page could read it, which is why there is no third-party script and why the Content-Security-Policy in `vercel.json` is strict (scripts only from this origin plus one hashed theme snippet, no frames, no plugins, `upgrade-insecure-requests`). `style-src 'unsafe-inline'` is still needed for React inline styles and was not removed.

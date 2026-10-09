@@ -11,7 +11,8 @@ import {
   ShareNetwork,
   Trash,
   UserCircle,
-  DeviceMobile,
+  ShieldCheck,
+  ChartBar,
 } from '@phosphor-icons/react';
 
 import FolderTree from './FolderTree.jsx';
@@ -138,14 +139,18 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           {label('Trash')}
         </NavLink>
 
+        <NavLink to="/overview" className={navClass} onClick={closeDrawer} {...tipFor('Overview')}>
+          <ChartBar size={ICON} weight="regular" aria-hidden="true" />
+          {label('Overview')}
+        </NavLink>
         <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export')}>
           <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
           {label('Export')}
         </NavLink>
 
-        <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices')}>
-          <DeviceMobile size={ICON} weight="regular" aria-hidden="true" />
-          {label('Devices')}
+        <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices & activity')}>
+          <ShieldCheck size={ICON} weight="regular" aria-hidden="true" />
+          {label('Devices & activity')}
         </NavLink>
 
         <div className={styles.spacer} />

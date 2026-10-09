@@ -1,10 +1,8 @@
+const User = require('../models/User');
 const Document = require('../models/Document');
 const Folder = require('../models/Folder');
 const TrashFolder = require('../models/TrashFolder');
 const BackupLog = require('../models/BackupLog');
-const PairedDevice = require('../models/PairedDevice');
-const PairingToken = require('../models/PairingToken');
-const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const OtpChallenge = require('../models/OtpChallenge');
 const ResetTicket = require('../models/ResetTicket');
 const {
@@ -20,6 +18,9 @@ const { destroyAllSessionsForUser } = require('./sessionStore');
 const { revokeAllTrustedDevices, clearTrustCookie, labelFromUserAgent } = require('./trustedDevice');
 const { sendEmail } = require('./email');
 const { templates } = require('./emailTemplates');
+const { recordEvent } = require('./audit');
+const Device = require('../models/Device');
+const AuditEvent = require('../models/AuditEvent');
 
 /**
  * What every password reset ends with, whichever way it started (recovery key
@@ -86,15 +87,16 @@ async function finalizeReset(user, dek, newPassword, { newRecoveryKey } = {}) {
 async function wipeVault(userId) {
   // Anything that grants access to the old vault first.
   await removeShares({ ownerUserId: userId });
-  await PairedDevice.deleteMany({ userId });
-  await PairingToken.deleteMany({ userId });
-  await RecoveryRequestToken.deleteMany({ userId });
   await revokeAllTrustedDevices(userId);
   // Then the data.
   await Document.deleteMany({ userId });
   await TrashFolder.deleteMany({ userId });
   await Folder.deleteMany({ userId });
   await BackupLog.deleteMany({ userId });
+  // The devices and the activity log belong to the old vault too, and the chain starts again.
+  await Device.deleteMany({ userId });
+  await AuditEvent.deleteMany({ userId });
+  await User.updateOne({ _id: userId }, { $set: { auditHead: { seq: 0, hash: '', at: null } } });
 }
 
 /**
@@ -111,11 +113,11 @@ async function finishReset(req, res, user, { method }) {
   await revokeAllTrustedDevices(user._id);
   await ResetTicket.deleteMany({ userId: user._id });
   await OtpChallenge.deleteMany({ userId: user._id });
-  await RecoveryRequestToken.deleteMany({ userId: user._id });
-  clearTrustCookie(req, res);
+  clearTrustCookie(req, res, user._id);
 
   const browser = labelFromUserAgent(req.headers?.['user-agent']);
   // Best effort: the reset has happened either way.
+  await recordEvent(req, 'password_changed', { userId: user._id, deviceId: null });
   await sendEmail({ to: user.email, ...templates.passwordChanged({ method, when: new Date(), browser }) }).catch(() => false);
 }
 

@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Session = require('../models/Session');
 const TrustedDevice = require('../models/TrustedDevice');
+const Device = require('../models/Device');
+const { recordEvent } = require('../utils/audit');
 const mongoose = require('mongoose');
 const { currentTokenHash, clearTrustCookie } = require('../utils/trustedDevice');
 const { sendEmail } = require('../utils/email');
@@ -89,7 +91,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
     // leftover: finish the cleanup. Nothing here can touch anyone else.
     await Session.deleteMany({ userId: req.userId });
     await deleteAccountData(req.userId);
-    clearTrustCookie(req, res);
+    clearTrustCookie(req, res, req.userId);
     res.status(200).json({ success: true });
     return;
   }
@@ -122,7 +124,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
   // what the server held; this message is not a copy of any of it.
   await sendEmail({ to: email, ...templates.accountDeleted({ when: new Date() }) }).catch(() => false);
 
-  clearTrustCookie(req, res);
+  clearTrustCookie(req, res, req.userId);
   res.status(200).json({ success: true });
 });
 
@@ -132,7 +134,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
  * created, last used, and which one is THIS browser. Hashes never leave the server.
  */
 const listTrustedDevices = asyncHandler(async (req, res) => {
-  const mine = currentTokenHash(req);
+  const mine = currentTokenHash(req, req.userId);
   const rows = await TrustedDevice.find({ userId: req.userId, expiresAt: { $gt: new Date() } });
   const devices = rows
     .map((row) => ({
@@ -153,14 +155,18 @@ const removeTrustedDevice = asyncHandler(async (req, res) => {
   const row = await TrustedDevice.findOne({ _id: req.params.id, userId: req.userId });
   if (!row) throw httpError(404, 'Not found.');
   await TrustedDevice.deleteOne({ _id: row._id, userId: req.userId });
-  if (row.tokenHash === currentTokenHash(req)) clearTrustCookie(req, res);
+  if (row.deviceId) await Device.updateOne({ _id: row.deviceId, userId: req.userId }, { $set: { trusted: false } });
+  if (row.tokenHash === currentTokenHash(req, req.userId)) clearTrustCookie(req, res, req.userId);
+  await recordEvent(req, 'trusted_removed', { targetId: row.deviceId || null });
   res.status(204).send();
 });
 
 /** DELETE /api/account/trusted-devices - every trusted browser. */
 const removeAllTrustedDevices = asyncHandler(async (req, res) => {
   const result = await TrustedDevice.deleteMany({ userId: req.userId });
-  clearTrustCookie(req, res);
+  await Device.updateMany({ userId: req.userId }, { $set: { trusted: false } });
+  clearTrustCookie(req, res, req.userId);
+  await recordEvent(req, 'trusted_removed');
   res.status(200).json({ removed: result?.deletedCount ?? 0 });
 });
 

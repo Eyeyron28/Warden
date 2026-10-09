@@ -23,4 +23,16 @@ router.all(
   gone('USB recovery has been removed. Use "Forgot password" with an emailed code and your recovery key instead.')
 );
 
+// The phone vault: Warden is a website, so there is no paired phone, no phone sync and no offline
+// copy. Everything under these prefixes answers 410. (The new "Devices & activity" API lives under
+// /api/security, so /api/devices stays gone.)
+const PHONE_GONE =
+  'Warden is a website now: pairing a phone, phone sync and the offline phone vault have been removed. Sign in on the website instead.';
+for (const prefix of ['/pair', '/pairing', '/sync', '/devices']) {
+  router.all(prefix, gone(PHONE_GONE));
+  router.all(`${prefix}/*`, gone(PHONE_GONE));
+}
+router.all('/auth/recover-via-phone', gone('Recovery through a paired phone has been removed. Use "Forgot password" with an emailed code and your recovery key.'));
+router.all('/auth/recover-via-phone/*', gone('Recovery through a paired phone has been removed. Use "Forgot password" with an emailed code and your recovery key.'));
+
 module.exports = router;

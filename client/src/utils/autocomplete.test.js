@@ -40,10 +40,6 @@ test('login and re-authentication fields are "off", so no generated-password pro
   const field = read('components/PasswordField.jsx');
   assert.match(field, /autoComplete = 'off'/);
   assert.match(field, /name=\{autoComplete === 'new-password' \? undefined : `wd-/);
-  // Phone pairing: the existing master password is off; the phone-recovery form chooses a new one.
-  assert.doesNotMatch(read('pages/PairPage.jsx'), /autoComplete="new-password"/);
-  const recovery = read('components/PhoneRecoveryModal.jsx');
-  assert.equal((recovery.match(/autoComplete="new-password"/g) || []).length, 2);
 });
 
 test('the email fields keep the no-autofill rules and the code boxes stay one-time-code', () => {

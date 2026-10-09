@@ -20,14 +20,9 @@ const {
   verifyOtp,
   resendOtp,
   getMe,
-  recoverViaPhoneInit,
-  recoverViaPhoneStatus,
-  recoverViaPhoneSubmit,
-  recoverViaPhoneComplete,
   logout,
 } = require('../controllers/auth.controller');
 const requireSession = require('../middleware/requireSession');
-const requireDeviceAuth = require('../middleware/requireDeviceAuth');
 const createRateLimiter = require('../middleware/rateLimit');
 
 // Per-email key for the two limiters that also count by email (signup,
@@ -116,15 +111,6 @@ router.post('/password-reset/recovery-key-only', resetWithRecoveryKeyOnly);
 // The old emailed-link flow is gone; anything still calling it gets a plain 410.
 router.post('/forgot-password', goneResetLink);
 router.post('/reset-password', goneResetLink);
-
-// None of these take requireSession - recovering access is exactly what
-// happens when there's no session to have. /recover-via-phone/submit is
-// the one exception, since that request comes from the ALREADY-paired
-// phone (authenticated with its own deviceToken), not the locked-out PC.
-router.post('/recover-via-phone/init', recoverViaPhoneInit);
-router.get('/recover-via-phone/status/:token', recoverViaPhoneStatus);
-router.post('/recover-via-phone/submit', requireDeviceAuth, recoverViaPhoneSubmit);
-router.post('/recover-via-phone/complete', recoverViaPhoneComplete);
 
 router.post('/logout', requireSession, logout);
 

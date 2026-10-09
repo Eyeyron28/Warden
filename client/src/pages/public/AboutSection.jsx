@@ -43,7 +43,7 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Sessions hold the key only while you use it',
-    body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in browser memory, so reloading the page signs you out. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity.',
+    body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in the tab’s sessionStorage, so reloading the page keeps you signed in, and closing the tab ends it. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity. Your password and the unlocked key are never stored in the browser.',
   },
   {
     title: 'Recovery is checked before anything changes',

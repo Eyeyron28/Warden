@@ -1,7 +1,7 @@
 {
   "name": "Warden",
   "short_name": "Warden",
-  "description": "Encrypted, locally-hosted personal document vault.",
+  "description": "An encrypted document vault on the web.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

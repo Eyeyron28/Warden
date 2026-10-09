@@ -72,6 +72,20 @@ function formatManilaTime(date = new Date()) {
   return `${when} Philippine Time (UTC+8)`;
 }
 
+/** "Manila, Philippines" from a two-letter country code and an optional city; "Unknown" when there is neither. */
+function placeLabel(country, city) {
+  let name = null;
+  if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
+    try {
+      name = new Intl.DisplayNames(['en'], { type: 'region' }).of(country.toUpperCase());
+    } catch {
+      name = country.toUpperCase();
+    }
+  }
+  const parts = [typeof city === 'string' && city.trim() ? city.trim() : null, name].filter(Boolean);
+  return parts.length ? parts.join(', ') : 'Unknown';
+}
+
 /** The app's public origin for links, or null when none is configured (development). */
 function appOrigin() {
   const raw = (process.env.PUBLIC_APP_URL || '').trim();
@@ -246,17 +260,6 @@ const templates = {
       warning: `${NEVER_SHARE} ${IGNORE_IF_NOT_YOU} Your password has not changed and will not unless this code is entered; if you did not ask for this, someone may know your email address.`,
     }),
 
-  pairDeviceCode: ({ code, ttlMinutes }) =>
-    codeEmail({
-      subject: 'Your Warden code for pairing a device',
-      preheader: 'A code to pair a new device with your Warden account.',
-      title: 'Pair a new device',
-      purposeLine: 'A request was made to pair a new phone with your Warden account.',
-      code,
-      ttlMinutes,
-      warning: `${NEVER_SHARE} ${IGNORE_IF_NOT_YOU} If you did not ask to pair a device, someone may be signed in to your account: change your password now.`,
-    }),
-
   shareCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your code to open a shared document',
@@ -334,15 +337,19 @@ const templates = {
       warning: "If you didn't do this, someone had access to your account. Contact whoever runs this Warden right away.",
     }),
 
-  devicePaired: ({ name, browser, when }) =>
+  newDevice: ({ browser, os, country, city, when }) =>
     renderEmail({
-      subject: 'A new device was paired with your Warden account',
-      preheader: 'A new phone can now sync your files.',
-      title: 'A new device was paired',
-      intro: 'A new device was paired with your Warden account. It can now sync your files and open them with its own PIN.',
-      details: [['Device name', name || 'Unnamed device'], ['Browser', browser || 'Unknown'], ['When', formatManilaTime(when)]],
-      warning: "If this wasn't you, remove the device on the Devices page and reset your password now.",
-      cta: appLink('/devices') ? { label: 'Review your devices', href: appLink('/devices') } : null,
+      subject: 'New device signed in to your Warden account',
+      preheader: 'A browser we have not seen before signed in to your account.',
+      title: 'A new device signed in',
+      intro: 'Your Warden account was just signed in from a browser it has not been used from before.',
+      details: [
+        ['Device', `${browser || 'Browser'} on ${os || 'unknown system'}`],
+        ['Place', placeLabel(country, city)],
+        ['When', formatManilaTime(when)],
+      ],
+      warning: "If this was you, there is nothing more to do. If this was not you, sign out all devices and reset your password now.",
+      cta: appLink('/wasnt-me') ? { label: "This wasn't me", href: appLink('/wasnt-me') } : null,
     }),
 
   trustedBrowser: ({ browser, when }) =>
@@ -357,4 +364,4 @@ const templates = {
     }),
 };
 
-module.exports = { renderEmail, templates, esc, formatManilaTime, appLink, BRAND, FOOTER_AUTOMATED, FOOTER_PROJECT, NEVER_SHARE, IGNORE_IF_NOT_YOU };
+module.exports = { renderEmail, templates, esc, formatManilaTime, placeLabel, appLink, BRAND, FOOTER_AUTOMATED, FOOTER_PROJECT, NEVER_SHARE, IGNORE_IF_NOT_YOU };

@@ -64,7 +64,8 @@ function OtpChallengePanel({
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [trust, setTrust] = useState(false); // always starts unticked
+  // Ticked by default (so a returning person is not asked for a code every time); the note under it is the warning.
+  const [trust, setTrust] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -194,7 +195,8 @@ function OtpChallengePanel({
         <label className={forms.checkboxRow}>
           <input type="checkbox" checked={trust} onChange={(event) => setTrust(event.target.checked)} disabled={submitting} />
           <span>
-            Trust this browser for 30 days. <span className={forms.hint}>Only on your own device.</span>
+            Trust this browser for 30 days.{" "}
+            <span className={forms.hint}>Don&apos;t tick this on a shared computer.</span>
           </span>
         </label>
       )}

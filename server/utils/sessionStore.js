@@ -38,9 +38,10 @@ function hashSessionId(sessionId) {
  *
  * @param {import('mongoose').Types.ObjectId | string} userId
  * @param {Buffer} dek
+ * @param {{ deviceId?: any }} [options] the browser (models/Device.js) this session belongs to
  * @returns {Promise<string>} bearer token, `sessionId.sessionKey`
  */
-async function createSession(userId, dek) {
+async function createSession(userId, dek, { deviceId = null } = {}) {
   const sessionId = crypto.randomBytes(SESSION_ID_BYTES).toString('hex');
   const sessionKey = crypto.randomBytes(SESSION_KEY_BYTES);
   const wrapped = wrapKey(dek, sessionKey);
@@ -48,6 +49,8 @@ async function createSession(userId, dek) {
   await Session.create({
     sessionIdHash: hashSessionId(sessionId),
     userId,
+    deviceId,
+    createdAt: new Date(),
     wrappedDEK: wrapped.wrappedKey,
     wrappedDEKIv: wrapped.iv,
     wrappedDEKAuthTag: wrapped.authTag,
@@ -80,7 +83,7 @@ function parseToken(token) {
  * since a real one always carries its own matching key).
  *
  * @param {string} token
- * @returns {Promise<{ userId: import('mongoose').Types.ObjectId, dek: Buffer } | null>}
+ * @returns {Promise<{ userId: import('mongoose').Types.ObjectId, dek: Buffer, deviceId: any, sessionIdHash: string } | null>}
  */
 async function getSession(token) {
   const parsed = parseToken(token);
@@ -101,7 +104,7 @@ async function getSession(token) {
     return null;
   }
 
-  return { userId: session.userId, dek };
+  return { userId: session.userId, dek, deviceId: session.deviceId || null, sessionIdHash: session.sessionIdHash };
 }
 
 /**
@@ -134,6 +137,24 @@ async function destroySession(token) {
 }
 
 /**
+ * Signs one browser out: every session that belongs to this device.
+ * @returns {Promise<number>} how many sessions were removed
+ */
+async function destroySessionsForDevice(userId, deviceId) {
+  const result = await Session.deleteMany({ userId, deviceId });
+  return result?.deletedCount ?? 0;
+}
+
+/**
+ * Signs out every session of the account EXCEPT the one with this id hash (the caller's own).
+ * @returns {Promise<number>} how many sessions were removed
+ */
+async function destroyOtherSessions(userId, keepSessionIdHash) {
+  const result = await Session.deleteMany({ userId, sessionIdHash: { $ne: keepSessionIdHash } });
+  return result?.deletedCount ?? 0;
+}
+
+/**
  * Deletes every session belonging to one account - called after a
  * password reset (utils/accountReset.js finishReset) so a stolen session
  * token from before the reset stops working immediately, same spirit as
@@ -154,5 +175,7 @@ module.exports = {
   getSession,
   refreshSession,
   destroySession,
+  destroySessionsForDevice,
+  destroyOtherSessions,
   destroyAllSessionsForUser,
 };

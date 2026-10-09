@@ -114,6 +114,15 @@ const userSchema = new mongoose.Schema(
       type: Date,
       required: false,
     },
+
+    // The newest link of this account's audit chain (utils/audit.js): the number and hash of the
+    // last event, and when it happened. Advanced with a compare-and-swap so concurrent events
+    // cannot fork the chain. Reset when the vault is wiped.
+    auditHead: {
+      seq: { type: Number, default: 0 },
+      hash: { type: String, default: '' },
+      at: { type: Date, default: null },
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

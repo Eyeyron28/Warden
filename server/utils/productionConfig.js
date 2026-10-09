@@ -1,6 +1,7 @@
 const { isProduction } = require('./runtimeEnv');
 const { otpEnabled } = require('./otpConfig');
 const { parsePublicAppUrl } = require('./publicAppUrl');
+const { auditConfigProblems } = require('./auditConfig');
 
 const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM'];
 const MIN_INVITE_CODE_LENGTH = 16;
@@ -50,6 +51,9 @@ function productionConfigProblems() {
     const quota = Number(read('STORAGE_QUOTA_MB'));
     if (!Number.isFinite(quota) || quota <= 0) add('STORAGE_QUOTA_MB', 'must be a positive number');
   }
+
+  // The key that signs the activity log (a missing or short key must stop the server, not weaken the log).
+  for (const { name, problem } of auditConfigProblems()) add(name, problem);
 
   return problems;
 }

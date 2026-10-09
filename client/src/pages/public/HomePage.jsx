@@ -47,7 +47,7 @@ const COMPARISON = [
   {
     question: 'If you forget your password',
     drive: 'Reset by email; your files are untouched.',
-    warden: 'An emailed code starts the reset; your recovery key (or paired phone) keeps everything. Without the key, the reset erases the vault and starts a new, empty one.',
+    warden: 'An emailed code starts the reset; your recovery key keeps everything. Without the key, the reset erases the vault and starts a new, empty one.',
   },
 ];
 
@@ -58,11 +58,6 @@ const RECOVERY = [
     body: 'Sixteen characters shown once, when you sign up. After an emailed code, it unlocks your vault so you can set a new password and keep everything. It can also reset the password on its own, with no email.',
   },
   {
-    icon: 'phone',
-    title: 'Paired phone',
-    body: 'A phone you paired keeps its own locked copy of the vault key. Approve the reset from it with its PIN.',
-  },
-  {
     icon: 'mail',
     title: 'Emailed code, no recovery key',
     body: 'The code proves the inbox is yours, not the vault. Without the recovery key the reset erases the vault and you start a new, empty one; the old files stay unreadable.',
@@ -71,18 +66,44 @@ const RECOVERY = [
 
 const FAQ_ITEMS = [
   {
+    question: 'Will reloading the page sign me out?',
+    answer: (
+      <>
+        <p>
+          No. Your sign-in token is kept in that tab&apos;s sessionStorage, so a reload keeps you signed in; closing the tab (or the browser) ends
+          it, and a session also ends after 30 minutes without activity. A second tab you open picks the session up from the first. Your
+          password and your unlocked vault key are never stored in the browser.
+        </p>
+        <p>
+          The trade-off: script that ran inside the page could read the token. That is why Warden loads no third-party script, ships a strict
+          Content-Security-Policy, and why a token alone cannot do anything the signed-in person could not (sensitive actions still ask for an
+          emailed code).
+        </p>
+      </>
+    ),
+  },
+  {
+    question: 'What does Warden record about my activity?',
+    answer: (
+      <p>
+        For 30 days, a log of what happened on your account: sign-ins, which files were opened, downloaded or shared, and when, from which of your
+        browsers and which country. It never holds file names, the contents, other people&apos;s emails, or IP addresses. You can read it on
+        Devices &amp; activity, sign any browser out from there, and check that the log has not been altered.
+      </p>
+    ),
+  },
+  {
     question: 'What if I forget my password?',
     answer: (
       <>
         <p>
           Choose &quot;Forgot password&quot; and we email a 6-digit code. After you enter it, give your recovery
-          key and a new password: your documents stay exactly as they were. You can also approve the reset from
-          a paired phone.
+          key and a new password: your documents stay exactly as they were.
         </p>
         <p>
           If you can&apos;t get the email, &quot;Try another way&quot; resets with the recovery key alone.
           Without the recovery key, you can still get back into your account, but the reset erases your vault
-          (files, folders, Trash, shares and paired phones) and starts a new, empty one with a new recovery key.
+          (files, folders, Trash, shares, devices and activity) and starts a new, empty one with a new recovery key.
           Nobody, including us, can decrypt the old one.
         </p>
       </>
@@ -185,9 +206,9 @@ const FAQ_ITEMS = [
     answer: (
       <p>
         Yes, yourself. Open Account in the vault, choose Delete account, then enter your password, a code we email you,
-        and your email address. Your documents, folders, share links, paired devices and the account are permanently
+        and your email address. Your documents, folders, share links, devices, the activity log and the account are permanently
         deleted and can&apos;t be recovered. It can&apos;t reach files you downloaded or exported yourself,
-        emails already sent, or a phone&apos;s offline copy.
+        or emails already sent.
       </p>
     ),
   },

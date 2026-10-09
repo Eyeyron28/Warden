@@ -12,6 +12,8 @@ const trustedDeviceSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   tokenHash: { type: String, required: true, unique: true },
   label: { type: String, required: true, maxlength: 80 },
+  // The Device (models/Device.js) this trust belongs to, so "Forget trusted browser" can find it.
+  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
   createdAt: { type: Date, required: true, default: Date.now },
   lastUsedAt: { type: Date, required: true, default: Date.now },
   // Fixed 30 days from creation (not extended by use). Mongo's TTL monitor

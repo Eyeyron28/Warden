@@ -24,6 +24,7 @@ import UploadForm from '../components/UploadForm.jsx';
 import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import PreviewsNotice from '../components/PreviewsNotice.jsx';
+import FrequentFiles from '../components/FrequentFiles.jsx';
 import Modal from '../components/Modal.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import EditDocumentModal from '../components/EditDocumentModal.jsx';
@@ -355,6 +356,18 @@ function FilesPage() {
     if (index !== -1) setPreviewIndex(index);
   };
 
+  // "Open" links from the Overview and the Frequently used row: show that file's preview once the list is in.
+  const openId = params.get('open');
+  useEffect(() => {
+    if (!openId || loading) return;
+    const index = previewFiles.findIndex((doc) => String(doc.id) === openId);
+    if (index !== -1) setPreviewIndex(index);
+    const next = new URLSearchParams(params);
+    next.delete('open');
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, loading, previewFiles]);
+
   const closePreview = useCallback((doc) => {
     setPreviewIndex(null);
     if (doc) setTimeout(() => focusBrowserItem(`file:${doc.id}`), 0);
@@ -401,7 +414,7 @@ function FilesPage() {
       for (const doc of docs) {
         // eslint-disable-next-line no-await-in-loop
         // The server names the download (extension recovered from the bytes when the name has none).
-        const { bytes, filename } = await fetchDocumentBytes(doc.id);
+        const { bytes, filename } = await fetchDocumentBytes(doc.id, { purpose: 'download' });
         downloadBytes(bytes, filename);
         // eslint-disable-next-line no-await-in-loop
         if (docs.length > 1) await new Promise((resolve) => setTimeout(resolve, 250));
@@ -704,6 +717,7 @@ function FilesPage() {
       )}
 
       {selection.count === 0 && <PreviewsNotice generator={previews} documents={documents} onRetried={refresh} />}
+      {selection.count === 0 && !currentPath && !searchTerm && <FrequentFiles />}
       {actionError && <p className={styles.banner} role="alert">{actionError}</p>}
       {listError && <p className={styles.banner} role="alert">{listError}</p>}
 

@@ -18,13 +18,11 @@ const { assertOtpConfig, otpEnabled, otpTtlMinutes } = require('./utils/otpConfi
 
 const authRoutes = require('./routes/auth.routes');
 const documentsRoutes = require('./routes/documents.routes');
-const syncRoutes = require('./routes/sync.routes');
 const removedRoutes = require('./routes/removed.routes');
+const securityRoutes = require('./routes/security.routes');
+const insightsRoutes = require('./routes/insights.routes');
 const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.routes');
 const sharedViewRoutes = require('./routes/sharedView.routes');
-const pairingRoutes = require('./routes/pairing.routes');
-const pairCompleteRoutes = require('./routes/pairComplete.routes');
-const devicesRoutes = require('./routes/devices.routes');
 const accountRoutes = require('./routes/account.routes');
 const trashRoutes = require('./routes/trash.routes');
 const cronRoutes = require('./routes/cron.routes');
@@ -139,13 +137,9 @@ app.use('/api/shares', shareTokenRoutes);
 // Deliberately mounted with no requireSession anywhere in its chain -
 // see routes/sharedView.routes.js.
 app.use('/api/shared', sharedViewRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/pair', pairingRoutes);
-// Deliberately mounted with no requireSession anywhere in its chain -
-// see routes/pairComplete.routes.js.
-app.use('/api/pair', pairCompleteRoutes);
-app.use('/api/devices', devicesRoutes);
 app.use('/api/account', accountRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/insights', insightsRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/cron', cronRoutes);
 

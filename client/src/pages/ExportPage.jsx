@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useShell } from '../components/ShellContext.js';
 import { createFolder, fetchDocumentBytes, listDocuments, listFolders, uploadDocument } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { reportClientEvent } from '../services/securityService.js';
 import { buildExportZip, exportFileName } from '../utils/zipExport.js';
 import { IMPORT_LIMITS, inspectZip, runImport } from '../utils/zipImport.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
@@ -75,7 +76,8 @@ function ExportPage() {
       const result = await buildExportZip({
         documents,
         folderPaths,
-        fetchBytes: fetchDocumentBytes,
+        // An export is one event (below), not one download per file.
+        fetchBytes: (id) => fetchDocumentBytes(id, { purpose: 'silent' }),
         JSZip,
         signal: controller.signal,
         // (the builder's own "phase" must not replace the page's: that hid the progress and Cancel)
@@ -87,6 +89,7 @@ function ExportPage() {
       }
       const name = exportFileName();
       saveBlob(result.blob, name);
+      reportClientEvent('export');
       setExportState({ phase: 'done', name, added: result.added, bytes: result.bytes, failures: result.failures, zipBytes: result.blob.size });
     } catch (err) {
       if (!isSessionExpired(err)) setExportState({ phase: 'error', message: extractErrorMessage(err, 'The export could not be built.') });
@@ -136,6 +139,7 @@ function ExportPage() {
       });
       zipBytes.current = null;
       refreshSidebar();
+      if (result.uploaded > 0) reportClientEvent('import');
       setImportState({ phase: 'done', name: importState.name, plan, ...result });
       if (result.uploaded > 0) showToast?.(`Imported ${plural(result.uploaded, 'file')}.`);
     } catch (err) {

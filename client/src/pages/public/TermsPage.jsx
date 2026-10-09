@@ -42,8 +42,7 @@ export const SECTIONS = [
       <>
         <p>
           You are responsible for your password and your recovery key. Because of how Warden is built, we cannot
-          recover your documents for you: if you lose both your password and your recovery key, and have no paired
-          phone, the only way back into your account is an emailed-code reset that erases the vault and starts a new, empty one. Your old documents
+          recover your documents for you: if you lose both your password and your recovery key, the only way back into your account is an emailed-code reset that erases the vault and starts a new, empty one. Your old documents
           cannot be decrypted by anyone.
         </p>
         <p>

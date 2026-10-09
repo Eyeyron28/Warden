@@ -30,7 +30,7 @@ const {
  * challenge never involves the vault key at all).
  */
 
-const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', pairDevice: 'pair-device' };
+const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset' };
 
 const MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
 const MAX_RESENDS = 3; // per challenge
@@ -57,7 +57,6 @@ function emailFor(purpose, code, ttlMinutes) {
   const input = { code, ttlMinutes };
   if (purpose === PURPOSES.passwordReset) return templates.passwordResetCode(input);
   if (purpose === PURPOSES.deleteAccount) return templates.deleteAccountCode(input);
-  if (purpose === PURPOSES.pairDevice) return templates.pairDeviceCode(input);
   return templates.signInCode(input);
 }
 

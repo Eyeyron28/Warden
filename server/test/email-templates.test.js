@@ -22,7 +22,6 @@ const CODE_EMAILS = {
   signInCode: templates.signInCode({ code: CODE, ttlMinutes: 5 }),
   deleteAccountCode: templates.deleteAccountCode({ code: CODE, ttlMinutes: 5 }),
   passwordResetCode: templates.passwordResetCode({ code: CODE, ttlMinutes: 5 }),
-  pairDeviceCode: templates.pairDeviceCode({ code: CODE, ttlMinutes: 5 }),
   shareCode: templates.shareCode({ code: CODE, ttlMinutes: 5 }),
 };
 const OTHER_EMAILS = {
@@ -32,7 +31,7 @@ const OTHER_EMAILS = {
   passwordChangedKey: templates.passwordChanged({ method: 'recovery-key', when: WHEN, browser: 'Chrome on Windows' }),
   passwordChangedWipe: templates.passwordChanged({ method: 'wipe', when: WHEN, browser: 'Chrome on Android' }),
   accountDeleted: templates.accountDeleted({ when: WHEN }),
-  devicePaired: templates.devicePaired({ name: "Josh's Phone", browser: 'Chrome on Android', when: WHEN }),
+  newDevice: templates.newDevice({ browser: 'Chrome', os: 'Android', country: 'PH', city: 'Manila', when: WHEN }),
   trustedBrowser: templates.trustedBrowser({ browser: 'Chrome on Windows', when: WHEN }),
 };
 const ALL = { ...CODE_EMAILS, ...OTHER_EMAILS };
@@ -102,7 +101,6 @@ test('every code email says what the code is for, never to share it, and what to
     signInCode: /Sign in to Warden/,
     deleteAccountCode: /Confirm deleting your account/,
     passwordResetCode: /Reset your password/,
-    pairDeviceCode: /Pair a new device/,
     shareCode: /Open a shared document/,
   };
   for (const [name, mail] of Object.entries(CODE_EMAILS)) {
@@ -110,7 +108,7 @@ test('every code email says what the code is for, never to share it, and what to
     assert.match(mail.text, /Never share this code with anyone — Warden will never ask for it by phone, chat or email/, name);
     assert.match(mail.text, /If you didn't request this, ignore this email/, name);
   }
-  for (const name of ['signInCode', 'deleteAccountCode', 'passwordResetCode', 'pairDeviceCode']) {
+  for (const name of ['signInCode', 'deleteAccountCode', 'passwordResetCode']) {
     assert.match(CODE_EMAILS[name].text, /your account is safe\. Consider changing your password if you keep receiving these/, name);
   }
   // delete-account and password-reset carry a stronger line on top
@@ -143,14 +141,14 @@ test('every subject is clear, unique per purpose, and carries no code, file name
 
 test('hostile input cannot inject markup: every interpolated value is HTML-escaped', () => {
   const evil = '<script>alert(1)</script><img src=x onerror=alert(1)>"\'&';
-  const mail = templates.devicePaired({ name: evil, browser: evil, when: WHEN });
+  const mail = templates.newDevice({ browser: evil, os: evil, country: 'PH', city: evil, when: WHEN });
   assert.ok(!mail.html.includes('<script>'), 'no script tag');
   assert.ok(!/<img\b/.test(mail.html), 'no image tag');
   assert.ok(!/onerror=alert\(1\)>/.test(mail.html.replace(/&lt;img src=x onerror=alert\(1\)&gt;/g, '')), 'the handler text is only ever escaped');
   assert.ok(mail.html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   assert.equal(esc(`<a href="x">'&</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&lt;/a&gt;');
   // the plain-text part cannot be given extra lines (a CRLF in a value)
-  const lines = templates.devicePaired({ name: 'Eve\r\nBcc: attacker@example.com', browser: 'x', when: WHEN }).text;
+  const lines = templates.newDevice({ browser: 'Eve\r\nBcc: attacker@example.com', os: 'x', city: 'y\r\nz', when: WHEN }).text;
   assert.ok(!/\r/.test(lines));
   assert.ok(!/^Bcc:/m.test(lines));
   // a code must be 6 plain digits, a subject one line without the code, a link https
@@ -174,7 +172,7 @@ test('nothing loads from another site: no images, scripts, links to stylesheets,
 
 test('notification emails give the time in Manila with its label and a clear next step', () => {
   assert.equal(formatManilaTime(WHEN), 'Oct 9, 2026, 5:14 PM Philippine Time (UTC+8)');
-  for (const name of ['signupAttempt', 'passwordChangedKey', 'passwordChangedWipe', 'accountDeleted', 'devicePaired', 'trustedBrowser']) {
+  for (const name of ['signupAttempt', 'passwordChangedKey', 'passwordChangedWipe', 'accountDeleted', 'newDevice', 'trustedBrowser']) {
     assert.match(ALL[name].text, /When: Oct 9, 2026, 5:14 PM Philippine Time \(UTC\+8\)/, name);
     assert.match(ALL[name].html, /Philippine Time \(UTC\+8\)/, name);
     assert.match(ALL[name].text, /If (this|it) wa?s? ?n[o']t you|If it was not you|If this was not you|If you didn't do this|If it was you/i, `${name}: next step`);
@@ -182,7 +180,9 @@ test('notification emails give the time in Manila with its label and a clear nex
   }
   assert.match(ALL.passwordChangedKey.text, /Browser: Chrome on Windows/);
   assert.match(ALL.passwordChangedWipe.text, /vault erased and replaced/i);
-  assert.match(ALL.devicePaired.text, /Device name: Josh's Phone/);
+  assert.match(ALL.newDevice.text, /Device: Chrome on Android/);
+  assert.match(ALL.newDevice.text, /Place: Manila, Philippines/);
+  assert.match(templates.newDevice({ browser: 'Chrome', os: 'Windows', when: WHEN }).text, /Place: Unknown/);
 });
 
 test('links: only to the app\'s public address, with no token or key; none at all when no address is configured', () => {
@@ -194,7 +194,7 @@ test('links: only to the app\'s public address, with no token or key; none at al
   try {
     const notices = [
       templates.passwordChanged({ method: 'wipe', when: WHEN, browser: 'x' }),
-      templates.devicePaired({ name: 'a', browser: 'b', when: WHEN }),
+      templates.newDevice({ browser: 'b', os: 'c', country: 'PH', when: WHEN }),
       templates.trustedBrowser({ browser: 'b', when: WHEN }),
       templates.signupAttempt({ when: WHEN }),
     ];

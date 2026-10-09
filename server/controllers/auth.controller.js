@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 
 const User = require('../models/User');
-const RecoveryRequestToken = require('../models/RecoveryRequestToken');
 const {
   generateSalt,
   hashPassword,
@@ -16,7 +15,9 @@ const {
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
 const { assertInviteCode, signupMode, requestAccessText } = require('../utils/inviteGate');
-const { trustThisBrowser, isTrustedFor, labelFromUserAgent } = require('../utils/trustedDevice');
+const { trustThisBrowser, isTrustedFor, labelFromUserAgent, parseUserAgent } = require('../utils/trustedDevice');
+const { resolveDevice, deviceFromCookie } = require('../utils/deviceIdentity');
+const { recordEvent, countryFrom, cityFrom } = require('../utils/audit');
 const { templates } = require('../utils/emailTemplates');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
@@ -30,8 +31,6 @@ const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const RECOVERY_REQUEST_TOKEN_BYTES = 32;
-const RECOVERY_REQUEST_TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes, same as PairingToken
 
 // Same text for every outcome of these two endpoints - an unknown email, an
 // already-verified one, a malformed one and a real send all look identical.
@@ -108,30 +107,12 @@ function unverifiedAccountError() {
 }
 
 // Deliberately generic, same reasoning as every other short-lived-token
-// rejection in this app (invalidPairingToken, invalidRecoveryRequestToken):
+// rejection in this app:
 // a token that never existed, already expired, or was already used all
 // produce this exact same response.
 function invalidVerificationTokenError() {
   const error = new Error('This verification link is invalid or has expired.');
   error.status = 404;
-  return error;
-}
-
-// Deliberately generic and identical whether the token never existed,
-// already expired, or was already used/not-yet-fulfilled - same
-// reasoning as pairing's invalidPairingToken().
-function invalidRecoveryRequestToken() {
-  const error = new Error('This recovery request is invalid or has expired.');
-  error.status = 404;
-  return error;
-}
-
-// Thrown by the phone-recovery fingerprint check (see fingerprintDEK in
-// utils/crypto.js) - deliberately worded around "this account" rather
-// than exposing that a fingerprint mismatch specifically occurred.
-function dekMismatchError() {
-  const error = new Error('This device does not belong to this account.');
-  error.status = 401;
   return error;
 }
 
@@ -352,19 +333,51 @@ async function checkPasswordWithLockout(user, password) {
 }
 
 /**
- * The ONE place a login ends: it either answers with a code challenge (the
- * default, always in production) or, only on a development server with
- * OTP_ENABLED=false, a session. The password route and phone recovery both
- * finish here, so no route can hand out a session without the emailed code.
- * (The only other createSession call is in verifyOtp, after the code.)
+ * Ends a successful login: finds (or creates) this browser's Device, creates the session linked to it,
+ * remembers the browser when the owner ticked "Trust this browser", writes the `login` event, and - the
+ * first time an account is signed in from a browser it has not seen before (and it has seen others) - emails
+ * the owner. Every place that hands out a session goes through here.
  */
-async function respondWithLoginChallenge(res, user, dek) {
+async function issueLoginSession(req, res, user, dek, { trust = false } = {}) {
+  const { device, isNew, hadOtherDevices } = await resolveDevice(req, res, user._id);
+  const sessionToken = await createSession(user._id, dek, { deviceId: device._id });
+
+  if (trust) {
+    await trustThisBrowser(req, res, user._id, { deviceId: device._id });
+    await recordEvent(req, 'trusted_added', { userId: user._id, deviceId: device._id });
+    // Best effort: a heads-up that a browser now skips the emailed code.
+    sendEmail({
+      to: user.email,
+      ...templates.trustedBrowser({ browser: labelFromUserAgent(req.headers['user-agent']), when: new Date() }),
+    }).catch(() => false);
+  }
+
+  await recordEvent(req, 'login', { userId: user._id, deviceId: device._id });
+
+  if (isNew && hadOtherDevices) {
+    const { browser, os } = parseUserAgent(req.headers['user-agent']);
+    sendEmail({
+      to: user.email,
+      ...templates.newDevice({ browser, os, country: countryFrom(req), city: cityFrom(req), when: new Date() }),
+    }).catch(() => false);
+  }
+  return sessionToken;
+}
+
+/**
+ * The ONE place a password login goes on: it either answers with a code challenge (the default, always in
+ * production) or, only on a development server with OTP_ENABLED=false, a session. No route can hand out a
+ * session without the emailed code. (The other places that create a session are the trusted-browser skip in
+ * unlock, after the password, and verifyOtp, after the code - both through issueLoginSession.)
+ */
+async function respondWithLoginChallenge(req, res, user, dek) {
   if (otpEnabled()) {
-    res.status(200).json(await startChallenge({ user, secret: dek, purpose: PURPOSES.login }));
+    const challenge = await startChallenge({ user, secret: dek, purpose: PURPOSES.login });
+    await recordEvent(req, 'otp_sent', { userId: user._id, deviceId: (await deviceFromCookie(req, user._id))?._id || null });
+    res.status(200).json(challenge);
     return;
   }
-  const sessionToken = await createSession(user._id, dek);
-  res.status(200).json({ sessionToken });
+  res.status(200).json({ sessionToken: await issueLoginSession(req, res, user, dek) });
 }
 
 /**
@@ -404,7 +417,13 @@ const unlock = asyncHandler(async (req, res) => {
     throw genericLoginError();
   }
 
-  await checkPasswordWithLockout(user, password);
+  try {
+    await checkPasswordWithLockout(user, password);
+  } catch (failure) {
+    // A wrong password (or a locked account): one `login_failed` event, then the same error as before.
+    await recordEvent(req, 'login_failed', { userId: user._id, deviceId: (await deviceFromCookie(req, user._id))?._id || null });
+    throw failure;
+  }
 
   if (!user.emailVerified) {
     throw unverifiedAccountError();
@@ -426,16 +445,15 @@ const unlock = asyncHandler(async (req, res) => {
   // only here, AFTER the password has been proven. Phone recovery, deletion
   // and share-email codes never consult it. Anything wrong with the cookie
   // just means the normal flow below, indistinguishably.
-  if (otpEnabled() && (await isTrustedFor(req, user._id))) {
-    const sessionToken = await createSession(user._id, dek);
-    res.status(200).json({ sessionToken });
+  if (otpEnabled() && (await isTrustedFor(req, user._id, res))) {
+    res.status(200).json({ sessionToken: await issueLoginSession(req, res, user, dek) });
     return;
   }
 
   // Second factor: the password alone no longer gets a session. A 6-digit
   // code is emailed and the vault key is parked WRAPPED under a random key
   // that only the browser receives (utils/otpChallenge.js).
-  await respondWithLoginChallenge(res, user, dek);
+  await respondWithLoginChallenge(req, res, user, dek);
 });
 
 /**
@@ -461,13 +479,8 @@ const verifyOtp = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const sessionToken = await createSession(user._id, dek);
   // The owner ticked "Trust this browser": only now, after a correct code.
-  if (req.body.trustDevice === true) {
-    await trustThisBrowser(req, res, user._id);
-    // Best effort: a heads-up that a browser now skips the emailed code.
-    sendEmail({ to: user.email, ...templates.trustedBrowser({ browser: labelFromUserAgent(req.headers['user-agent']), when: new Date() }) }).catch(() => false);
-  }
+  const sessionToken = await issueLoginSession(req, res, user, dek, { trust: req.body.trustDevice === true });
   res.status(200).json({ sessionToken });
 });
 
@@ -504,171 +517,13 @@ const getMe = asyncHandler(async (req, res) => {
 });
 
 /**
- * POST /api/auth/recover-via-phone/init
- * Body: { email }
- * No session required - the whole point is recovering access when the
- * owner can't log in normally. Unlike the old single-vault version, this
- * now has to be told WHICH account (there's no singleton to fall back to
- * anymore) - the owner types their email, same as forgot-password.
- *
- * Anti-enumeration, same spirit as every other account-lookup endpoint in
- * this app: the response is identical (and a real RecoveryRequestToken is
- * only actually created) whether or not the email has an account - an
- * unknown email just gets back a token that will correctly report itself
- * as invalid/expired everywhere else, since nothing was ever created for it.
- */
-const recoverViaPhoneInit = asyncHandler(async (req, res) => {
-  const { email } = req.body;
-  if (typeof email !== 'string') {
-    throw badRequest('email is required.');
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const token = crypto.randomBytes(RECOVERY_REQUEST_TOKEN_BYTES).toString('hex');
-  const expiresAt = new Date(Date.now() + RECOVERY_REQUEST_TOKEN_TTL_MS);
-
-  const user = await User.findOne({ email: normalizedEmail });
-  if (user) {
-    await RecoveryRequestToken.create({ userId: user._id, token, expiresAt });
-  }
-
-  // The QR link opens the phone vault on the app's own public origin
-  // (PUBLIC_APP_URL, or in development the LAN fallback - never built from
-  // request headers). Pairing a phone still only works on the same network
-  // today; the QR is only meaningful to a phone that can reach that address.
-  const appUrl = getPublicAppUrl();
-  const recoverUrl = appUrl ? `${appUrl}/phone?recover=${token}` : null;
-
-  res.status(201).json({ recoveryToken: token, recoverUrl, expiresAt });
-});
-
-/**
- * GET /api/auth/recover-via-phone/status/:token
- * Unchanged logic - a token lookup needs no account context either way.
- */
-const recoverViaPhoneStatus = asyncHandler(async (req, res) => {
-  const requestToken = await RecoveryRequestToken.findOne({ token: req.params.token });
-
-  if (!requestToken) {
-    return res.status(200).json({ fulfilled: false, expired: true });
-  }
-
-  const expired = requestToken.expiresAt.getTime() <= Date.now();
-  res.status(200).json({ fulfilled: requestToken.fulfilled, expired });
-});
-
-/**
- * POST /api/auth/recover-via-phone/submit
- * Body: { recoveryToken, wrappedDEK, wrappedDEKIv, wrappedDEKAuthTag, wrappedDEKSalt }
- * requireDeviceAuth - req.userId is the paired phone's OWN account.
- * Rejects outright if that doesn't match the recovery request's account
- * (requestToken.userId) - a phone can only ever fulfill a recovery
- * request for the account it's actually paired with. This is defense in
- * depth: recoverViaPhoneComplete's dekFingerprint check below would catch
- * a mismatched DEK anyway, but failing here is more direct and doesn't
- * depend on that second check to stay safe.
- */
-const recoverViaPhoneSubmit = asyncHandler(async (req, res) => {
-  const { recoveryToken, wrappedDEK, wrappedDEKIv, wrappedDEKAuthTag, wrappedDEKSalt } = req.body;
-
-  if (!recoveryToken || typeof recoveryToken !== 'string') {
-    throw badRequest('A recovery token is required.');
-  }
-  for (const [field, value] of Object.entries({ wrappedDEK, wrappedDEKIv, wrappedDEKAuthTag, wrappedDEKSalt })) {
-    if (!value || typeof value !== 'string') {
-      throw badRequest(`"${field}" is required.`);
-    }
-  }
-
-  const requestToken = await RecoveryRequestToken.findOne({ token: recoveryToken });
-  if (
-    !requestToken ||
-    requestToken.used ||
-    requestToken.fulfilled ||
-    requestToken.expiresAt.getTime() <= Date.now() ||
-    String(requestToken.userId) !== String(req.userId)
-  ) {
-    throw invalidRecoveryRequestToken();
-  }
-
-  requestToken.wrappedDEK = wrappedDEK;
-  requestToken.wrappedDEKIv = wrappedDEKIv;
-  requestToken.wrappedDEKAuthTag = wrappedDEKAuthTag;
-  requestToken.wrappedDEKSalt = wrappedDEKSalt;
-  requestToken.fulfilled = true;
-  await requestToken.save();
-
-  res.status(200).json({ success: true });
-});
-
-/**
- * POST /api/auth/recover-via-phone/complete
- * Body: { recoveryToken, newPassword }
- * No session (the locked-out PC has none). Resolves the account from
- * requestToken.userId - set at .../init from the email the owner typed in -
- * never from a singleton lookup.
- */
-const recoverViaPhoneComplete = asyncHandler(async (req, res) => {
-  const { recoveryToken, newPassword } = req.body;
-
-  if (!recoveryToken || typeof recoveryToken !== 'string') {
-    throw badRequest('A recovery token is required.');
-  }
-  if (!newPassword || typeof newPassword !== 'string') {
-    throw badRequest('A new password is required.');
-  }
-
-  const { valid, errors } = validatePassword(newPassword);
-  if (!valid) {
-    throw passwordPolicyError(errors);
-  }
-
-  const requestToken = await RecoveryRequestToken.findOne({ token: recoveryToken });
-  if (
-    !requestToken ||
-    requestToken.used ||
-    !requestToken.fulfilled ||
-    requestToken.expiresAt.getTime() <= Date.now()
-  ) {
-    throw invalidRecoveryRequestToken();
-  }
-
-  const user = await User.findById(requestToken.userId);
-  if (!user) {
-    throw invalidRecoveryRequestToken();
-  }
-
-  let dek;
-  try {
-    const kek = deriveEncryptionKey(recoveryToken, requestToken.wrappedDEKSalt);
-    dek = unwrapKey(requestToken.wrappedDEK, kek, requestToken.wrappedDEKIv, requestToken.wrappedDEKAuthTag);
-  } catch {
-    throw invalidRecoveryRequestToken();
-  }
-
-  if (fingerprintDEK(dek) !== user.dekFingerprint) {
-    throw dekMismatchError();
-  }
-
-  await finalizeReset(user, dek, newPassword);
-  await destroyAllSessionsForUser(user._id);
-
-  requestToken.used = true;
-  await requestToken.save();
-
-  // Same ending as a password login: the emailed code comes first, so this
-  // route cannot hand out a session by itself. The phone's approval above is
-  // kept as it was; the code is in addition to it.
-  await respondWithLoginChallenge(res, user, dek);
-});
-
-/**
  * POST /api/auth/logout
  * Protected by requireSession. Explicitly deletes the session's document
  * rather than letting it merely expire - this is what makes "Log out" a
  * real security boundary instead of just a UI state change.
  */
 const logout = asyncHandler(async (req, res) => {
+  await recordEvent(req, 'logout');
   await destroySession(req.session.token);
   res.status(200).json({ success: true });
 });
@@ -680,10 +535,6 @@ module.exports = {
   getPublicConfig,
   unlock,
   getMe,
-  recoverViaPhoneInit,
-  recoverViaPhoneStatus,
-  recoverViaPhoneSubmit,
-  recoverViaPhoneComplete,
   verifyOtp,
   resendOtp,
   logout,

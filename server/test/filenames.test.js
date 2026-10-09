@@ -210,33 +210,8 @@ test('every place that names a download goes through the shared rules', () => {
   const docs = fs.readFileSync(path.join(root, 'controllers', 'documents.controller.js'), 'utf8');
   assert.match(docs, /contentDisposition\(downloadName\(document\.filename, plaintext\)\)/);
   assert.doesNotMatch(docs, /filename\*=UTF-8''\$\{encodeURIComponent\(document\.filename\)\}/, 'no unsanitised header left');
-  for (const file of ['controllers/sync.controller.js', 'controllers/documents.controller.js']) {
+  for (const file of ['controllers/documents.controller.js']) {
     assert.match(fs.readFileSync(path.join(root, file), 'utf8'), /cleanStoredName\(/, file);
   }
 });
 
-test('phone sync: every sample pushed from a paired phone keeps its name and downloads like any other file', async () => {
-  const sync = require('../controllers/sync.controller');
-  const { encryptFile } = require('../utils/crypto');
-  for (const table of Object.keys(world.tables)) world.tables[table] = [];
-  let count = 0;
-  for (const sample of SAMPLES) {
-    for (const name of [`phone.${sample.ext}`, 'phone-noext']) {
-      const sealed = encryptFile(sample.bytes, DEK); // the phone encrypts under the vault key itself
-      const pushed = await call(sync.pushSyncDocument, {
-        userId: ALICE,
-        file: { buffer: Buffer.from(sealed.ciphertext, 'base64') },
-        body: { clientId: `l${count}`, filename: name, folder: '', iv: sealed.iv, authTag: sealed.authTag, checksum: sha(sample.bytes), mimeType: 'application/octet-stream' },
-      });
-      assert.equal(pushed.error, null, `${sample.ext}: push`);
-      const id = String(pushed.json.id);
-      assert.equal(world.tables.documents.find((d) => String(d._id) === id).filename, names.cleanStoredName(name), 'stored name from the phone');
-      const served = await call(D.viewDocument, as({ params: { id } }));
-      assert.equal(sha(served.body), sha(sample.bytes), `${sample.ext}: bytes from the phone are identical`);
-      const expected = name === 'phone-noext' ? (sample.sniff ? `phone-noext.${sample.sniff}` : 'phone-noext') : name;
-      assert.equal(nameFromDisposition(served.headers['content-disposition']), expected);
-      count += 1;
-    }
-  }
-  assert.ok(count >= SAMPLES.length * 2);
-});

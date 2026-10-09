@@ -42,7 +42,6 @@ const samples = [
   ['sign-in-code', templates.signInCode({ code: '482916', ttlMinutes })],
   ['delete-account-code', templates.deleteAccountCode({ code: '482916', ttlMinutes })],
   ['password-reset-code', templates.passwordResetCode({ code: '482916', ttlMinutes })],
-  ['pair-device-code', templates.pairDeviceCode({ code: '482916', ttlMinutes })],
   ['share-code', templates.shareCode({ code: '482916', ttlMinutes })],
   ['verify-email', templates.verifyEmail({ verifyUrl })],
   ['verify-email-resend', templates.verifyEmailResend({ verifyUrl })],
@@ -50,7 +49,7 @@ const samples = [
   ['password-changed-recovery-key', templates.passwordChanged({ method: 'recovery-key', when, browser: 'Chrome on Windows' })],
   ['password-changed-wipe', templates.passwordChanged({ method: 'wipe', when, browser: 'Chrome on Android' })],
   ['account-deleted', templates.accountDeleted({ when })],
-  ['device-paired', templates.devicePaired({ name: "Josh's Phone", browser: 'Chrome on Android', when })],
+  ['new-device', templates.newDevice({ browser: 'Chrome', os: 'Windows', country: 'PH', city: 'Manila', when })],
   ['trusted-browser', templates.trustedBrowser({ browser: 'Chrome on Windows', when })],
 ];
 

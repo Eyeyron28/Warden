@@ -46,17 +46,27 @@ export const SECTIONS = [
             the plain key. For your own share list we keep the shared files&apos; names encrypted under your vault key.
           </li>
           <li>
-            <strong>Paired devices</strong>: the name you give a paired phone, the browser it paired from, when it was paired and when it last synced. We store only a hash of the phone&apos;s sync token. We do not keep the phone&apos;s PIN or any copy of your vault key locked by it: the phone makes that copy itself and keeps it only on the phone, together with encrypted copies of your documents. Someone who copies a lost phone&apos;s storage could guess its PIN offline, which is why a PIN needs at least 6 characters, obvious ones are refused and each guess is made slow.
+            <strong>Devices and activity</strong>: each browser that signs in gets a random id kept in a strictly functional cookie
+            (<code>warden_did</code>, HttpOnly, Secure, SameSite=Strict, up to 400 days). It is used only to tell your browsers apart in your own
+            account, so you can see and sign out any of them: no tracking, no advertising, nothing shared. We store only a hash of it, a
+            label such as &quot;Chrome on Windows&quot;, when the browser was first and last seen, and its country and city, taken from the
+            hosting platform&apos;s own headers (never an IP address, and no third-party location service). Alongside it we keep, for 30
+            days, a log of what happened on your account (sign-ins and failures, files opened, downloaded, renamed, moved, deleted or shared,
+            exports, and when your share links are opened, with only a coarse country for a visitor). The log holds ids only: no file names,
+            no content, no email addresses and no IP addresses; names are looked up when you read it. Each entry is signed in a chain so that
+            changes to the stored log can be detected; that does not protect against someone who also holds our signing key. We also count, per
+            file, how often you opened or downloaded it and when you last did, and per share link how many times it was opened, to show you
+            the Overview. Deleting your account or erasing your vault removes all of it.
           </li>
           <li>
-            <strong>One-time codes</strong>: when you log in, pair a phone, recover access with a paired phone, delete your
+            <strong>One-time codes</strong>: when you log in, delete your
             account, or open a share link restricted to your email address, a 6-digit code is emailed to you and expires after a few minutes. We keep only a salted hash of it, never the code itself, and delete it once it is used or
             expires.
           </li>
           <li>
-            <strong>Trusted browsers</strong>: only if you tick &quot;Trust this browser for 30 days&quot; when
-            entering a login code. We keep a hash of a random token (the token itself stays in a cookie in that
-            browser), a short label such as &quot;Chrome on Windows&quot; from the browser&apos;s user-agent, and when
+            <strong>Trusted browsers</strong>: only if you leave &quot;Trust this browser for 30 days&quot; ticked when
+            entering a login code (it is ticked by default; do not leave it ticked on a shared computer). We keep a hash of a random token (the token
+            itself stays in a cookie named for your account in that browser, so several accounts can each be trusted there), a short label such as &quot;Chrome on Windows&quot; from the browser&apos;s user-agent, and when
             it was added and last used. No IP address is stored. It lets that browser skip the emailed code, never
             the password, and expires after 30 days. You can remove one or all of them on the Account page; they
             are also removed when you reset your password (by any route), wipe your vault or delete your account.
@@ -84,8 +94,10 @@ export const SECTIONS = [
         <p>
           This is not end-to-end encryption. Files travel to and from the server over HTTPS, and while you are
           signed in the server unlocks your vault key for each request to encrypt the files you upload and decrypt
-          the ones you open. Your session token is kept in browser memory only, and sessions end after 30 minutes
-          without activity. A paired phone encrypts and decrypts on the phone itself.
+          the ones you open. Your session token is kept in your browser tab&apos;s sessionStorage (so a reload keeps you signed in; closing the tab ends it),
+          never in a cookie or localStorage, and sessions end after 30 minutes without activity. Script injected into a page could read that token,
+          which is why Warden loads no third-party script and sets a strict Content-Security-Policy. Your password and the unlocked key are never
+          stored in the browser. Warden is a website: there is no phone vault and no offline copy of your files.
         </p>
         <p>
           Previews work the same way: to show you a file, the server decrypts it for you and sends it to your browser
@@ -164,15 +176,14 @@ export const SECTIONS = [
         </p>
         <p>
           Deleting is permanent and immediate. It removes your documents (including anything in Trash) and their previews, your folders, every share
-          link and its encrypted copies, your paired devices, any pending login or deletion
+          link and its encrypted copies, your devices and activity log, any pending login or deletion
           codes, your sessions, and the account itself (email, password hash and locked keys). We keep no copy and
           cannot recover any of it, and we send you an email confirming it. Our logs record only that an account was
           deleted, with no email address or content.
         </p>
         <p>
           Deletion cannot reach what is not on our servers: emails we already sent, files you downloaded or
-          exported yourself, and the offline copy on a phone you paired (this browser&apos;s copy is cleared
-          automatically; clear a phone&apos;s browser data yourself). If you cannot use the Account page, email{' '}
+          exported yourself. If you cannot use the Account page, email{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from the address on the account.
         </p>
       </>

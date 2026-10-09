@@ -1,4 +1,5 @@
 const { getSession, refreshSession } = require('../utils/sessionStore');
+const { touchDevice } = require('../utils/deviceIdentity');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -43,10 +44,19 @@ const requireSession = asyncHandler(async (req, res, next) => {
 
   req.userId = session.userId;
   req.dek = session.dek;
+  // The browser this session belongs to (null for a session made before devices existed).
+  req.deviceId = session.deviceId || null;
   req.session = {
     token,
+    idHash: session.sessionIdHash,
     encryptionKey: session.dek,
   };
+  // "Last active" for the Devices page; written at most once a minute and never allowed to fail a request.
+  try {
+    await touchDevice(req, req.deviceId);
+  } catch {
+    // best effort
+  }
 
   next();
 });
