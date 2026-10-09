@@ -222,3 +222,13 @@
     width: 100%;
   }
 }
+
+.expired {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.soon {
+  color: var(--color-warn);
+  font-weight: 600;
+}

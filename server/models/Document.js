@@ -68,6 +68,13 @@ const documentSchema = new mongoose.Schema(
     expiryDate: {
       type: Date,
     },
+    // The "Expires on" day the owner set (passport, licence, ...), at 00:00 UTC. Stored READABLE by the server on
+    // purpose, so a reminder can go out while nobody is signed in (utils/docExpiry.js). null = none.
+    docExpiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     // Optional encrypted preview thumbnail (see utils/thumbnails.js). Same
     // protection as the file: AES-256-GCM under the account's DEK with its
     // own random IV/auth tag. thumbMime is the type of the PLAINTEXT image

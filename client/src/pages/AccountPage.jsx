@@ -6,6 +6,7 @@ import SensitiveInput from '../components/SensitiveInput.jsx';
 import Icon from '../components/site/Icon.jsx';
 import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
 import TrustedBrowsers from '../components/TrustedBrowsers.jsx';
+import ReminderSetting from '../components/ReminderSetting.jsx';
 import AuthLayout from './auth/AuthLayout.jsx';
 import PasswordInput from './auth/PasswordInput.jsx';
 import { getMe } from '../services/authService.js';
@@ -135,6 +136,7 @@ function AccountPage() {
       layout="stacked"
     >
       <div className={styles.stack}>
+        <ReminderSetting />
         <TrustedBrowsers />
 
         <section className={styles.danger} aria-labelledby="delete-account-title">

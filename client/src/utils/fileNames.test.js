@@ -70,8 +70,9 @@ test('every browser download path names files through the shared rules', () => {
   assert.match(read('services/documentsService.js'), /sanitizeDownloadName\(filename\)/);
   const share = read('pages/SharedDocumentPage.jsx');
   assert.match(share, /downloadName\(entry\.name, new Uint8Array\(plain\)\)/);
-  assert.match(share, /saveBlobAs\(loaded\.url, loaded\.fileName\)/);
-  assert.match(share, /saveBlobAs\(opened\.url, opened\.fileName\)/);
+  // (a watermarked image download is stamped first, so the saved URL is `target.url`: the original bytes otherwise)
+  assert.match(share, /saveBlobAs\(target\.url, loaded\.fileName\)/);
+  assert.match(share, /saveBlobAs\(target\.url, opened\.fileName\)/);
   assert.doesNotMatch(share, /saveBlobAs\([^,]+, entry\.name\)/);
   // The rename dialog applies the keep-the-extension rule.
   assert.match(read('components/EditDocumentModal.jsx'), /keepExtension\(document\.filename, filename\)/);

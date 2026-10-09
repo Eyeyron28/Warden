@@ -62,6 +62,12 @@ function connectDB() {
       } catch (err) {
         console.error(`Phone-vault removal migration failed: ${err.message}`);
       }
+      try {
+        // eslint-disable-next-line global-require
+        await require('../utils/migrateExpiry')();
+      } catch (err) {
+        console.error(`Expiry-date migration failed: ${err.message}`);
+      }
       return conn;
     })
     .catch((err) => {

@@ -269,3 +269,12 @@ export async function deleteDocument(id) {
 export async function deleteFolder(path) {
   await api.delete('/documents/folders', { params: { path } });
 }
+
+/**
+ * Sets (a 'YYYY-MM-DD' day) or clears (null) a file's "Expires on" date. The date is stored READABLE by the
+ * server (so a reminder can be emailed); the file's contents stay encrypted. Changing it re-arms the reminders.
+ * @returns {Promise<object>} the updated document summary
+ */
+export async function setDocumentExpiry(id, day) {
+  return updateDocument(id, { docExpiresAt: day || null });
+}

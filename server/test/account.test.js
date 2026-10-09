@@ -44,7 +44,7 @@ const matches = (doc, filter) =>
 
 const NAMES = [
   'users', 'documents', 'folders', 'backuplogs', 'devices', 'auditevents',
-  'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices', 'resettickets',
+  'shares', 'sharedfiles', 'shareaccess', 'sessions', 'otpchallenges', 'ratelimits', 'trashfolders', 'trusteddevices', 'resettickets', 'reminderlogs',
 ];
 const world = { mails: [], tables: Object.fromEntries(NAMES.map((n) => [n, []])), fail: null };
 
@@ -94,7 +94,7 @@ function fakeModel(name) {
 
 const models = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
-  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
+  SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges', RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs',
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
@@ -211,7 +211,7 @@ const rowsOwnedBy = (user) => {
   return {
     // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
     stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
-    byOwner: ['documents', 'folders', 'trashfolders', 'backuplogs', 'devices', 'auditevents', 'sessions', 'otpchallenges', 'trusteddevices']
+    byOwner: ['documents', 'folders', 'trashfolders', 'backuplogs', 'devices', 'auditevents', 'sessions', 'otpchallenges', 'trusteddevices', 'reminderlogs']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
       + world.tables.shares.filter((r) => String(r.ownerUserId) === id).length,
   };

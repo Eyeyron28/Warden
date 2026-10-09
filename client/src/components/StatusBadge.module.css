@@ -37,11 +37,9 @@
   background: var(--color-danger-wash);
 }
 
-/* Same danger hue as .danger but without the filled wash/border, so an
-   "expiring soon" badge reads as a softer heads-up next to a hard
-   "expired" one instead of introducing a second warning color. */
+/* Amber: "expiring soon" is a heads-up, "expired" (.danger, red) is the hard state. */
 .warning {
-  color: var(--color-danger);
-  border-color: var(--color-border);
-  background: transparent;
+  color: var(--color-warn);
+  border-color: color-mix(in srgb, var(--color-warn) 40%, var(--color-border));
+  background: var(--color-warn-wash);
 }

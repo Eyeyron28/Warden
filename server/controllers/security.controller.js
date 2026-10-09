@@ -28,12 +28,12 @@ const MAX_EVENTS_READ = 5000;
 
 /** Event types by group, for the timeline filter. */
 const GROUPS = Object.freeze({
-  vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export'],
+  vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export', 'expiry_set', 'expiry_cleared'],
   sharing: ['share_created', 'share_revoked', 'share_opened', 'share_downloaded', 'shares_stopped_all'],
   account: ['login', 'login_failed', 'logout', 'otp_sent', 'password_changed', 'trusted_added', 'trusted_removed', 'device_signed_out'],
 });
 
-const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore']);
+const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared']);
 const SHARE_TARGET_TYPES = new Set(['share_created', 'share_revoked', 'share_opened', 'share_downloaded']);
 
 /** A country's English name from its two-letter code ("PH" -> "Philippines"), or the code itself. */

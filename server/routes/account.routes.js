@@ -10,6 +10,7 @@ const {
   removeTrustedDevice,
   removeAllTrustedDevices,
 } = require('../controllers/account.controller');
+const { getHealth, getPreferences, updatePreferences } = require('../controllers/health.controller');
 
 const router = express.Router();
 
@@ -23,6 +24,12 @@ const byAccount = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   keyFn: (req) => (req.userId ? String(req.userId) : null),
 });
+
+// Read-mostly and cheap, and the Overview page loads them on every visit, so they sit BEFORE the strict
+// per-hour limits meant for deleting an account (they still need a session and only ever read the caller's own data).
+router.get('/health', requireSession, getHealth);
+router.get('/preferences', requireSession, getPreferences);
+router.patch('/preferences', requireSession, updatePreferences);
 
 router.use(byIp, requireSession, byAccount);
 router.post('/delete-challenge', deleteChallenge);

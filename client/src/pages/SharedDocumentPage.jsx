@@ -15,7 +15,7 @@ import {
 } from '../services/sharedService.js';
 import {
   decryptBlob,
-  decryptManifest,
+  decryptManifestInfo,
   importShareKey,
   importShareKeyBytes,
   previewKind,
@@ -23,6 +23,9 @@ import {
   base64ToBytes,
 } from '../utils/shareCrypto.js';
 import { downloadName, sanitizeDownloadName } from '../utils/fileNames.js';
+import { PDF_DOWNLOAD_NOTE, isStampable, stampImageBlob, watermarkText } from '../utils/watermark.js';
+import Watermark from '../components/Watermark.jsx';
+import PdfViewer from '../components/preview/PdfViewer.jsx';
 import { deriveShareSecrets, unwrapShareKey } from '../utils/sharePassword.js';
 import site from '../components/site/site.module.css';
 import forms from '../components/site/forms.module.css';
@@ -85,7 +88,22 @@ async function openSharedFile({ shareId, key, entry, accessToken }) {
   const kind = previewKind(entry.mime, new Uint8Array(plain, 0, Math.min(16, plain.byteLength)));
   const blob = new Blob([plain], { type: kind ? entry.mime : 'application/octet-stream' });
   // Named exactly as the vault names a download: sanitised, extension recovered from the bytes.
-  return { blob, kind, url: URL.createObjectURL(blob), fileName: downloadName(entry.name, new Uint8Array(plain)) };
+  return { blob, kind, mime: entry.mime, bytes: new Uint8Array(plain), url: URL.createObjectURL(blob), fileName: downloadName(entry.name, new Uint8Array(plain)) };
+}
+
+/**
+ * What a download saves. With a watermark, png/jpeg/webp images are stamped (canvas) with the same text as the
+ * preview; PDFs and everything else are the original bytes. Returns { url, revoke }.
+ */
+async function downloadTarget(opened, watermark) {
+  if (watermark && opened.kind === 'image' && isStampable(opened.mime)) {
+    const stamped = await stampImageBlob(opened.blob, opened.mime, watermark);
+    if (stamped !== opened.blob) {
+      const url = URL.createObjectURL(stamped);
+      return { url, revoke: () => URL.revokeObjectURL(url) };
+    }
+  }
+  return { url: opened.url, revoke: () => {} };
 }
 
 /**
@@ -94,13 +112,14 @@ async function openSharedFile({ shareId, key, entry, accessToken }) {
  * is fetched and decrypted on demand, so opening a folder link doesn't pull
  * every file at once.
  */
-function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
+function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = null }) {
   // Named sharedFile, not "document" - this component needs the real global
   // `document` (document.createElement) for the click fallbacks above.
   const [sharedFile, setSharedFile] = useState(null); // { url, kind, size, fileName }
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const urlRef = useRef(null);
   const loadedRef = useRef(null);
 
@@ -111,7 +130,7 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
     try {
       const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken });
       urlRef.current = opened.url;
-      const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size, fileName: opened.fileName };
+      const loaded = { url: opened.url, kind: opened.kind, size: opened.blob.size, fileName: opened.fileName, blob: opened.blob, mime: opened.mime, bytes: opened.bytes };
       loadedRef.current = loaded;
       setSharedFile(loaded);
       return loaded;
@@ -140,14 +159,27 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
 
   const handleView = async () => {
     const loaded = await load();
-    if (loaded?.kind) openInNewTab(loaded.url);
+    // A watermarked share previews inside this page (a blob in a new tab could not carry the overlay).
+    if (loaded?.kind && watermark) setViewing(true);
+    else if (loaded?.kind) openInNewTab(loaded.url);
     else if (loaded) setFailed(true);
   };
+
+  useEffect(() => {
+    if (!viewing) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') setViewing(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewing]);
 
   const handleDownload = async () => {
     const loaded = await load();
     if (!loaded) return;
-    saveBlobAs(loaded.url, loaded.fileName);
+    const target = await downloadTarget(loaded, watermark);
+    saveBlobAs(target.url, loaded.fileName);
+    setTimeout(target.revoke, 60_000);
     // In-memory only, on purpose: a share page is a public view with no
     // account behind it.
     setDownloaded(true);
@@ -176,7 +208,10 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
         </div>
 
         {eager && sharedFile?.kind === 'image' && (
-          <img src={sharedFile.url} alt="" className={styles.previewImage} />
+          <div className={styles.watermarked}>
+            <img src={sharedFile.url} alt="" className={styles.previewImage} />
+            <Watermark text={watermark} />
+          </div>
         )}
       </div>
 
@@ -195,11 +230,33 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager }) {
         </div>
 
         {failed && <p className={styles.savedHint}>Could not open this file.</p>}
+        {watermark && entry.mime === 'application/pdf' && !failed && <p className={styles.savedHint}>{PDF_DOWNLOAD_NOTE}</p>}
         {downloaded && <p className={styles.savedHint}>Saved to this device</p>}
         {!maybePreviewable && !failed && !downloaded && (
           <p className={styles.savedHint}>This file type can only be downloaded.</p>
         )}
       </div>
+
+      {viewing && sharedFile?.kind && (
+        <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label={`Preview of ${entry.name}`}>
+          <div className={styles.lightboxBar}>
+            <span className={styles.lightboxName}>{entry.name}</span>
+            <button type="button" className={styles.lightboxClose} onClick={() => setViewing(false)}>
+              Close
+            </button>
+          </div>
+          <div className={styles.lightboxStage}>
+            <div className={styles.watermarked}>
+              {sharedFile.kind === 'image' ? (
+                <img src={sharedFile.url} alt="" className={styles.lightboxImage} />
+              ) : (
+                <PdfViewer bytes={sharedFile.bytes} onFail={() => { setViewing(false); setFailed(true); }} />
+              )}
+              <Watermark text={watermark} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -234,6 +291,7 @@ function SharedDocumentPage() {
   const [access, setAccess] = useState(null);
   const [shareKey, setShareKey] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [purposeInfo, setPurposeInfo] = useState({ purpose: null, sharedAt: '' });
   const [downloadingAll, setDownloadingAll] = useState(false);
 
   // email step
@@ -265,12 +323,13 @@ function SharedDocumentPage() {
   const loadFiles = async (key, token) => {
     try {
       const manifest = await fetchSharedManifest(shareId, token);
-      const files = await decryptManifest(key, shareId, manifest.manifest);
+      const { files, purpose, sharedAt } = await decryptManifestInfo(key, shareId, manifest.manifest);
       // Only files the server actually holds, in manifest order.
       const held = new Set(manifest.files.map((file) => file.id));
       const usable = files.filter((file) => held.has(file.id));
       if (usable.length === 0) throw new Error('empty');
       setShareKey(key);
+      setPurposeInfo({ purpose, sharedAt });
       setEntries(usable);
       setPhase('ready');
     } catch {
@@ -377,8 +436,12 @@ function SharedDocumentPage() {
       for (const entry of entries) {
         // eslint-disable-next-line no-await-in-loop
         const opened = await openSharedFile({ shareId, key: shareKey, entry, accessToken: access.accessToken });
-        saveBlobAs(opened.url, opened.fileName);
-        setTimeout(() => URL.revokeObjectURL(opened.url), 60_000);
+        const target = await downloadTarget(opened, watermark);
+        saveBlobAs(target.url, opened.fileName);
+        setTimeout(() => {
+          URL.revokeObjectURL(opened.url);
+          target.revoke();
+        }, 60_000);
       }
     } catch {
       // A failure partway just stops; files already saved stay saved.
@@ -390,6 +453,8 @@ function SharedDocumentPage() {
   // A single-file link opens its preview straight away - unless the share has a
   // download limit, where merely opening the page must not use one up.
   const eagerSingle = entries.length === 1 && !access?.limited;
+  // No purpose = no watermark and everything exactly as before.
+  const watermark = watermarkText(purposeInfo);
 
   return (
     <div className={styles.page}>
@@ -496,18 +561,29 @@ function SharedDocumentPage() {
 
         {phase === 'ready' && entries.length === 1 && (
           <div className={styles.documentPanel}>
+            {purposeInfo.purpose && (
+              <p className={styles.purposeLine}>
+                <span className={styles.purposeLabel}>Shared for</span> {purposeInfo.purpose}
+              </p>
+            )}
             <SharedFile
               shareId={shareId}
               shareKey={shareKey}
               accessToken={access.accessToken}
               entry={entries[0]}
               eager={eagerSingle}
+              watermark={watermark}
             />
           </div>
         )}
 
         {phase === 'ready' && entries.length > 1 && (
           <div className={styles.documentPanel}>
+            {purposeInfo.purpose && (
+              <p className={styles.purposeLine}>
+                <span className={styles.purposeLabel}>Shared for</span> {purposeInfo.purpose}
+              </p>
+            )}
             <div className={styles.multiHeader}>
               <span className={styles.multiTitle}>{entries.length} files shared with you</span>
               <button
@@ -529,6 +605,7 @@ function SharedDocumentPage() {
                     accessToken={access.accessToken}
                     entry={entry}
                     eager={false}
+                    watermark={watermark}
                   />
                 </li>
               ))}

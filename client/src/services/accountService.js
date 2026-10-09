@@ -62,3 +62,21 @@ export async function removeAllTrustedDevices() {
   const { data } = await api.delete('/account/trusted-devices');
   return data;
 }
+
+/** GET /api/account/health - the vault health score and checklist (this account's own settings only). */
+export async function getVaultHealth() {
+  const { data } = await api.get('/account/health', KEEP_SESSION);
+  return data;
+}
+
+/** GET /api/account/preferences -> { expiryReminders: boolean } */
+export async function getPreferences() {
+  const { data } = await api.get('/account/preferences', KEEP_SESSION);
+  return data;
+}
+
+/** PATCH /api/account/preferences - "Email me about expiring documents". */
+export async function setExpiryReminders(expiryReminders) {
+  const { data } = await api.patch('/account/preferences', { expiryReminders }, KEEP_SESSION);
+  return data;
+}

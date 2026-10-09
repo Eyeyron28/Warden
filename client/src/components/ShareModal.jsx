@@ -68,6 +68,7 @@ function ShareModal({ documentIds, title, onClose }) {
   const [password, setPassword] = useState('');
   const [maxDownloadsText, setMaxDownloadsText] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [createdShare, setCreatedShare] = useState(null);
 
   const [shares, setShares] = useState([]);
@@ -152,6 +153,7 @@ function ShareModal({ documentIds, title, onClose }) {
       if (maxDownloadsValue !== null) options.maxDownloads = maxDownloadsValue;
       if (recipientEmail.trim()) options.recipientEmail = recipientEmail.trim();
       if (password) options.passwordProtected = true;
+      if (purpose.trim()) options.purpose = purpose.trim();
       const result = isSingle
         ? await createShare(documentId, hours, options)
         : await createBulkShare(documentIds, hours, options);
@@ -183,6 +185,7 @@ function ShareModal({ documentIds, title, onClose }) {
       // here, once, and nowhere on the server.
       setCreatedShare({
         ...result,
+        purpose: purpose.trim() || null,
         shareUrl,
         passwordProtected: Boolean(result.passwordPending),
       });
@@ -381,6 +384,27 @@ function ShareModal({ documentIds, title, onClose }) {
             )}
           </div>
 
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="share-purpose">
+              Purpose (optional)
+            </label>
+            <input
+              id="share-purpose"
+              type="text"
+              className={styles.textInput}
+              value={purpose}
+              onChange={(event) => setPurpose(event.target.value)}
+              maxLength={60}
+              disabled={creating}
+              autoComplete="off"
+              placeholder="For BDO account opening"
+            />
+            <p className={styles.hint}>
+              Shown to the person you share with and printed faintly across previews and image downloads. It is kept inside the
+              encrypted share, not in the link. A watermark discourages reuse. It cannot stop a screenshot.
+            </p>
+          </div>
+
           <p className={styles.error} role="alert">
             {createError || ' '}
           </p>
@@ -427,6 +451,7 @@ function ShareModal({ documentIds, title, onClose }) {
           <p className={styles.expiryLine}>
             {describeExpiry(createdShare.expiresAt)}, at {formatDateTime(createdShare.expiresAt)}
           </p>
+          {createdShare.purpose && <p className={styles.hint}>Purpose: {createdShare.purpose}</p>}
 
           {!isSingle && (
             <div className={styles.confirmRow}>
@@ -482,6 +507,7 @@ function ShareModal({ documentIds, title, onClose }) {
                   {describeExpiry(share.expiresAt)}
                   {share.passwordProtected ? ' · password' : ''}
                   {share.emailRestricted ? ' · email only' : ''}
+                  {share.purpose ? ` · ${share.purpose}` : ''}
                   {share.maxDownloads ? ` · ${share.downloadCount}/${share.maxDownloads} downloads` : share.downloadCount ? ` · ${share.downloadCount} downloads` : ''}
                 </span>
 

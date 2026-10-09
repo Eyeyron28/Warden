@@ -64,6 +64,17 @@ export const SECTIONS = [
             expires.
           </li>
           <li>
+            <strong>Expiry dates and reminders</strong>: if you give a file an &quot;Expires on&quot; date, that date is stored readable by the
+            server (it has to be, to email you while you are signed out). The file&apos;s contents and name stay encrypted. When a date is 60,
+            30 or 7 days away, and on the day, we send one email with a count (never a file name). You can turn it off in Account settings.
+            Deleting the file, your account or your vault removes the dates and the record of which reminders were sent.
+          </li>
+          <li>
+            <strong>Share purpose</strong>: if you add a &quot;Purpose&quot; to a share link, it is kept inside the share&apos;s encrypted manifest
+            (and, for your own list, encrypted under your vault key), never stored in the clear, in the link, in the activity log or in an
+            email. The viewer&apos;s browser shows it as a faint watermark. It discourages reuse; it cannot stop a screenshot.
+          </li>
+          <li>
             <strong>Trusted browsers</strong>: only if you leave &quot;Trust this browser for 30 days&quot; ticked when
             entering a login code (it is ticked by default; do not leave it ticked on a shared computer). We keep a hash of a random token (the token
             itself stays in a cookie named for your account in that browser, so several accounts can each be trusted there), a short label such as &quot;Chrome on Windows&quot; from the browser&apos;s user-agent, and when

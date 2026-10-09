@@ -51,6 +51,7 @@ const samples = [
   ['account-deleted', templates.accountDeleted({ when })],
   ['new-device', templates.newDevice({ browser: 'Chrome', os: 'Windows', country: 'PH', city: 'Manila', when })],
   ['trusted-browser', templates.trustedBrowser({ browser: 'Chrome on Windows', when })],
+  ['expiring-documents', templates.expiringDocuments({ within7: 1, within30: 1, within60: 2 })],
 ];
 
 (async () => {

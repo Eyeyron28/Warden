@@ -352,6 +352,27 @@ const templates = {
       cta: appLink('/wasnt-me') ? { label: "This wasn't me", href: appLink('/wasnt-me') } : null,
     }),
 
+  // Counts only: no file name ever goes in an email.
+  expiringDocuments: ({ expired = 0, within7 = 0, within30 = 0, within60 = 0 }) => {
+    const total = expired + within7 + within30 + within60;
+    const plural = (n) => (n === 1 ? '1 document' : `${n} documents`);
+    const rows = [
+      ['Expired or expiring today', expired],
+      ['Expire within 7 days', within7],
+      ['Expire within 30 days', within30],
+      ['Expire within 60 days', within60],
+    ].filter(([, n]) => n > 0).map(([label, n]) => [label, String(n)]);
+    return renderEmail({
+      subject: total === 1 ? 'A document in your Warden vault is expiring' : 'Documents in your Warden vault are expiring',
+      preheader: 'Sign in to review the documents that are expiring soon.',
+      title: 'Documents expiring soon',
+      intro: `${plural(total)} in your Warden vault ${total === 1 ? 'is' : 'are'} expiring soon or ${total === 1 ? 'has' : 'have'} expired. Sign in to review.`,
+      details: rows,
+      footerNote: 'You get this because "Email me about expiring documents" is on. You can turn it off in Account settings. This email never lists file names.',
+      cta: appLink('/overview') ? { label: 'Review in Warden', href: appLink('/overview') } : null,
+    });
+  },
+
   trustedBrowser: ({ browser, when }) =>
     renderEmail({
       subject: 'New trusted browser on your Warden account',

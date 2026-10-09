@@ -139,6 +139,11 @@ function SharesPage() {
                     <p className={styles.meta}>
                       {share.fileCount} item{share.fileCount === 1 ? '' : 's'} · {formatMb(share.totalBytes)}
                     </p>
+                    {share.purpose && (
+                      <p className={styles.meta} data-testid="share-purpose">
+                        Purpose: {share.purpose}
+                      </p>
+                    )}
                   </div>
 
                   <dl className={styles.facts}>

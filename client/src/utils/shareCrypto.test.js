@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   decryptBlob,
   decryptManifest,
+  decryptManifestInfo,
   importShareKey,
   previewKind,
   readKeyFromHash,
@@ -71,7 +72,7 @@ test('the manifest is reduced to plain strings and numbers', async () => {
   const files = await decryptManifest(await importShareKey(KEY_TEXT), 'sid', blob.toString('base64'));
   assert.deepEqual(files, [{ id: 'a1', name: '<img src=x onerror=alert(1)>.html', mime: 'text/html', folder: 'Taxes/2024', size: 12 }]);
 
-  const wrong = server.pack(server.encryptForShare(Buffer.from('{"v":2,"files":[]}'), KEY, 'sid', 'manifest'));
+  const wrong = server.pack(server.encryptForShare(Buffer.from('{"v":3,"files":[]}'), KEY, 'sid', 'manifest'));
   await assert.rejects(decryptManifest(await importShareKey(KEY_TEXT), 'sid', wrong.toString('base64')));
 });
 
@@ -126,4 +127,28 @@ test('the viewer never sends the key anywhere and removes it from the address ba
   assert.doesNotMatch(source.replace(/\/\/.*$/gm, ''), /fetchShared\w+\([^)]*keyText/);
   assert.doesNotMatch(service, /keyText|location\.hash|#k=/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|innerHTML|\.insertAdjacentHTML/);
+});
+
+test('a v2 manifest carries the purpose and the day; a v1 one has none; hostile text is cleaned and cut', async () => {
+  const seal = (manifest) => server.pack(server.encryptForShare(Buffer.from(JSON.stringify(manifest)), KEY, 'sid', 'manifest')).toString('base64');
+  const key = await importShareKey(KEY_TEXT);
+  const files = [{ id: 'a1', name: 'p.png', mime: 'image/png', folder: 'root', size: 3 }];
+
+  const v2 = await decryptManifestInfo(key, 'sid', seal({ v: 2, sharedAt: '2026-10-09', purpose: 'For BDO account opening', files }));
+  assert.equal(v2.purpose, 'For BDO account opening');
+  assert.equal(v2.sharedAt, '2026-10-09');
+  assert.equal(v2.files.length, 1);
+
+  const v1 = await decryptManifestInfo(key, 'sid', seal({ v: 1, files }));
+  assert.deepEqual({ purpose: v1.purpose, sharedAt: v1.sharedAt }, { purpose: null, sharedAt: '' });
+  assert.equal((await decryptManifest(key, 'sid', seal({ v: 2, purpose: 'x', files }))).length, 1, 'the plain reader still works');
+
+  const hostile = await decryptManifestInfo(key, 'sid', seal({ v: 2, sharedAt: 'not a date', purpose: '  a\u202eb\n' + 'c'.repeat(100) + '  ', files }));
+  assert.equal([...hostile.purpose].length, 60);
+  assert.ok(!/[\u202e\n]/.test(hostile.purpose));
+  assert.equal(hostile.sharedAt, '');
+  const empty = await decryptManifestInfo(key, 'sid', seal({ v: 2, purpose: '   ', files }));
+  assert.equal(empty.purpose, null, 'blank means no watermark');
+  const notText = await decryptManifestInfo(key, 'sid', seal({ v: 2, purpose: { a: 1 }, files }));
+  assert.equal(notText.purpose, null);
 });

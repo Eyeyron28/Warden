@@ -19,6 +19,7 @@ const {
   runInTransaction,
 } = require('./folders');
 const { removeShares } = require('./shareCleanup');
+const { dropReminders } = require('./reminderCleanup');
 
 /**
  * Trash: deleting a file or folder is a soft delete. The encrypted data stays
@@ -292,12 +293,15 @@ async function deletePermanently(userId, kind, id) {
     if (!mongoose.Types.ObjectId.isValid(id)) throw httpError(404, 'Item not found.');
     const result = await Document.deleteOne({ _id: id, userId, deletedAt: { $ne: null }, trashBatchId: null });
     if (result.deletedCount === 0) throw httpError(404, 'Item not found.');
+    await dropReminders(userId, [id]);
     return { deletedDocuments: 1 };
   }
   if (kind === 'folder') {
     const trashed = typeof id === 'string' ? await TrashFolder.findOne({ userId, batchId: id }) : null;
     if (!trashed) throw httpError(404, 'Item not found.');
+    const goneIds = await Document.distinct('_id', { userId, trashBatchId: id });
     const result = await Document.deleteMany({ userId, trashBatchId: id });
+    await dropReminders(userId, goneIds);
     await TrashFolder.deleteOne({ _id: trashed._id });
     return { deletedDocuments: result.deletedCount };
   }
@@ -306,7 +310,9 @@ async function deletePermanently(userId, kind, id) {
 
 /** Empties the account's Trash. */
 async function emptyTrash(userId) {
+  const goneIds = await Document.distinct('_id', { userId, deletedAt: { $ne: null } });
   const documents = await Document.deleteMany({ userId, deletedAt: { $ne: null } });
+  await dropReminders(userId, goneIds);
   const folders = await TrashFolder.deleteMany({ userId });
   return { deletedDocuments: documents.deletedCount, deletedFolders: folders.deletedCount };
 }
@@ -318,7 +324,9 @@ async function emptyTrash(userId) {
  */
 async function purgeExpired(userId = null, now = new Date()) {
   const scope = userId ? { userId } : {};
+  const goneIds = await Document.distinct('_id', { ...scope, purgeAt: { $lte: now } });
   const documents = await Document.deleteMany({ ...scope, purgeAt: { $lte: now } });
+  await dropReminders(null, goneIds);
   const folders = await TrashFolder.deleteMany({ ...scope, purgeAt: { $lte: now } });
   return { deletedDocuments: documents.deletedCount, deletedFolders: folders.deletedCount };
 }

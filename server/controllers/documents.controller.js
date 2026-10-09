@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 
 const Document = require('../models/Document');
 const { recordEvent } = require('../utils/audit');
+const { parseExpiryInput, daysUntil, expiryStatus: docExpiryState } = require('../utils/docExpiry');
+const { rearmReminders } = require('../utils/reminderCleanup');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
@@ -52,7 +54,6 @@ function assertValidId(id) {
   }
 }
 
-const EXPIRING_SOON_THRESHOLD_DAYS = 30;
 const FOLDER_ROOT = 'root';
 
 /**
@@ -69,27 +70,9 @@ function computeExpiryInfo(expiryDate) {
   if (!expiryDate) {
     return { daysUntilExpiry: null, expiryStatus: 'ok' };
   }
-
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const now = new Date();
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const expiry = Date.UTC(
-    expiryDate.getFullYear(),
-    expiryDate.getMonth(),
-    expiryDate.getDate()
-  );
-  const daysUntilExpiry = Math.round((expiry - today) / MS_PER_DAY);
-
-  let expiryStatus;
-  if (daysUntilExpiry < 0) {
-    expiryStatus = 'expired';
-  } else if (daysUntilExpiry <= EXPIRING_SOON_THRESHOLD_DAYS) {
-    expiryStatus = 'expiring_soon';
-  } else {
-    expiryStatus = 'ok';
-  }
-
-  return { daysUntilExpiry, expiryStatus };
+  const daysUntilExpiry = daysUntil(expiryDate);
+  const state = docExpiryState(expiryDate);
+  return { daysUntilExpiry, expiryStatus: state === 'expired' ? 'expired' : state === 'soon' ? 'expiring_soon' : 'ok' };
 }
 
 /**
@@ -97,12 +80,16 @@ function computeExpiryInfo(expiryDate) {
  * and authTag never need to leave the server for a list view.
  */
 function toListSummary(doc, sharedIds = null) {
-  const { daysUntilExpiry, expiryStatus } = computeExpiryInfo(doc.expiryDate);
+  // The owner's "Expires on" day, stored READABLE by the server so reminders can go out while nobody is signed in.
+  // (Documents saved before docExpiresAt existed carry it as expiryDate; both names are the same date.)
+  const expiresAt = doc.docExpiresAt ?? doc.expiryDate ?? null;
+  const { daysUntilExpiry, expiryStatus } = computeExpiryInfo(expiresAt);
   return {
     id: doc._id,
     filename: doc.filename,
     folder: doc.folder,
-    expiryDate: doc.expiryDate,
+    expiryDate: expiresAt,
+    docExpiresAt: expiresAt,
     daysUntilExpiry,
     expiryStatus,
     syncStatus: doc.syncStatus,
@@ -156,6 +143,10 @@ const createDocument = asyncHandler(async (req, res) => {
   if (expiryDate !== undefined && typeof expiryDate !== 'string') {
     throw badRequest('expiryDate must be a string.');
   }
+  const docExpiresAt = expiryDate ? parseExpiryInput(expiryDate.slice(0, 10)) : null;
+  if (expiryDate && !docExpiresAt) {
+    throw badRequest('Expires on must be a date like 2027-03-05.');
+  }
 
   // SHA-256 of the ORIGINAL plaintext. Distinct from the AES-GCM authTag
   // produced below: the authTag proves the ciphertext wasn't tampered
@@ -192,7 +183,7 @@ const createDocument = asyncHandler(async (req, res) => {
     sniffedType: sniffImageType(buffer),
     previewKind: sniffPreviewKind(buffer),
     originDevice: 'pc', // phone client is future work
-    expiryDate: expiryDate || undefined,
+    docExpiresAt,
     syncStatus: 'pending',
     ...(thumbnail || {}),
   });
@@ -202,7 +193,8 @@ const createDocument = asyncHandler(async (req, res) => {
     id: document._id,
     filename: document.filename,
     folder: document.folder,
-    expiryDate: document.expiryDate,
+    expiryDate: document.docExpiresAt,
+    docExpiresAt: document.docExpiresAt,
     hasThumb: hasThumbnail(document),
     createdAt: document.createdAt,
   });
@@ -215,6 +207,7 @@ const LIST_PROJECTION = {
   filename: 1,
   folder: 1,
   expiryDate: 1,
+  docExpiresAt: 1,
   syncStatus: 1,
   thumbMime: 1,
   createdAt: 1,
@@ -312,7 +305,6 @@ const listFolderChildren = asyncHandler(async (req, res) => {
   res.status(200).json({ path: canonical, folders });
 });
 
-const URGENT_EXPIRY_STATUSES = new Set(['expired', 'expiring_soon']);
 
 /**
  * GET /api/documents/expiring
@@ -326,11 +318,12 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
   // expiryStatus depends on "today", so it can't be computed in the Mongo
   // query itself - fetch candidates that have a date at all, then filter
   // and sort in JS using the same computeExpiryInfo the list endpoint uses.
-  const documents = await Document.find({ userId: req.userId, deletedAt: null, expiryDate: { $ne: null } });
+  const documents = await Document.find({ userId: req.userId, deletedAt: null, docExpiresAt: { $ne: null } });
 
+  // Files with an "Expires on" day that is within 60 days or already past, soonest (most overdue) first.
   const expiring = documents
     .map((doc) => toListSummary(doc))
-    .filter((doc) => URGENT_EXPIRY_STATUSES.has(doc.expiryStatus))
+    .filter((doc) => doc.expiryStatus === 'expired' || doc.expiryStatus === 'expiring_soon')
     .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
   res.status(200).json(expiring);
@@ -624,8 +617,9 @@ const updateDocument = asyncHandler(async (req, res) => {
     throw documentNotFound();
   }
 
-  const { filename, folder, expiryDate } = req.body;
+  const { filename, folder, expiryDate, docExpiresAt } = req.body;
   let renamed = false;
+  let expiryEvent = null;
 
   if (filename !== undefined) {
     if (typeof filename !== 'string' || !filename.trim()) {
@@ -642,23 +636,31 @@ const updateDocument = asyncHandler(async (req, res) => {
     throw badRequest('Use Move to change which folder a document is in.');
   }
 
-  if (expiryDate !== undefined) {
-    if (expiryDate === null) {
-      document.expiryDate = null;
-    } else {
-      if (typeof expiryDate !== 'string') {
-        throw badRequest('expiryDate must be a valid date, or null to clear it.');
-      }
-      const parsed = new Date(expiryDate);
-      if (Number.isNaN(parsed.getTime())) {
-        throw badRequest('expiryDate must be a valid date, or null to clear it.');
-      }
-      document.expiryDate = parsed;
+  // docExpiresAt, or its older name expiryDate: the same single date.
+  const incoming = docExpiresAt !== undefined ? docExpiresAt : expiryDate;
+  if (incoming !== undefined) {
+    let next = null;
+    if (incoming !== null) {
+      // A date-only string; an ISO timestamp from an older client is cut to its day.
+      next = typeof incoming === 'string' ? parseExpiryInput(incoming.slice(0, 10)) : null;
+      if (!next) throw badRequest('Expires on must be a date like 2027-03-05, or null to clear it.');
+    }
+    const before = (document.docExpiresAt ?? document.expiryDate) ? new Date(document.docExpiresAt ?? document.expiryDate).getTime() : null;
+    const after = next ? next.getTime() : null;
+    if (before !== after) {
+      document.docExpiresAt = next;
+      document.expiryDate = undefined;
+      expiryEvent = next ? 'expiry_set' : 'expiry_cleared';
     }
   }
 
   await document.save();
   if (renamed) await recordEvent(req, 'rename', { targetId: document._id });
+  if (expiryEvent) {
+    // A new date starts the reminders over: every threshold may fire again for it.
+    await rearmReminders(req.userId, document._id);
+    await recordEvent(req, expiryEvent, { targetId: document._id });
+  }
 
   // toListSummary recomputes daysUntilExpiry/expiryStatus from
   // document.expiryDate every time it's called, so this reflects

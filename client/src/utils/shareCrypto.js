@@ -74,16 +74,30 @@ export function decryptBlob(key, shareId, slot, blob) {
  * @returns {Promise<Array<{ id: string, name: string, mime: string, folder: string, size: number }>>}
  */
 export async function decryptManifest(key, shareId, manifestBase64) {
+  return (await decryptManifestInfo(key, shareId, manifestBase64)).files;
+}
+
+/**
+ * The same, plus the optional purpose (manifest v2): { files, purpose, sharedAt }. The purpose is untrusted text
+ * like everything in here: cut to 60 characters, stripped of control characters, and only ever rendered as text.
+ */
+export async function decryptManifestInfo(key, shareId, manifestBase64) {
   const plain = await decryptBlob(key, shareId, 'manifest', base64ToBytes(manifestBase64));
   const parsed = JSON.parse(new TextDecoder().decode(plain));
-  if (parsed?.v !== 1 || !Array.isArray(parsed.files)) throw new Error('Unrecognised manifest.');
-  return parsed.files.map((file) => ({
+  if ((parsed?.v !== 1 && parsed?.v !== 2) || !Array.isArray(parsed.files)) throw new Error('Unrecognised manifest.');
+  const files = parsed.files.map((file) => ({
     id: String(file.id),
     name: String(file.name ?? 'file'),
     mime: String(file.mime ?? 'application/octet-stream'),
     folder: String(file.folder ?? 'root'),
     size: Number.isFinite(file.size) ? file.size : 0,
   }));
+  const purpose =
+    parsed.v === 2 && typeof parsed.purpose === 'string'
+      ? [...parsed.purpose.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim()].slice(0, 60).join('')
+      : '';
+  const sharedAt = parsed.v === 2 && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.sharedAt)) ? String(parsed.sharedAt) : '';
+  return { files, purpose: purpose || null, sharedAt: purpose ? sharedAt : '' };
 }
 
 // What may be previewed inline from a blob URL. Anything else - html, svg,

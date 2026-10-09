@@ -26,6 +26,9 @@
   --color-accent-wash: rgba(212, 94, 187, 0.12);
   --color-danger: #e5484d;
   --color-danger-wash: rgba(229, 72, 77, 0.12);
+  --color-warn: #e8aa3f;
+  --color-warn-wash: rgba(232, 170, 63, 0.14);
+  --color-ok: #4fbf8a;
 
   /* ---- Type ---- */
   --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
@@ -110,4 +113,7 @@
   --color-accent-wash: rgba(156, 43, 130, 0.1);
   --color-danger: #c22d38;
   --color-danger-wash: rgba(194, 45, 56, 0.08);
+  --color-warn: #8a5800;
+  --color-warn-wash: rgba(190, 125, 0, 0.12);
+  --color-ok: #1d7a52;
 }

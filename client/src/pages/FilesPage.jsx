@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowsOutCardinal,
+  CalendarBlank,
   DownloadSimple,
   Eye,
   FolderLock,
@@ -25,6 +26,9 @@ import NewMenu from '../components/NewMenu.jsx';
 import NewFolderModal from '../components/NewFolderModal.jsx';
 import PreviewsNotice from '../components/PreviewsNotice.jsx';
 import FrequentFiles from '../components/FrequentFiles.jsx';
+import ExpiringBanner from '../components/ExpiringBanner.jsx';
+import ExpiryModal from '../components/ExpiryModal.jsx';
+import { expiryBadge } from '../utils/expiry.js';
 import Modal from '../components/Modal.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import EditDocumentModal from '../components/EditDocumentModal.jsx';
@@ -70,7 +74,6 @@ import styles from './FilePages.module.css';
 // already clears it, and the route guard is about to unmount this page.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-const expiryLabel = (days) => (days === 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}`);
 
 // Name takes the rest; these are fixed but proportional to the screen, so wide
 // screens spread the content instead of leaving an empty band on the right.
@@ -113,6 +116,7 @@ function FilesPage() {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editingDocument, setEditingDocument] = useState(null);
+  const [expiryDocument, setExpiryDocument] = useState(null);
   const [moveState, setMoveState] = useState(null);
   const [renamingPath, setRenamingPath] = useState(null);
   const [sharingSelection, setSharingSelection] = useState(null);
@@ -225,12 +229,11 @@ function FilesPage() {
         document: doc,
         thumbDocument: doc,
         subtitle: `${formatDate(modified)} · ${formatBytes(doc.size)}${where}`,
-        badge:
-          doc.expiryStatus === 'expired' ? (
-            <StatusBadge label="Expired" tone="danger" />
-          ) : doc.expiryStatus === 'expiring_soon' ? (
-            <StatusBadge label={expiryLabel(doc.daysUntilExpiry)} tone="warning" />
-          ) : null,
+        // Red once expired, amber within 60 days; nothing otherwise.
+        badge: (() => {
+          const chip = expiryBadge(doc);
+          return chip ? <StatusBadge label={chip.label} tone={chip.tone} /> : null;
+        })(),
         cells: {
           modified: formatDate(modified),
           size: formatBytes(doc.size),
@@ -565,6 +568,18 @@ function FilesPage() {
     }
   };
 
+  // A new "Expires on" date: only its fields change in the list; the banner and Overview read it from the server.
+  const handleExpirySaved = (updated) => {
+    setDocuments((prev) =>
+      prev.map((doc) =>
+        doc.id === updated.id
+          ? { ...doc, expiryDate: updated.expiryDate, docExpiresAt: updated.docExpiresAt, daysUntilExpiry: updated.daysUntilExpiry, expiryStatus: updated.expiryStatus }
+          : doc
+      )
+    );
+    showToast(updated.docExpiresAt ? 'Expiry date saved' : 'Expiry date removed');
+  };
+
   const handleEditSaved = (updated) => {
     setDocuments((prev) => prev.map((doc) => (doc.id === updated.id ? { ...doc, ...updated } : doc)));
     refreshFolders();
@@ -608,6 +623,7 @@ function FilesPage() {
       { label: 'Download', icon: icon(DownloadSimple), onSelect: () => handleDownloadFiles([doc]) },
       { label: 'Share', icon: icon(ShareNetwork), onSelect: () => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` }) },
       { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setEditingDocument(doc) },
+      { label: doc.docExpiresAt ? 'Change expiry date…' : 'Set expiry date…', icon: icon(CalendarBlank), onSelect: () => setExpiryDocument(doc) },
       { label: 'Move to…', icon: icon(ArrowsOutCardinal), onSelect: () => openMoveForDocument(doc) },
       { label: 'Move to trash', danger: true, icon: icon(Trash), onSelect: () => handleTrashFromMenu(doc) },
     ];
@@ -717,6 +733,7 @@ function FilesPage() {
       )}
 
       {selection.count === 0 && <PreviewsNotice generator={previews} documents={documents} onRetried={refresh} />}
+      {!searchTerm && <ExpiringBanner />}
       {selection.count === 0 && !currentPath && !searchTerm && <FrequentFiles />}
       {actionError && <p className={styles.banner} role="alert">{actionError}</p>}
       {listError && <p className={styles.banner} role="alert">{listError}</p>}
@@ -793,6 +810,7 @@ function FilesPage() {
           onClose={closePreview}
           onShare={(doc) => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` })}
           onRename={setEditingDocument}
+          onSetExpiry={setExpiryDocument}
           onTrash={handleTrashFromPreview}
           onLoaded={backfillThumbnail}
         />
@@ -877,6 +895,10 @@ function FilesPage() {
             refresh();
           }}
         />
+      )}
+
+      {expiryDocument && (
+        <ExpiryModal document={expiryDocument} onClose={() => setExpiryDocument(null)} onSaved={handleExpirySaved} />
       )}
 
       {editingDocument && (

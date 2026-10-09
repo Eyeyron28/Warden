@@ -55,7 +55,7 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `SIGNUP_MODE` | no | `invite` (recommended) or `open`. |
 | `INVITE_CODE` | **Secret** | Required when `SIGNUP_MODE=invite`. At least 16 characters, random. Share it only with the people you invite. |
 | `REQUEST_ACCESS_TEXT` | no | Optional. One plain-text line (max 200 characters) shown on the landing page and the sign-up form in invite mode, e.g. `Email sam@example.com to ask for a code.` It is public and shown as text only. Never put the code in it. |
-| `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it to the daily Trash-purge job. Optional but recommended. |
+| `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it (`Authorization: Bearer <CRON_SECRET>`) to both daily jobs: the Trash purge and the **expiry reminders**. Without it neither endpoint exists (404), so **no reminder email is ever sent**: set it. |
 | `STORAGE_QUOTA_MB` | no | Optional. Per-account storage limit in MB; must be a positive number. Default 25. |
 | `TRUST_PROXY_HOPS` | no | Optional. Leave it unset: the app uses **1** automatically on Vercel. If you set it, it must be `1`; any other value makes the rate limiter see the wrong IP address. |
 | `OTP_ENABLED` | no | **Do not set it.** The emailed login code is on by default, and the server refuses to start in production if it is `false`. |
@@ -79,9 +79,18 @@ Never put these values in the repository, in screenshots or in chat. `server/.en
 3. **Settings, Environment Variables**: edit `PUBLIC_APP_URL` to that exact origin, then **Deployments**, open the latest one, **Redeploy**. Variables are read at start-up, so a redeploy is required for the change to apply.
 4. Open `https://<your-url>/api/health`. You should see `{"success":true,"status":"ok","database":"reachable"}`. If it says `unreachable`, check the Atlas network access and `MONGO_URI`.
 
-## 6. Daily Trash purge (cron)
+## 6. Daily jobs (cron)
 
-`vercel.json` contains one cron job that calls `/api/cron/purge-trash` once a day. Vercel Hobby allows cron jobs that run **at most once per day**, started any time within the scheduled hour. With `CRON_SECRET` set, Vercel sends it automatically and the endpoint removes Trash older than 30 days. Without it the endpoint answers 404 and nothing is lost: the database's TTL index and each account's own requests also purge expired Trash.
+`vercel.json` has two cron jobs, each once a day (Vercel Hobby allows at most once per day, started any time within the scheduled hour):
+
+| Path | Schedule (UTC) | What it does |
+|---|---|---|
+| `/api/cron/purge-trash` | `17 3 * * *` | Removes Trash items whose 30 days are over. |
+| `/api/cron/reminders` | `0 1 * * *` (09:00 in Manila) | Emails an account about documents that expire in 60, 30 or 7 days, or today. One email per account per run, counts only (no file names). |
+
+Both refuse every request unless `Authorization: Bearer <CRON_SECRET>` matches (constant-time compare); with `CRON_SECRET` unset the endpoints return 404. The reminder job is safe to run twice (a reminder is claimed in the database before it is sent, so nothing goes out twice), does at most 40 emails and about 20 seconds of work per run (the rest waits for the next run), and logs counts only. To run it by hand against a database you choose: `cd server && node scripts/run-reminders.js` (it uses `MONGO_URI` and the SMTP settings from the environment or `server/.env`, and prints the database name, never the URI).
+
+**Document expiry dates** are stored readable by the server (so a reminder can be sent while nobody is signed in); the file's contents and name stay encrypted. `AUDIT_HMAC_KEY`, `CRON_SECRET` and the SMTP settings are the only configuration this needs: there are no new variables.
 
 ## 7. Security checklist before inviting anyone
 
@@ -124,6 +133,15 @@ Run this on the real URL, with a throwaway email address you control.
 5. [ ] In the email's **This wasn't me** link: it opens a page that only explains and links to the password reset.
 6. [ ] Open **Overview**: most viewed, most downloaded, recently opened, files untouched for 180 days, share statistics. "My files" shows a "Frequently used" row after a few opens.
 7. [ ] Reload a page while signed in: you stay signed in (the token is in this tab's sessionStorage). Close the tab and reopen the site: you are signed out.
+
+## 9b-2. Share purpose, expiry reminders and vault health
+
+1. [ ] Share an image with **Purpose** "For testing". Open the link in a private window: a faint diagonal "For testing · shared <date> · Warden" covers the image; Download gives an image with the same text in it. A PDF share previews with the overlay, and downloads the original with the note "Watermark applies to preview and image downloads." A share with **no** purpose looks exactly as before.
+2. [ ] In **Atlas**, open the `shares` document for that link: no purpose text anywhere (it is inside the encrypted manifest). **Devices & activity** shows "Created a share link" without it.
+3. [ ] Give a file an **Expires on** date 6 days from today (file menu, Set expiry date). The list shows an amber "Expires in 6 days" chip (red "Expired" once past). Hit `https://<your-url>/api/cron/reminders` with the header `Authorization: Bearer <CRON_SECRET>` (or run `node scripts/run-reminders.js` from `server/`): one "Documents expiring soon" email arrives, no file name in it. Run it again: nothing more. Change the date: it can fire again.
+4. [ ] A request without the header, or with a wrong one, gets 401 (404 if CRON_SECRET is unset).
+5. [ ] **Overview** shows the Vault health card (score ring and checklist, each non-OK row with a button) and the Expiring documents card. Fix an item (for example stop a share link that has no password) and reload: the score changes. **Account** has "Email me about expiring documents" (on by default); turned off, the job sends nothing for that account.
+6. [ ] The Vercel dashboard (Settings, Cron Jobs) lists both jobs; after the first scheduled run their logs show counts only.
 
 ## 9c. Emails and share-link previews
 

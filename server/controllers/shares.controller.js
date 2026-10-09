@@ -64,6 +64,23 @@ async function usageFor(userId) {
 // ---------- input checks shared by create and edit ----------
 
 /** undefined / null / '' -> null (no limit); otherwise a whole number 1..100. */
+const PURPOSE_MAX = 60;
+
+/**
+ * The optional "Purpose" (e.g. "For BDO account opening"). Plain text, at most 60 characters. It is only ever
+ * put INSIDE the encrypted manifest (under the share key) and the owner's encrypted label (under the vault key):
+ * never stored in the clear, never in an audit event, a log, an email or a link preview. Returns null for none.
+ */
+function parsePurpose(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw badRequest('Purpose must be text.');
+  // Control characters and bidi overrides out; whitespace collapsed.
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned === '') return null;
+  if ([...cleaned].length > PURPOSE_MAX) throw badRequest(`Purpose can be at most ${PURPOSE_MAX} characters.`);
+  return cleaned;
+}
+
 function parseMaxDownloads(value) {
   if (value === undefined || value === null || value === '') return null;
   const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
@@ -121,6 +138,7 @@ const OWNER_FIELDS = (share, label) => ({
   id: share.shareId,
   name: label.name,
   fileNames: label.names,
+  purpose: label.purpose ?? null,
   fileCount: share.fileCount,
   totalBytes: share.totalBytes,
   createdAt: share.createdAt,
@@ -136,12 +154,14 @@ const OWNER_FIELDS = (share, label) => ({
 /** Decrypts a share's name (its file names, under the owner's vault key) for the owner. */
 function readLabel(share, dek) {
   try {
-    const { names } = JSON.parse(decryptFile(share.labelCipher, dek, share.labelIv, share.labelAuthTag).toString('utf8'));
+    const parsed = JSON.parse(decryptFile(share.labelCipher, dek, share.labelIv, share.labelAuthTag).toString('utf8'));
+    const { names } = parsed;
     const list = Array.isArray(names) ? names.map(String) : [];
     const name = list.length === 0 ? 'Shared files' : list.length === 1 ? list[0] : `${list[0]} and ${share.fileCount - 1} more`;
-    return { name, names: list };
+    const purpose = typeof parsed.purpose === 'string' && parsed.purpose ? parsed.purpose : null;
+    return { name, names: list, purpose };
   } catch {
-    return { name: 'Shared files', names: [] };
+    return { name: 'Shared files', names: [], purpose: null };
   }
 }
 
@@ -179,6 +199,7 @@ async function issueShare(req, res, documentIds) {
   const maxDownloads = parseMaxDownloads(req.body.maxDownloads);
   const recipientEmail = parseRecipient(req.body.recipientEmail);
   const passwordProtected = req.body.passwordProtected === true;
+  const purpose = parsePurpose(req.body.purpose);
 
   if (!documentIds.every((id) => typeof id === 'string')) {
     throw badRequest('Invalid document id.');
@@ -276,14 +297,21 @@ async function issueShare(req, res, documentIds) {
   }
 
   const manifest = encryptForShare(
-    Buffer.from(JSON.stringify({ v: 1, files: manifestFiles }), 'utf8'),
+    // No purpose = the manifest exactly as before (v1). With one: v2 adds the purpose and the day the link was made,
+    // which the viewer needs for the watermark text; both stay inside this encrypted blob.
+    Buffer.from(
+      JSON.stringify(
+        purpose ? { v: 2, sharedAt: new Date().toISOString().slice(0, 10), purpose, files: manifestFiles } : { v: 1, files: manifestFiles }
+      ),
+      'utf8'
+    ),
     shareKey,
     shareId,
     'manifest'
   );
   // The share's name for the owner's manager: the file names under the VAULT key.
   const label = encryptFile(
-    Buffer.from(JSON.stringify({ names: documents.slice(0, 20).map((doc) => doc.filename) }), 'utf8'),
+    Buffer.from(JSON.stringify({ names: documents.slice(0, 20).map((doc) => doc.filename), ...(purpose ? { purpose } : {}) }), 'utf8'),
     req.dek
   );
 
@@ -375,7 +403,7 @@ const listShares = asyncHandler(async (req, res) => {
     ready: true,
     expiresAt: { $gt: new Date() },
   })
-    .select('shareId expiresAt createdAt fileCount downloadCount maxDownloads passwordVerifierHash recipientEmail')
+    .select('shareId expiresAt createdAt fileCount downloadCount maxDownloads passwordVerifierHash recipientEmail labelCipher labelIv labelAuthTag')
     .sort({ createdAt: -1 });
 
   res.status(200).json(
@@ -388,6 +416,7 @@ const listShares = asyncHandler(async (req, res) => {
       maxDownloads: share.maxDownloads ?? null,
       passwordProtected: Boolean(share.passwordVerifierHash),
       emailRestricted: Boolean(share.recipientEmail),
+      purpose: readLabel(share, req.dek).purpose,
     }))
   );
 });

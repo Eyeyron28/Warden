@@ -37,6 +37,8 @@ export function describeEvent(event) {
     case 'move': return `Moved ${file}`;
     case 'delete': return `Moved ${file} to Trash or deleted it`;
     case 'restore': return `Restored ${file}`;
+    case 'expiry_set': return `Set an expiry date on ${file}`;
+    case 'expiry_cleared': return `Cleared the expiry date on ${file}`;
     case 'trash_emptied': return 'Emptied Trash';
     case 'export':
     case 'account_export': return 'Exported all files as a zip';

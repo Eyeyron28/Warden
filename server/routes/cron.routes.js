@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 
 const { purgeExpired } = require('../utils/trash');
+const { runReminders } = require('../utils/reminders');
 
 const router = express.Router();
 
@@ -26,6 +27,18 @@ function requireCronSecret(req, res, next) {
 router.get('/purge-trash', requireCronSecret, async (req, res, next) => {
   try {
     const result = await purgeExpired(null);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Daily at 01:00 UTC (09:00 in Manila): one email per account that has documents due a reminder, merged.
+// Idempotent (a reminder is claimed in the database before it is sent), bounded in time and in emails per run,
+// and it returns counts only.
+router.get('/reminders', requireCronSecret, async (req, res, next) => {
+  try {
+    const result = await runReminders();
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     next(err);

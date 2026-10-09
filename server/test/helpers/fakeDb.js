@@ -55,7 +55,7 @@ function matches(doc, filter) {
 }
 
 // Unique indexes the code under test relies on (a create that repeats one fails like MongoDB's E11000).
-const UNIQUE = { auditevents: ['userId', 'seq'], devices: ['userId', 'deviceIdHash'] };
+const UNIQUE = { auditevents: ['userId', 'seq'], devices: ['userId', 'deviceIdHash'], reminderlogs: ['userId', 'fileId', 'threshold'] };
 
 /** One fake model backed by world.tables[table]. `extras` can add or override methods. */
 function fakeModel(world, table, extras = {}) {
@@ -189,7 +189,7 @@ function stubModule(modulePath, exportsObject) {
 const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets',
+  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs',
 };
 
 function createWorld() {
@@ -223,6 +223,7 @@ function installMailer(world) {
   stubModule(path.join(__dirname, '..', '..', 'utils', 'email'), {
     ...real,
     sendEmail: async (message) => {
+      if (world.failMail) return false;
       if (world.sendDelayMs) await new Promise((resolve) => setTimeout(resolve, world.sendDelayMs));
       world.mails.push(message);
       return true;

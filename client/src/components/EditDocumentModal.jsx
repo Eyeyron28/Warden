@@ -6,6 +6,7 @@ import { updateDocument } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import { keepExtension, splitName } from '../utils/fileNames.js';
+import { EXPIRY_STORAGE_NOTE } from '../utils/expiry.js';
 import styles from './EditDocumentModal.module.css';
 
 // document.expiryDate arrives as an ISO string (e.g.
@@ -162,6 +163,7 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
               </button>
             )}
           </div>
+          <p className={styles.hint}>{EXPIRY_STORAGE_NOTE}</p>
         </div>
 
         <p className={styles.error} role="alert">

@@ -18,6 +18,7 @@ import { downloadBytes, fetchDocumentBytes, recordDownload } from '../services/d
 import { subscribeToken } from '../services/session.js';
 import { MAX_PREVIEW_BYTES, sniffPreviewType } from '../utils/previewType.js';
 import { formatDateTime } from '../utils/formatDate.js';
+import { formatExpiryDay } from '../utils/expiry.js';
 import { formatBytes } from '../utils/listing.js';
 import { isTopDialog, useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './preview/Preview.module.css';
@@ -79,7 +80,7 @@ const isEditable = (target) =>
  * component: bytes go when the file changes or the viewer closes, object URLs
  * are revoked by the viewers, and locking the vault closes it.
  */
-function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, onTrash, onLoaded }) {
+function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, onSetExpiry, onTrash, onLoaded }) {
   const doc = files[index];
   const overlayRef = useRef(null);
   const bytesRef = useRef(null);
@@ -338,6 +339,18 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
                 <dt>Folder</dt>
                 <dd>{!doc.folder || doc.folder === 'root' ? 'My files' : doc.folder}</dd>
               </div>
+              {onSetExpiry && (
+                <div>
+                  <dt>Expires on</dt>
+                  <dd>
+                    {doc.docExpiresAt ? formatExpiryDay(doc.docExpiresAt) : 'Not set'}
+                    {' '}
+                    <button type="button" className={styles.detailsLink} onClick={() => onSetExpiry(doc)}>
+                      {doc.docExpiresAt ? 'Change' : 'Set'}
+                    </button>
+                  </dd>
+                </div>
+              )}
             </dl>
           </aside>
         )}

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import Modal from '../components/Modal.jsx';
+import VaultHealthCard from '../components/VaultHealthCard.jsx';
 import { getOverview, getStaleFiles } from '../services/insightsService.js';
-import { deleteDocument } from '../services/documentsService.js';
+import { deleteDocument, listExpiringDocuments } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
+import { expiryPhrase } from '../utils/expiry.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './OverviewPage.module.css';
 
@@ -39,6 +41,7 @@ function OverviewPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [cleanup, setCleanup] = useState(null); // { items, selected:Set, busy, message }
+  const [expiring, setExpiring] = useState(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -51,7 +54,15 @@ function OverviewPage() {
 
   useEffect(() => {
     load();
+    listExpiringDocuments()
+      .then((list) => setExpiring(Array.isArray(list) ? list : []))
+      .catch(() => setExpiring([]));
   }, [load]);
+
+  // /overview#expiring (from the banner and the health card) scrolls to the expiring-documents card.
+  useEffect(() => {
+    if (data && window.location.hash === '#expiring') document.getElementById('expiring')?.scrollIntoView?.({ block: 'start' });
+  }, [data]);
 
   const openCleanup = async () => {
     setCleanup({ items: [], selected: new Set(), busy: true, message: '' });
@@ -108,6 +119,26 @@ function OverviewPage() {
     <div className={styles.page}>
       <h1 className={styles.title}>Overview</h1>
       <p className={styles.lede}>{plural(data.totals.files, 'file')} in your vault. These numbers come from how you use it; they never leave your account.</p>
+
+      <VaultHealthCard reloadKey={cleanup ? 0 : data.totals.files} />
+
+      <section className={`${styles.card} ${styles.wide}`} id="expiring" aria-labelledby="ov-expiring" data-testid="expiring-card">
+        <h2 id="ov-expiring" className={styles.heading}>Expiring documents</h2>
+        {expiring === null ? (
+          <p className={styles.empty}>Loading…</p>
+        ) : expiring.length === 0 ? (
+          <p className={styles.empty}>Nothing has expired or expires in the next 60 days. Give a file an expiry date from its menu in My files (the “…” button, then Set expiry date).</p>
+        ) : (
+          <ol className={styles.list}>
+            {expiring.map((doc) => (
+              <li key={doc.id} className={styles.row}>
+                <Link to={openLink(doc)} className={styles.fileLink}>{doc.filename}</Link>
+                <span className={`${styles.meta} ${doc.expiryStatus === 'expired' ? styles.expired : styles.soon}`}>{expiryPhrase(doc)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <div className={styles.grid}>
         <section className={styles.card} aria-labelledby="ov-viewed">

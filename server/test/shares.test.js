@@ -169,7 +169,7 @@ test("another account cannot share, list or revoke the first account's files and
   assert.equal(own.json.length, 1);
   assert.deepEqual(
     Object.keys(own.json[0]).sort(),
-    ['createdAt', 'downloadCount', 'emailRestricted', 'entryCount', 'expiresAt', 'id', 'maxDownloads', 'passwordProtected']
+    ['createdAt', 'downloadCount', 'emailRestricted', 'entryCount', 'expiresAt', 'id', 'maxDownloads', 'passwordProtected', 'purpose']
   );
 });
 

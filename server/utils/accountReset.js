@@ -21,6 +21,7 @@ const { templates } = require('./emailTemplates');
 const { recordEvent } = require('./audit');
 const Device = require('../models/Device');
 const AuditEvent = require('../models/AuditEvent');
+const ReminderLog = require('../models/ReminderLog');
 
 /**
  * What every password reset ends with, whichever way it started (recovery key
@@ -96,6 +97,7 @@ async function wipeVault(userId) {
   // The devices and the activity log belong to the old vault too, and the chain starts again.
   await Device.deleteMany({ userId });
   await AuditEvent.deleteMany({ userId });
+  await ReminderLog.deleteMany({ userId });
   await User.updateOne({ _id: userId }, { $set: { auditHead: { seq: 0, hash: '', at: null } } });
 }
 
