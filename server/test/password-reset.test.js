@@ -130,7 +130,7 @@ test('start: known, unknown, unverified and malformed addresses get the same ans
     assert.match(json.challengeToken, /^[0-9a-f]{24}\.[0-9a-f]{64}$/);
   }
   assert.equal(world.mails[0].to, 'ana@example.com');
-  assert.match(world.mails[0].subject, /password reset code/i);
+  assert.match(world.mails[0].subject, /Reset your Warden password/);
 
   for (const email of [undefined, null, 5, ['a@example.com'], { $ne: null }]) {
     assert.equal((await start(email)).error?.status, 400);
@@ -516,7 +516,7 @@ test('try another way: the notification email has the time and browser, no IP, n
   assert.match(mail.text, /changed using your recovery key/);
   assert.match(mail.text, /If this wasn't you/);
   assert.match(mail.text, /Browser: Chrome on Windows/);
-  assert.match(mail.text, /When: \w{3}, \d{2} \w{3} \d{4}/);
+  assert.match(mail.text, /When: .* Philippine Time \(UTC\+8\)/);
   assert.doesNotMatch(mail.text, /https?:|www\.|\/reset|token/i, 'no links, no tokens');
   assert.doesNotMatch(mail.text, /203\.0\.113\.200/, 'no IP address');
   assert.doesNotMatch(mail.text, new RegExp(recoveryKey), 'never the key');

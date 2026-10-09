@@ -112,7 +112,7 @@ const open = async (shareId) => (await call(V.openAccess, { params: { shareId } 
 const hdr = (token) => ({ 'x-share-access': token });
 const manifestOf = (shareId, token) => call(V.viewSharedManifest, { params: { shareId }, headers: hdr(token) });
 const fileOf = (shareId, fileId, token) => call(V.viewSharedFile, { params: { shareId, fileId }, headers: hdr(token) });
-const lastCode = () => /Your code is (\d{6})\./.exec(world.mails[world.mails.length - 1].text)[1];
+const lastCode = () => /^(\d{6})$/m.exec(world.mails[world.mails.length - 1].text)[1];
 const wrongOf = (c) => (c === '000000' ? '000001' : '000000');
 const GENERIC_404 = 'This link is invalid or has expired.';
 
@@ -324,7 +324,8 @@ test('email gate: nothing is served before the code; the right code works once; 
   assert.equal(world.mails.length, 1);
   const mail = world.mails[0];
   assert.equal(mail.to, 'bob@example.com');
-  assert.match(mail.text, /alice@example.com shared files with you/);
+  assert.match(mail.text, /Someone shared a document with you on Warden/);
+  assert.doesNotMatch(mail.text, /alice@example\.com/, 'the owner\'s address is not in the recipient\'s email');
   assert.match(mail.text, /expires in 5 minutes/);
   const key = made.shareKey;
   for (const forbidden of [made.id, key.toString('hex'), key.toString('base64'), key.toString('base64url'), 'https://', 'http://', '#k=', 'warden.test', '/shared/']) {

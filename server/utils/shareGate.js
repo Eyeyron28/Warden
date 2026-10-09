@@ -4,6 +4,7 @@ const ShareAccess = require('../models/ShareAccess');
 const OtpChallenge = require('../models/OtpChallenge');
 const User = require('../models/User');
 const { sendEmail } = require('./email');
+const { templates } = require('./emailTemplates');
 const { consumeBudget } = require('../middleware/rateLimit');
 const { otpTtlMinutes } = require('./otpConfig');
 const { generateCode, newSalt, hashCode, codeMatches } = require('./otp');
@@ -73,16 +74,8 @@ function codePayload(challenge) {
 }
 
 async function sendCodeEmail(share, code, ttlMinutes) {
-  const owner = await User.findById(share.ownerUserId);
-  const who = owner?.email ? `${owner.email} shared files with you` : 'Someone shared files with you';
-  // Only the code and who shared it. Never the link, never any key.
-  return sendEmail({
-    to: share.recipientEmail,
-    subject: 'Your Warden share code',
-    text:
-      `${who} using Warden.\n\nYour code is ${code}.\n\nIt expires in ${ttlMinutes} minute${ttlMinutes === 1 ? '' : 's'}. ` +
-      "Enter it on the page you opened to see the files. If you weren't expecting this, ignore this email.",
-  });
+  // Only the code. Not the link, not any key, not who shared it, not what was shared.
+  return sendEmail({ to: share.recipientEmail, ...templates.shareCode({ code, ttlMinutes }) });
 }
 
 /**

@@ -10,7 +10,7 @@ import styles from './Modal.module.css';
  * paired devices) and per-item ones (sharing) so nothing ever pushes the
  * document list down or renders inline in the page body.
  */
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, wide = false }) {
   const dialogRef = useRef(null);
   // Focus moves in, Tab stays inside, and focus returns to what opened it.
   useFocusTrap(dialogRef, true);
@@ -27,7 +27,7 @@ function Modal({ title, onClose, children }) {
     <div className={styles.backdrop} onClick={onClose}>
       <div
         ref={dialogRef}
-        className={styles.dialog}
+        className={wide ? styles.dialog + " " + styles.wide : styles.dialog}
         role="dialog"
         aria-modal="true"
         aria-label={title}

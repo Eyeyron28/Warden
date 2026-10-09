@@ -106,6 +106,10 @@
       "destination": "/api"
     },
     {
+      "source": "/shared/(.*)",
+      "destination": "/shared-preview.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

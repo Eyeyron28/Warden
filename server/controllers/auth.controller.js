@@ -16,7 +16,8 @@ const {
 } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
 const { assertInviteCode, signupMode, requestAccessText } = require('../utils/inviteGate');
-const { trustThisBrowser, isTrustedFor } = require('../utils/trustedDevice');
+const { trustThisBrowser, isTrustedFor, labelFromUserAgent } = require('../utils/trustedDevice');
+const { templates } = require('../utils/emailTemplates');
 const { createSession, destroySession, destroyAllSessionsForUser } = require('../utils/sessionStore');
 const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
@@ -192,15 +193,7 @@ const signup = asyncHandler(async (req, res) => {
     // Nothing created, nothing changed - just an optional heads-up to the
     // real owner, in case this was them forgetting they already have an
     // account rather than someone else probing their email.
-    await sendEmail({
-      to: normalizedEmail,
-      subject: 'Someone tried to create a Warden account with your email',
-      text:
-        'Hello,\n\nSomeone tried to register for Warden with this email address, which already has an account.\n\n' +
-        'Nothing was changed: your account, your documents and your password are exactly as they were, and no new account was created.\n\n' +
-        'If it was you, you can simply log in, or use "Forgot password" on the login page to reset your password. ' +
-        'If it was not you, you do not need to do anything.',
-    });
+    await sendEmail({ to: normalizedEmail, ...templates.signupAttempt({ when: new Date() }) });
     // Decoy recovery key - see function comment above for why this exists.
     res.status(200).json({ ...responseBody, recoveryKey: generateRecoveryKey() });
     return;
@@ -242,14 +235,7 @@ const signup = asyncHandler(async (req, res) => {
 
   const appUrl = resolvePublicAppUrl(req);
   const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
-  await sendEmail({
-    to: normalizedEmail,
-    subject: 'Verify your Warden account',
-    text:
-      'Welcome to Warden.\n\nVerify your email to finish setting up your account:\n' +
-      `${verifyUrl || `Verification code: ${verificationToken}`}\n\n` +
-      'This link expires in 24 hours. You will not be able to log in until you verify.',
-  });
+  await sendEmail({ to: normalizedEmail, ...templates.verifyEmail({ verifyUrl }) });
 
   res.status(200).json({ ...responseBody, recoveryKey });
 });
@@ -312,14 +298,7 @@ const resendVerification = asyncHandler(async (req, res) => {
 
     const appUrl = resolvePublicAppUrl(req);
     const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
-    await sendEmail({
-      to: normalizedEmail,
-      subject: 'Your new Warden verification link',
-      text:
-        'Here is a new link to verify your Warden account:\n' +
-        `${verifyUrl || `Verification code: ${verificationToken}`}\n\n` +
-        'This link expires in 24 hours. Any earlier verification link no longer works.',
-    });
+    await sendEmail({ to: normalizedEmail, ...templates.verifyEmailResend({ verifyUrl }) });
   }
 
   res.status(200).json({
@@ -484,7 +463,11 @@ const verifyOtp = asyncHandler(async (req, res) => {
 
   const sessionToken = await createSession(user._id, dek);
   // The owner ticked "Trust this browser": only now, after a correct code.
-  if (req.body.trustDevice === true) await trustThisBrowser(req, res, user._id);
+  if (req.body.trustDevice === true) {
+    await trustThisBrowser(req, res, user._id);
+    // Best effort: a heads-up that a browser now skips the emailed code.
+    sendEmail({ to: user.email, ...templates.trustedBrowser({ browser: labelFromUserAgent(req.headers['user-agent']), when: new Date() }) }).catch(() => false);
+  }
   res.status(200).json({ sessionToken });
 });
 

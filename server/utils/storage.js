@@ -67,10 +67,13 @@ async function getUsage(userId) {
 }
 
 function quotaError(usage, addBytes) {
-  const error = new Error(
-    `Not enough storage: this needs ${(addBytes / MB).toFixed(1)} MB but only ${(usage.availableBytes / MB).toFixed(1)} MB of your ` +
-      `${Math.round(usage.quotaBytes / MB)} MB is free. Delete files and empty Trash to make room.`
-  );
+  // Says what happened and what to do; never prints a "0.0 MB" figure for a full account.
+  const todo = 'Delete files or empty Trash to make room, then try again.';
+  const message =
+    usage.availableBytes < 50 * 1024
+      ? `Your storage is full. This needs ${(addBytes / MB).toFixed(1)} MB. ${todo}`
+      : `Not enough storage: this needs ${(addBytes / MB).toFixed(1)} MB but only ${(usage.availableBytes / MB).toFixed(1)} MB of your ${Math.round(usage.quotaBytes / MB)} MB is free. ${todo}`;
+  const error = new Error(message);
   error.status = 413;
   error.code = 'STORAGE_QUOTA';
   return error;

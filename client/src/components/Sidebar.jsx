@@ -15,7 +15,6 @@ import {
 } from '@phosphor-icons/react';
 
 import FolderTree from './FolderTree.jsx';
-import StorageMeter from './StorageMeter.jsx';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Sidebar.module.css';
 
@@ -24,7 +23,7 @@ const navClass = ({ isActive }) => `${styles.item} ${isActive ? styles.itemActiv
 
 /**
  * Persistent left navigation: My files (with a lazily loaded folder tree),
- * Photos, Shared, Trash, then Account and the storage meter at the bottom.
+ * Photos, Shared, Trash, then then Account at the bottom.
  *
  * On desktop a button at the top collapses it to an icon rail (about 64px):
  * every icon gets a tooltip with its label, the active item stays
@@ -155,7 +154,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           <UserCircle size={ICON} weight="regular" aria-hidden="true" />
           {label('Account')}
         </NavLink>
-        <StorageMeter version={version} compact={rail} onTip={rail ? { show: showTip, hide: () => setTip(null) } : null} />
       </nav>
       {tip &&
         createPortal(

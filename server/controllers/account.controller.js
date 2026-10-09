@@ -6,6 +6,7 @@ const TrustedDevice = require('../models/TrustedDevice');
 const mongoose = require('mongoose');
 const { currentTokenHash, clearTrustCookie } = require('../utils/trustedDevice');
 const { sendEmail } = require('../utils/email');
+const { templates } = require('../utils/emailTemplates');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
 const { deleteAccountData } = require('../utils/accountDeletion');
 const { checkPasswordWithLockout } = require('./auth.controller');
@@ -119,14 +120,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
 
   // Best effort, and never allowed to undo the deletion. We can only promise
   // what the server held; this message is not a copy of any of it.
-  await sendEmail({
-    to: email,
-    subject: 'Your Warden account has been deleted',
-    text:
-      'Your Warden account and all of its data have been permanently deleted. ' +
-      'We have no copy of your documents and cannot recover them. ' +
-      'This message is only a confirmation; if you did not do this, contact us right away.',
-  }).catch(() => false);
+  await sendEmail({ to: email, ...templates.accountDeleted({ when: new Date() }) }).catch(() => false);
 
   clearTrustCookie(req, res);
   res.status(200).json({ success: true });

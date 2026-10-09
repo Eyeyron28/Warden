@@ -19,6 +19,7 @@ const { removeShares } = require('./shareCleanup');
 const { destroyAllSessionsForUser } = require('./sessionStore');
 const { revokeAllTrustedDevices, clearTrustCookie, labelFromUserAgent } = require('./trustedDevice');
 const { sendEmail } = require('./email');
+const { templates } = require('./emailTemplates');
 
 /**
  * What every password reset ends with, whichever way it started (recovery key
@@ -96,13 +97,6 @@ async function wipeVault(userId) {
   await BackupLog.deleteMany({ userId });
 }
 
-const NOTICES = {
-  'recovery-key':
-    'Your Warden password was changed using your recovery key. Your documents were kept.',
-  wipe:
-    'Your Warden password was reset without your recovery key. Your previous vault was erased and replaced by a new, empty one with a new recovery key.',
-};
-
 /**
  * After ANY successful reset: nothing from before the reset keeps working, this
  * browser's "trusted" cookie goes too, and the owner is told. Does NOT log
@@ -120,21 +114,9 @@ async function finishReset(req, res, user, { method }) {
   await RecoveryRequestToken.deleteMany({ userId: user._id });
   clearTrustCookie(req, res);
 
-  const when = new Date().toUTCString();
   const browser = labelFromUserAgent(req.headers?.['user-agent']);
   // Best effort: the reset has happened either way.
-  await sendEmail({
-    to: user.email,
-    subject: 'Your Warden password was changed',
-    text:
-      `${NOTICES[method] || NOTICES['recovery-key']}\n\n` +
-      `When: ${when}\nBrowser: ${browser}\n\n` +
-      'Every device that was signed in has been signed out, and trusted browsers were removed. ' +
-      'The next login needs your new password and an emailed code.\n\n' +
-      (method === 'wipe'
-        ? "If this wasn't you, someone can read this mailbox: secure your email account first, then contact whoever runs this Warden."
-        : "If this wasn't you, someone has your recovery key. Contact whoever runs this Warden right away, and treat the documents in this vault as exposed."),
-  }).catch(() => false);
+  await sendEmail({ to: user.email, ...templates.passwordChanged({ method, when: new Date(), browser }) }).catch(() => false);
 }
 
 module.exports = { extractRecoverySalt, finalizeReset, wipeVault, finishReset };

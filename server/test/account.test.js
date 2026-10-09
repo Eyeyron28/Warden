@@ -226,7 +226,7 @@ async function call(handler, { userId, body = {} } = {}) {
   await handler({ userId, body, dek: null }, res, (err) => { out.error = err; });
   return out;
 }
-const lastCode = () => /code is (\d{6})\./.exec(world.mails[world.mails.length - 1].text)[1];
+const lastCode = () => /^(\d{6})$/m.exec(world.mails[world.mails.length - 1].text)[1];
 const GENERIC = 'That code is incorrect or has expired.';
 
 async function readyToDelete(user) {
@@ -257,7 +257,7 @@ test('the delete code is for deletion only and does not touch the vault key', as
   const { token } = await readyToDelete(user);
   const challenge = world.tables.otpchallenges[0];
   assert.equal(challenge.purpose, 'delete-account');
-  assert.match(world.mails[0].subject, /deletion code/i);
+  assert.match(world.mails[0].subject, /account deletion/i);
   assert.match(world.mails[0].text, /ignore this email/i);
   const unwrapped = cryptoUtils.unwrapKey(challenge.wrappedDek, Buffer.from(token.split('.')[1], 'hex'), challenge.wrappedDekIv, challenge.wrappedDekAuthTag);
   assert.equal(unwrapped.length, 32);
@@ -369,7 +369,7 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(mail.to, 'ana@example.com');
   assert.match(mail.subject, /deleted/i);
   assert.match(mail.text, /permanently deleted/);
-  assert.ok(!/code is \d{6}/.test(mail.text));
+  assert.ok(!/^\d{6}$/m.test(mail.text));
 });
 
 test('a mid-way failure rolls everything back, and the deletion can simply be run again', async () => {
@@ -436,7 +436,7 @@ test('resending the delete code works for its owner only and keeps its purpose',
   assert.equal(stolen.error.status, 401);
   const ok = await call(resendDeleteCode, { userId: ana._id, body: { challengeToken: token } });
   assert.equal(ok.status, 200);
-  assert.match(world.mails[world.mails.length - 1].subject, /deletion code/i);
+  assert.match(world.mails[world.mails.length - 1].subject, /account deletion/i);
   assert.equal(world.tables.otpchallenges[0].purpose, 'delete-account');
 });
 

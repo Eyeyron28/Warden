@@ -23,6 +23,10 @@
   box-shadow: var(--shadow-elevated);
 }
 
+.wide {
+  max-width: 760px;
+}
+
 .header {
   position: sticky;
   top: 0;

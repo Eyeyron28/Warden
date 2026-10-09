@@ -229,7 +229,7 @@ function SharedDocumentPage() {
   // development) still sees it after the effect below has cleared it.
   const [keyText] = useState(() => readKeyFromHash(window.location.hash));
 
-  // loading | invalid | email | password | ready
+  // loading | invalid | incomplete | email | password | ready
   const [phase, setPhase] = useState('loading');
   const [access, setAccess] = useState(null);
   const [shareKey, setShareKey] = useState(null);
@@ -289,7 +289,8 @@ function SharedDocumentPage() {
       return;
     }
     if (!keyText) {
-      setPhase('invalid');
+      // The share exists and its gates are passed, but the address has no key: the link was cut off.
+      setPhase('incomplete');
       return;
     }
     try {
@@ -407,6 +408,17 @@ function SharedDocumentPage() {
             <p className={styles.invalidBody}>
               It may have expired, been stopped by the person who shared it, used up its downloads, or be missing the
               end of the address. If you reloaded this page, open the full link you were sent again.
+            </p>
+          </div>
+        )}
+
+        {phase === 'incomplete' && (
+          <div className={styles.invalidState}>
+            <LinkBreak size={40} weight="light" className={styles.invalidIcon} />
+            <h1 className={styles.invalidTitle}>This link is incomplete — ask the sender to share it again.</h1>
+            <p className={styles.invalidBody}>
+              The last part of the address (everything after the #) is missing, so the files cannot be opened. Some apps cut it off. Try
+              opening the link in your phone&apos;s browser, or ask the sender to send it again.
             </p>
           </div>
         )}

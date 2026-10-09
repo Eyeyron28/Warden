@@ -147,7 +147,7 @@ async function call(handler, body) {
   return out;
 }
 
-const lastCode = () => /login code is (\d{6})\./.exec(world.mails[world.mails.length - 1].text)[1];
+const lastCode = () => /^(\d{6})$/m.exec(world.mails[world.mails.length - 1].text)[1];
 const wrongCode = (real) => (real === '000000' ? '000001' : '000000');
 const GENERIC = 'That code is incorrect or has expired.';
 
@@ -170,7 +170,7 @@ test('password step: no session, a challenge is created and a code is emailed', 
   assert.equal(world.mails.length, 1);
   assert.equal(world.mails[0].to, 'ana@example.com');
   assert.match(world.mails[0].text, /expires in 5 minutes/);
-  assert.match(world.mails[0].text, /didn't try to log in/i);
+  assert.match(world.mails[0].text, /If you didn't request this, ignore this email/i);
   assert.equal(world.challenges[0].userId, user._id);
   const ttl = new Date(challenge.expiresAt) - Date.now();
   assert.ok(ttl > 4.9 * 60 * 1000 && ttl <= 5 * 60 * 1000, 'default 5 minutes');
@@ -288,7 +288,7 @@ test("another account's challengeId with your own key fails", async () => {
   addUser('ben@example.com');
   const anas = await login('ana@example.com');
   const bens = await login('ben@example.com');
-  const anasCode = lastCode().length && world.mails.find((m) => m.to === 'ana@example.com').text.match(/is (\d{6})\./)[1];
+  const anasCode = lastCode().length && world.mails.find((m) => m.to === 'ana@example.com').text.match(/^(\d{6})$/m)[1];
 
   const mixed = `${anas.challengeToken.split('.')[0]}.${bens.challengeToken.split('.')[1]}`;
   const result = await call(verifyOtp, { challengeToken: mixed, code: anasCode });
@@ -415,10 +415,10 @@ test('codes are uniform 6-digit strings and never logged in production', async (
   const savedEnv = process.env.NODE_ENV;
   try {
     process.env.NODE_ENV = 'production';
-    const sent = await sendEmail({ to: 'ana@example.com', subject: 'Your Warden login code', text: 'Your Warden login code is 424242.' });
+    const sent = await sendEmail({ to: 'ana@example.com', subject: 'Your Warden sign-in code', text: 'Your code:\n424242\n', html: '<p>424242</p>' });
     assert.equal(sent, false);
     process.env.NODE_ENV = 'development';
-    const devSent = await sendEmail({ to: 'ana@example.com', subject: 'Your Warden login code', text: 'Your Warden login code is 424242.' });
+    const devSent = await sendEmail({ to: 'ana@example.com', subject: 'Your Warden sign-in code', text: 'Your code:\n424242\n', html: '<p>424242</p>' });
     assert.equal(devSent, true);
   } finally {
     console.log = original.log;

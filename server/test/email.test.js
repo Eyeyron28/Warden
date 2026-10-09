@@ -102,6 +102,7 @@ test('sendEmail with SMTP unset logs the full email to the console (dev fallback
       to: 'user@example.com',
       subject: 'Verify',
       text: 'Open https://warden.example/verify-email?token=abc123',
+      html: '<p>Open https://warden.example/verify-email?token=abc123</p>',
     })
   );
   assert.equal(result, true);
@@ -118,6 +119,7 @@ test('sendEmail drops a hostile recipient before the console fallback or Nodemai
       to: 'victim@example.com\r\nBcc: attacker@evil.com',
       subject: 'x',
       text: 'secret link',
+      html: '<p>secret link</p>',
     })
   );
   assert.equal(result, false);
@@ -130,6 +132,6 @@ test('sendEmail drops a hostile recipient before the console fallback or Nodemai
 });
 
 test('sendEmail never throws, even for a non-string recipient', async () => {
-  const { result } = await captureConsole(() => sendEmail({ to: { evil: true }, subject: 'x', text: 'y' }));
+  const { result } = await captureConsole(() => sendEmail({ to: { evil: true }, subject: 'x', text: 'y', html: '<p>y</p>' }));
   assert.equal(result, false);
 });

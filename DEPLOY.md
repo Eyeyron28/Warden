@@ -130,6 +130,19 @@ Pairing and sync work against the live URL; nothing about them depends on being 
 
 Phone sync limits on Vercel Hobby: each request and response is under 4.5 MB (a file is at most 4 MiB, sent as raw bytes), so a sync of many files is many small requests; if a sync is interrupted, run it again and it continues where it stopped.
 
+## 9c. Emails and share-link previews
+
+Every email goes through `server/utils/emailTemplates.js` (HTML plus a plain-text twin, sent as multipart/alternative, From name "Warden"). Check them in a real inbox after deploying:
+
+1. [ ] From `server/`, with the real SMTP settings in `.env`: `node scripts/send-test-emails.js you@gmail.com --force` (`--force` is needed on a production environment; the samples use a fixed example code, never a real one). 13 messages arrive, each subject prefixed `[test]`.
+2. [ ] Open them in Gmail on a computer and in the Gmail phone app, in light and in dark mode: the code sits alone in the highlighted box and a double-tap selects exactly the six digits; nothing runs off the screen at phone width; the inbox preview line reads well.
+3. [ ] They land in **Inbox**, not Spam. If they land in Spam, mark one "Not spam" and check the sender (SPF and DKIM are Gmail's own when you send through Gmail SMTP; a different `MAIL_FROM` address than the account you log in with is the usual cause).
+4. [ ] Trigger the real flows once (log in, "Forgot password", delete-account step 2, pair a device, a share restricted to an email) and check each uses the same layout.
+
+What Warden sends: sign-in code, account-deletion code, password-reset code, pair-device code, share code (to the recipient), verify account, new verification link, "someone tried to sign up with your email", "your password was changed", "your account was deleted", "a new device was paired", "new trusted browser". Subjects are fixed text: never a code, a file name or an address. These are transactional messages, so there is no unsubscribe link.
+
+**Share-link previews.** A chat app that fetches a share link to draw a preview card gets `shared-preview.html` (written by `npm run build`, served for `/shared/*` by the rewrite in `vercel.json`): a generic title and description, `noindex`, and only the fixed Warden icon. It never contains a file name, purpose or owner. The key after `#` is never sent to Warden: browsers do not transmit fragments.
+
 ## 10. Limits to know about (Vercel Hobby)
 
 Figures are from Vercel's documentation, read on 2026-10-07; limits change, so re-check the linked pages.

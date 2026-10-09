@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import QRCode from 'qrcode';
-import { Check, Copy, Trash } from '@phosphor-icons/react';
+import { Trash } from '@phosphor-icons/react';
 
 import Modal from './Modal.jsx';
+import ShareActions from './ShareActions.jsx';
 import {
   createShare,
   createBulkShare,
@@ -69,8 +69,6 @@ function ShareModal({ documentIds, title, onClose }) {
   const [maxDownloadsText, setMaxDownloadsText] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [createdShare, setCreatedShare] = useState(null);
-  const [qrDataUrl, setQrDataUrl] = useState(null);
-  const [copied, setCopied] = useState(false);
 
   const [shares, setShares] = useState([]);
   const [sharesLoading, setSharesLoading] = useState(isSingle);
@@ -113,28 +111,6 @@ function ShareModal({ documentIds, title, onClose }) {
   useEffect(() => {
     refreshShares();
   }, [refreshShares]);
-
-  // Renders the QR client-side (qrcode npm package) whenever a new share
-  // link is generated - no backend involvement at all.
-  useEffect(() => {
-    if (!createdShare?.shareUrl) {
-      setQrDataUrl(null);
-      return undefined;
-    }
-
-    let cancelled = false;
-    QRCode.toDataURL(createdShare.shareUrl, { margin: 1, width: 220 })
-      .then((url) => {
-        if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setQrDataUrl(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [createdShare]);
 
   // The endpoint takes durationHours (an offset from now); the interface only
   // ever offers whole days (utils/shareExpiry.js), converted here.
@@ -202,25 +178,16 @@ function ShareModal({ documentIds, title, onClose }) {
           throw err;
         }
       }
-      // result.shareUrl is built server-side from PUBLIC_APP_URL (or, in
-      // development only, the PC's LAN address), never from this tab's own
-      // address. Its #fragment is the share's key: it appears here, once,
-      // and nowhere on the server. The localhost variant below is only a
-      // same-machine convenience for the dev LAN-IP case, where localhost
-      // is a secure context with no certificate warning.
-      const localUrl = new URL(shareUrl);
-      const devLanLink = /^\d+\.\d+\.\d+\.\d+$/.test(localUrl.hostname);
-      localUrl.hostname = 'localhost';
-
+      // result.shareUrl is built server-side from PUBLIC_APP_URL (in development only, from the local
+      // dev address), never from this tab's own address. Its #fragment is the share's key: it appears
+      // here, once, and nowhere on the server.
       setCreatedShare({
         ...result,
         shareUrl,
         passwordProtected: Boolean(result.passwordPending),
-        localShareUrl: devLanLink ? localUrl.toString() : null,
       });
       setPassword('');
       if (result.usage) setUsage(result.usage);
-      setCopied(false);
       setBulkRevoked(false);
       setConfirmingBulkRevoke(false);
       refreshShares();
@@ -258,19 +225,6 @@ function ShareModal({ documentIds, title, onClose }) {
     setCustomExpiry('');
   };
 
-  const handleCopy = async () => {
-    if (!createdShare?.shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(createdShare.shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API can fail (permissions, insecure context on some
-      // browsers) - the link is still fully visible/selectable in the
-      // text field below, so this isn't a hard failure.
-    }
-  };
-
   const handleRevokeClick = (shareId) => {
     if (confirmingRevokeId === shareId) {
       setConfirmingRevokeId(null);
@@ -295,7 +249,7 @@ function ShareModal({ documentIds, title, onClose }) {
   };
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} wide={Boolean(createdShare)}>
       {!createdShare ? (
         <div className={styles.generateSection}>
           <div className={styles.field}>
@@ -454,56 +408,25 @@ function ShareModal({ documentIds, title, onClose }) {
         <div className={styles.resultSection}>
           <div className={styles.field}>
             <span className={styles.label}>Share link</span>
-            <div className={styles.linkRow}>
-              <input
-                type="text"
-                className={styles.linkInput}
-                value={createdShare.shareUrl}
-                readOnly
-                onFocus={(event) => event.target.select()}
-              />
-              <button type="button" className={styles.copyButton} onClick={handleCopy}>
-                {copied ? <Check size={16} weight="bold" /> : <Copy size={16} weight="bold" />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
-              </button>
-            </div>
+            <ShareActions
+              link={createdShare.shareUrl}
+              passwordProtected={createdShare.passwordProtected}
+              recipientEmail={createdShare.recipientEmail || ''}
+            />
             <p className={styles.hint}>
               {createdShare.passwordProtected
-                ? 'This link has no key in it: whoever opens it needs the password you chose, and your browser locked the key with it. We never see the password and can’t reset it, so tell recipients the password by a different route. '
-                : 'Copy the whole link, including everything after the # - that part is the key, and this is the only time you will see it. '}
-              Anyone who has the full link{createdShare.passwordProtected ? ', the password' : ''}
-              {createdShare.recipientEmail ? ' and a code emailed to the recipient' : ''} can open the shared files until it
-              expires or you stop sharing.
-              {createdShare.maxDownloads ? ` It is deleted after ${createdShare.maxDownloads} download${createdShare.maxDownloads === 1 ? '' : 's'}.` : ''}
-              {' '}You can&apos;t get the link back later: we don&apos;t keep it. The QR code below encodes the same link.
+                ? 'No key is in this link: whoever opens it needs your password. We can’t reset it. '
+                : 'Copy the whole link, including everything after the # (the key). You can’t get it back later. '}
+              {createdShare.recipientEmail ? 'The recipient also needs an emailed code. ' : ''}
+              {createdShare.maxDownloads
+                ? `Deleted after ${createdShare.maxDownloads} download${createdShare.maxDownloads === 1 ? '' : 's'}. `
+                : ''}
             </p>
           </div>
-
-          {qrDataUrl && (
-            <div className={styles.qrWrap}>
-              <img src={qrDataUrl} alt="QR code for the share link" className={styles.qrImage} />
-            </div>
-          )}
 
           <p className={styles.expiryLine}>
             {describeExpiry(createdShare.expiresAt)}, at {formatDateTime(createdShare.expiresAt)}
           </p>
-
-          {createdShare.localShareUrl && (
-            <div className={styles.localLinkField}>
-              <span className={styles.hint}>
-                Open on this PC:{' '}
-                <a
-                  href={createdShare.localShareUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.localLink}
-                >
-                  {createdShare.localShareUrl}
-                </a>
-              </span>
-            </div>
-          )}
 
           {!isSingle && (
             <div className={styles.confirmRow}>

@@ -9,6 +9,7 @@ const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require(
 const { labelFromUserAgent } = require('../utils/trustedDevice');
 const { getPublicAppUrl, publicAppUrlIsConfigured } = require('../utils/publicAppUrl');
 const { sendEmail } = require('../utils/email');
+const { templates } = require('../utils/emailTemplates');
 const { consumeBudget, isBudgetExhausted } = require('../middleware/rateLimit');
 
 // Routes are async, but Express doesn't forward rejected promises to
@@ -195,16 +196,7 @@ const completePairing = asyncHandler(async (req, res) => {
   });
 
   // Best effort, and never allowed to undo the pairing. No codes or tokens in it.
-  const when = new Date().toUTCString();
-  sendEmail({
-    to: user.email,
-    subject: 'A new device was paired with your Warden account',
-    text:
-      `A new device was paired with your Warden account.\n\n` +
-      `Name: ${name || 'Unnamed device'}\nBrowser: ${browserLabel}\nTime: ${when}\n\n` +
-      `If this was you, nothing more to do. If it was not, open Devices in Warden and remove it, ` +
-      `then change your password.`,
-  }).catch(() => false);
+  sendEmail({ to: user.email, ...templates.devicePaired({ name: name || '', browser: browserLabel, when: new Date() }) }).catch(() => false);
 
   res.status(201).json({
     deviceId: device._id,

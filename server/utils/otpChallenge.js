@@ -1,5 +1,6 @@
 const OtpChallenge = require('../models/OtpChallenge');
 const { sendEmail } = require('./email');
+const { templates } = require('./emailTemplates');
 const { consumeBudget } = require('../middleware/rateLimit');
 const { otpTtlMinutes } = require('./otpConfig');
 const { wrapKey, unwrapKey } = require('./crypto');
@@ -53,43 +54,11 @@ const tooManyEmails = () =>
 const emailNotSent = () => httpError(503, 'We couldn’t send the code email. Please try again shortly.');
 
 function emailFor(purpose, code, ttlMinutes) {
-  const expires = `It expires in ${ttlMinutes} minute${ttlMinutes === 1 ? '' : 's'}.`;
-  if (purpose === PURPOSES.passwordReset) {
-    return {
-      subject: 'Your Warden password reset code',
-      text:
-        `Your Warden password reset code is ${code}.
-
-${expires} ` +
-        "If you didn't ask to reset your Warden password, ignore this email: your password has not changed. " +
-        'Never share this code with anyone.',
-    };
-  }
-  if (purpose === PURPOSES.pairDevice) {
-    return {
-      subject: 'Your Warden code for pairing a device',
-      text:
-        `Your Warden code for pairing a new device is ${code}.\n\n${expires} ` +
-        "If you didn't ask to pair a device, ignore this email and change your password: " +
-        'someone may be signed in to your account. Never share this code with anyone.',
-    };
-  }
-  if (purpose === PURPOSES.deleteAccount) {
-    return {
-      subject: 'Your Warden account deletion code',
-      text:
-        `Your Warden account deletion code is ${code}.\n\n${expires} ` +
-        "If you didn't ask to delete your Warden account, ignore this email and change your password: " +
-        'someone may be signed in to your account.',
-    };
-  }
-  return {
-    subject: 'Your Warden login code',
-    text:
-      `Your Warden login code is ${code}.\n\n${expires} ` +
-      "If you didn't try to log in to Warden, ignore this email. Nobody can log in with your password alone, " +
-      'but consider changing your password.',
-  };
+  const input = { code, ttlMinutes };
+  if (purpose === PURPOSES.passwordReset) return templates.passwordResetCode(input);
+  if (purpose === PURPOSES.deleteAccount) return templates.deleteAccountCode(input);
+  if (purpose === PURPOSES.pairDevice) return templates.pairDeviceCode(input);
+  return templates.signInCode(input);
 }
 
 // How long a real send takes (smoothed), so the look-alike made for an address

@@ -210,7 +210,7 @@ test('the owner is emailed when a device is paired', async () => {
   assert.match(mail.subject, /new device was paired/i);
   assert.match(mail.text, /Josh's Phone/);
   assert.match(mail.text, /Chrome on Android/);
-  assert.match(mail.text, /Time: .*GMT/);
+  assert.match(mail.text, /When: .*Philippine Time \(UTC\+8\)/);
   assert.doesNotMatch(mail.text, /[0-9a-f]{64}/, 'no token in the email');
 });
 

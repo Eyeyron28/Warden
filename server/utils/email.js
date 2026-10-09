@@ -18,6 +18,13 @@ const { isProduction } = require('./runtimeEnv');
 
 const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM'];
 
+/** The From header with the display name "Warden", whatever name (if any) MAIL_FROM carried. */
+function fromHeader(configured) {
+  const match = /<([^<>]+)>\s*$/.exec(String(configured || ''));
+  const address = (match ? match[1] : String(configured || '')).trim();
+  return /^[^\s@<>"]+@[^\s@<>"]+$/.test(address) ? { name: 'Warden', address } : configured;
+}
+
 function smtpConfigured() {
   return SMTP_VARS.every((name) => Boolean(process.env[name]));
 }
@@ -125,6 +132,12 @@ function normalizeRecipient(raw) {
  * @returns {Promise<boolean>} whether the email was handed off (or logged)
  */
 async function sendEmail({ to, subject, text, html }) {
+  // Every message is built by utils/emailTemplates.js, which always provides both parts.
+  if (typeof subject !== 'string' || typeof text !== 'string' || typeof html !== 'string') {
+    console.error('Refusing to send email: it must come from utils/emailTemplates.js (subject, text and html).');
+    return false;
+  }
+
   if (!isSafeRecipient(to)) {
     // JSON.stringify so a hostile value (CRLF, control characters) can't
     // forge extra log lines; truncated so it can't flood them either.
@@ -151,7 +164,7 @@ async function sendEmail({ to, subject, text, html }) {
 
   try {
     await getTransporter().sendMail({
-      from: process.env.MAIL_FROM,
+      from: fromHeader(process.env.MAIL_FROM),
       to,
       subject,
       text,
@@ -181,4 +194,4 @@ async function verifySmtp() {
   return getTransporter().verify();
 }
 
-module.exports = { sendEmail, isSafeRecipient, normalizeRecipient, verifySmtp };
+module.exports = { sendEmail, isSafeRecipient, normalizeRecipient, verifySmtp, fromHeader };

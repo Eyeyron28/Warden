@@ -103,6 +103,8 @@ test('nothing in the server writes backups, reads a server path, or offers USB r
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const name = path.relative(root, file);
+    // (a developer-run script that can save sample email files; it never runs as part of the server)
+    if (name === path.join('scripts', 'send-test-emails.js')) continue;
     assert.doesNotMatch(source, /BackupLog\.(create|insertMany|save)|new BackupLog/, `${name}: no BackupLog writes`);
     assert.doesNotMatch(source, /usbPassphrase|wrappedDEKUsb|recoverViaUsb\b|\bfs\.(writeFile|mkdir|readdir)/, name);
     if (name !== path.join('routes', 'removed.routes.js')) assert.doesNotMatch(source, /recover-via-usb|api\/backup/, name);
