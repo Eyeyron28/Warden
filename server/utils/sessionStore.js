@@ -25,6 +25,20 @@ const { revokeAllTrustedDevices } = require('./trustedDevice');
  */
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes, refreshed on each use
+
+/**
+ * The longest a sign-in can last however busy it is: SESSION_ABSOLUTE_HOURS (default 12, 1 to 168). The 30-minute idle
+ * timeout slides forever on use; this does not slide. A bad value falls back to the default (the server's startup check
+ * names it, see utils/productionConfig.js).
+ */
+const DEFAULT_ABSOLUTE_HOURS = 12;
+function sessionAbsoluteHours() {
+  const raw = (process.env.SESSION_ABSOLUTE_HOURS ?? '').trim();
+  if (raw === '') return DEFAULT_ABSOLUTE_HOURS;
+  const hours = Number(raw);
+  return Number.isFinite(hours) && hours >= 1 && hours <= 168 ? hours : DEFAULT_ABSOLUTE_HOURS;
+}
+const sessionAbsoluteMs = () => sessionAbsoluteHours() * 60 * 60 * 1000;
 const SESSION_ID_BYTES = 32;
 const SESSION_KEY_BYTES = 32; // AES-256
 
@@ -107,8 +121,13 @@ async function getSession(token) {
   const session = await Session.findOne({ sessionIdHash: hashSessionId(parsed.sessionId) });
   if (!session) return null;
 
-  // An emergency session also has an absolute end that sliding refreshes can never push past.
-  const ended = Date.now() > session.expiresAt.getTime() || (session.absoluteExpiresAt && Date.now() > session.absoluteExpiresAt.getTime());
+  // Every session has an absolute end that sliding refreshes can never push past: SESSION_ABSOLUTE_HOURS from when it
+  // was created, and (emergency sessions) the 4-hour cap fixed at creation, whichever comes first.
+  const absoluteEnd = Math.min(
+    session.createdAt ? session.createdAt.getTime() + sessionAbsoluteMs() : Infinity,
+    session.absoluteExpiresAt ? session.absoluteExpiresAt.getTime() : Infinity
+  );
+  const ended = Date.now() > session.expiresAt.getTime() || Date.now() > absoluteEnd;
   if (ended) {
     await Session.deleteOne({ _id: session._id });
     return null;
@@ -126,6 +145,8 @@ async function getSession(token) {
     dek,
     deviceId: session.deviceId || null,
     sessionIdHash: session.sessionIdHash,
+    // When this session ends however it is used (passed to refreshSession so a refresh cannot slide past it).
+    absoluteExpiresAt: Number.isFinite(absoluteEnd) ? new Date(absoluteEnd) : null,
     emergency: session.emergency
       ? {
           accessId: session.accessId,
@@ -148,9 +169,12 @@ async function getSession(token) {
 async function refreshSession(token, { absoluteExpiresAt = null } = {}) {
   const parsed = parseToken(token);
   if (!parsed) return;
-  const slid = Date.now() + SESSION_TTL_MS;
-  const next = absoluteExpiresAt ? Math.min(slid, new Date(absoluteExpiresAt).getTime()) : slid;
-  await Session.updateOne({ sessionIdHash: hashSessionId(parsed.sessionId) }, { $set: { expiresAt: new Date(next) } });
+  const slid = new Date(Date.now() + SESSION_TTL_MS);
+  // One update that can never slide past the session's absolute end: the 30-minute slide, the end stored on an
+  // emergency session, SESSION_ABSOLUTE_HOURS after it was created, and (if the caller knows it) the end it passes.
+  const ends = [slid, { $add: ['$createdAt', sessionAbsoluteMs()] }, '$absoluteExpiresAt'];
+  if (absoluteExpiresAt) ends.push(new Date(absoluteExpiresAt));
+  await Session.updateOne({ sessionIdHash: hashSessionId(parsed.sessionId) }, [{ $set: { expiresAt: { $min: ends } } }]);
 }
 
 /**
@@ -212,6 +236,7 @@ async function destroyAllSessionsForUser(userId) {
 }
 
 module.exports = {
+  sessionAbsoluteHours,
   createSession,
   getSession,
   refreshSession,

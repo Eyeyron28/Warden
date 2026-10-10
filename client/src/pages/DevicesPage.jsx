@@ -33,7 +33,7 @@ const ICONS = { emergency: Lifebuoy, account: UserCircle, sharing: ShareNetwork,
 /**
  * Devices & activity: the browsers signed in to this account (and a way to end any of them), and a timeline of
  * what happened - sign-ins, files opened, links shared - kept for 30 days. Unusual activity is flagged. The log
- * is tamper-evident (a hash chain): "Verify log" checks it.
+ * is a hash chain that detects edits and gaps (not the removal of the newest entries by someone who can write to the database): "Verify log" checks it.
  */
 function DevicesPage() {
   usePageMeta('Devices & activity', 'The browsers signed in to your account, and what has happened on it.');
@@ -179,7 +179,7 @@ function DevicesPage() {
             <p>{verdict.error}</p>
           ) : verdict.ok ? (
             <p>
-              <strong>Intact.</strong> {verdict.checked} event{verdict.checked === 1 ? '' : 's'} checked, every link matches.
+              <strong>No edits or gaps found.</strong> {verdict.checked} event{verdict.checked === 1 ? '' : 's'} checked, every link matches.
             </p>
           ) : (
             <p>
@@ -187,8 +187,8 @@ function DevicesPage() {
             </p>
           )}
           <p className={styles.small}>
-            This detects changes made to the stored log. It cannot protect against someone who also holds the server’s signing key,
-            and the oldest events leave the log on their own after {verdict.retentionDays || retentionDays} days.
+            This detects edits and gaps. It cannot detect the removal of the newest entries by someone who can write to the database, or protect
+            against someone who also holds the server’s signing key. The oldest events leave the log on their own after {verdict.retentionDays || retentionDays} days.
           </p>
         </div>
       )}

@@ -707,7 +707,8 @@ test('no pairing, PIN, phone sync or offline-vault code remains in the server or
   ]) assert.equal(fs.existsSync(path.join(root, gone)), false, gone);
   // the service worker never touches /api (no cached authenticated content), and the manifest carries none
   const worker = fs.readFileSync(path.join(root, 'client', 'public', 'service-worker.js'), 'utf8');
-  assert.match(worker, /pathname\.startsWith\('\/api\/'\)\) return;/);
+  assert.match(worker, /BYPASS_PREFIXES = \['\/api\/'/);
+  assert.match(worker, /BYPASS_PREFIXES\.some\(\(prefix\) => url\.pathname\.startsWith\(prefix\)\)\) return;/);
 });
 
 test('the removal migration is idempotent and clears everything the phone vault stored', async () => {

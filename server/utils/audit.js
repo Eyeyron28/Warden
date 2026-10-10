@@ -5,16 +5,20 @@ const User = require('../models/User');
 const { hmacKey, retentionMs } = require('./auditConfig');
 
 /**
- * The activity log: what happened on an account, tamper-evident.
+ * The activity log: what happened on an account, signed in a hash chain that detects edits and gaps.
  *
  * Every event stores `hash` = HMAC-SHA-256(AUDIT_HMAC_KEY, prevHash | its own fields), where prevHash is
  * the previous event's hash (empty for the first). The newest {seq, hash, at} is also kept on the user
  * ("auditHead"). Verifying walks the events that are left (the TTL removes only the oldest, so the oldest
  * remaining event's prevHash is the trusted starting point) and checks every link, then compares the end
- * with the head. That detects an edited event, a gap in the middle and a cut-off end.
+ * with the head. That detects an edited event and a gap in the middle. It detects a cut-off end only while the
+ * head still points at the old end.
  *
- * It detects changes to the DATABASE. It cannot protect against someone who also holds the server's
- * HMAC key, and removing the very oldest events looks exactly like the normal 30-day expiry.
+ * LIMIT (proved by a test in test/audit-limits.test.js): the head lives in the same database as the events, so
+ * someone who can WRITE to the database can delete the newest events and move the head back to match, and the
+ * check still passes. That needs no key. It also cannot protect against someone who holds the server's HMAC key,
+ * and removing the very oldest events looks exactly like the normal 30-day expiry. Closing the first gap would
+ * need the head kept somewhere the database writer cannot reach (an external anchor).
  *
  * No file names, e-mail addresses, share purposes, content or IP addresses are ever stored here.
  */

@@ -125,10 +125,9 @@ test('sendEmail drops a hostile recipient before the console fallback or Nodemai
   assert.equal(result, false);
   assert.equal(logs.length, 0, 'the message body must not be logged for a rejected recipient');
   assert.equal(errors.length, 1);
-  // JSON-escaped, so the CRLF cannot start a forged log line.
-  assert.match(errors[0], /Refusing to send email: invalid recipient/);
-  assert.doesNotMatch(errors[0], /\r|\n.*Bcc/);
-  assert.match(errors[0], /\\r\\nBcc/);
+  // Only the length is logged: no address, no CRLF, nothing that could start a forged log line.
+  assert.match(errors[0], /Refusing to send email: invalid recipient \(\d+ characters\)\./);
+  assert.doesNotMatch(errors[0], /\r|\n.*Bcc|victim|attacker|evil/);
 });
 
 test('sendEmail never throws, even for a non-string recipient', async () => {

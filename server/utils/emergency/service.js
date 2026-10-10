@@ -7,9 +7,10 @@ const Session = require('../../models/Session');
 const OtpChallenge = require('../../models/OtpChallenge');
 const EmergencyAccess = require('../../models/EmergencyAccess');
 const EmergencyRequest = require('../../models/EmergencyRequest');
-const { createSession, destroyEmergencySessions } = require('../sessionStore');
+const { createSession, destroySession, destroyEmergencySessions } = require('../sessionStore');
 const { startChallenge, consumeChallenge, resendChallenge, PURPOSES: OTP_PURPOSES, expectedSendMs } = require('../otpChallenge');
 const { consumeBudget, isBudgetExhausted } = require('../../middleware/rateLimit');
+const { ipKey } = require('../clientIp');
 const { sendEmail, normalizeRecipient } = require('../email');
 const { templates } = require('../emailTemplates');
 const { recordEvent, countryFrom } = require('../audit');
@@ -34,10 +35,12 @@ const ACTIONS = Object.freeze(['setup', 'regenerate', 'revoke', 'approve-now']);
 const GENERIC_FAILURE = 'The details or the code are not correct, or access is not available.';
 const NEUTRAL_CODE_MESSAGE = 'If these details match an active setup, we sent a code to the contact’s email.';
 const DAY = 24 * 60 * 60 * 1000;
+const UNNOTIFIED_GRACE_MS = 2 * 60 * 1000;
 
 function httpError(status, message, extra = {}) {
   const error = new Error(message);
   error.status = status;
+  if (status >= 500) error.expose = true; // app-authored 5xx text is safe to show (see middleware/errorHandler.js)
   return Object.assign(error, extra);
 }
 const genericFailure = () => httpError(401, GENERIC_FAILURE);
@@ -65,18 +68,23 @@ async function findAccessFor(ownerEmail, contactEmail) {
 }
 
 // ---------- lockouts for the public endpoints ----------
-const FAIL_OWNER = { name: 'emergency-fail-owner', max: 8, windowMs: 60 * 60 * 1000 };
+// A failure is counted against WHO is failing, not against the owner alone: the details typed (owner + contact) from
+// one connection, and, separately and more coarsely, the connection itself. Counting by owner address alone let anyone
+// who knew it lock the real contact out; now an attacker only ever uses up their own budgets.
+const FAIL_PAIR = { name: 'emergency-fail-pair-ip', max: 8, windowMs: 60 * 60 * 1000 };
 const FAIL_IP = { name: 'emergency-fail-ip', max: 25, windowMs: 60 * 60 * 1000 };
 const CODE_MAILS_OWNER = { name: 'emergency-code-owner', max: 5, windowMs: 60 * 60 * 1000 };
 
-async function assertNotLocked(ownerEmail, ip) {
-  if (await isBudgetExhausted({ ...FAIL_OWNER, key: ownerKey(ownerEmail) })) throw tooManyAttempts();
-  if (ip && (await isBudgetExhausted({ ...FAIL_IP, key: String(ip) }))) throw tooManyAttempts();
+const pairKey = (ownerEmail, contactEmail, ip) => sha256(`${ownerKey(ownerEmail)}|${sha256(String(contactEmail || '').trim().toLowerCase())}|${ipKey(ip)}`);
+
+async function assertNotLocked(ownerEmail, contactEmail, ip) {
+  if (await isBudgetExhausted({ ...FAIL_PAIR, key: pairKey(ownerEmail, contactEmail, ip) })) throw tooManyAttempts();
+  if (await isBudgetExhausted({ ...FAIL_IP, key: ipKey(ip) })) throw tooManyAttempts();
 }
 
-async function noteFailure(ownerEmail, ip) {
-  await consumeBudget({ ...FAIL_OWNER, key: ownerKey(ownerEmail) });
-  if (ip) await consumeBudget({ ...FAIL_IP, key: String(ip) });
+async function noteFailure(ownerEmail, contactEmail, ip) {
+  await consumeBudget({ ...FAIL_PAIR, key: pairKey(ownerEmail, contactEmail, ip) });
+  await consumeBudget({ ...FAIL_IP, key: ipKey(ip) });
 }
 
 // How long a real send takes (smoothed), so the neutral answer for an unknown address can wait about as long.
@@ -102,7 +110,7 @@ const finishFields = (now) => ({ active: false, finishedAt: now, expiresAt: new 
 /** Ends any open request of a setup (a new kit, revoke, invalidation): nothing stays pending behind it. */
 async function cancelOpenRequests(accessId, status = 'cancelled') {
   const now = new Date();
-  const result = await EmergencyRequest.updateMany({ accessId, active: true }, { $set: { status, ...finishFields(now) } });
+  const result = await EmergencyRequest.updateMany({ accessId, active: true, status: { $in: ['pending', 'released'] } }, { $set: { status, ...finishFields(now) } });
   return result?.modifiedCount ?? result?.nModified ?? 0;
 }
 
@@ -244,11 +252,14 @@ async function revoke(req, { challengeToken, code }) {
   const access = await EmergencyAccess.findOne({ userId: req.userId, status: 'active' });
   if (!access) throw httpError(404, 'Emergency access is not set up.');
   await useOwnerCode(req, 'revoke', challengeToken, code);
-  // The key material is destroyed, not just flagged.
-  await EmergencyAccess.updateOne(
-    { _id: access._id },
+  // The key material is destroyed, not just flagged - in ONE conditional update, so two revokes (or a revoke and a
+  // replace) cannot both win. Order matters for a start-session racing this: the setup first, then the request, then
+  // the sessions; startSession checks the request and the setup again after it creates its session.
+  const revoked = await EmergencyAccess.findOneAndUpdate(
+    { _id: access._id, status: 'active' },
     { $set: { status: 'revoked', k2: crypto.randomBytes(32), wrappedDek: '', wrappedDekIv: '', wrappedDekAuthTag: '', kitHash: '', kitSalt: '' } }
   );
+  if (!revoked) throw httpError(409, 'Emergency access changed. Please look again.');
   await cancelOpenRequests(access._id);
   await destroyEmergencySessions(req.userId);
   await OtpChallenge.deleteMany({ userId: req.userId, purpose: { $in: Object.values(codes.PURPOSES) } });
@@ -270,7 +281,7 @@ async function status(req) {
     contactUrl: origin ? `${origin}/emergency` : null,
   };
   if (!access) return { ...base, configured: false };
-  const request = await EmergencyRequest.findOne({ accessId: access._id, active: true });
+  const request = await EmergencyRequest.findOne({ accessId: access._id, active: true, ownerNotifiedAt: { $ne: null } });
   const sessions = await Session.countDocuments({ userId: req.userId, emergency: true, expiresAt: { $gt: new Date() } });
   const started = await AuditEvent.find({ userId: req.userId, type: 'emergency_session_started', at: { $gte: new Date(Date.now() - 30 * DAY) } }).sort({ seq: -1 });
   return {
@@ -356,7 +367,9 @@ async function requestCode({ ownerEmail, contactEmail }) {
       const withinBudget = await consumeBudget({ ...CODE_MAILS_OWNER, key: ownerKey(owner) });
       if (withinBudget) {
         const open = await EmergencyRequest.findOne({ accessId: found.access._id, active: true });
-        const purpose = open ? codes.PURPOSES.session : codes.PURPOSES.request;
+        // An old request the owner was never told about is dead weight (submitRequest removes it): ask for a request code.
+        const dead = open && !open.ownerNotifiedAt && open.requestedAt.getTime() < Date.now() - UNNOTIFIED_GRACE_MS;
+        const purpose = open && !dead ? codes.PURPOSES.session : codes.PURPOSES.request;
         // The email is the only place the code goes. A failed send changes nothing the caller can see.
         const startedSend = Date.now();
         await codes.issueContactCode({ access: found.access, purpose, to: found.access.contactEmail }).catch(() => false);
@@ -376,23 +389,29 @@ async function requestCode({ ownerEmail, contactEmail }) {
 async function authenticateContact({ ownerEmail, contactEmail, kit, code, purpose, ip, consume }) {
   const owner = cleanEmail(ownerEmail);
   const contact = cleanEmail(contactEmail);
-  await assertNotLocked(owner || String(ownerEmail || ''), ip);
+  const ownerTyped = owner || String(ownerEmail || '');
+  const contactTyped = contact || String(contactEmail || '');
+  await assertNotLocked(ownerTyped, contactTyped, ip);
 
   const found = owner && contact ? await findAccessFor(owner, contact) : null;
   const k1 = kitLib.parseKit(kit);
   const kitOk = kitLib.kitMatches(found?.access || null, k1);
   const codeCheck = await codes.checkContactCode({ access: found?.access || null, purpose, code });
   if (!found || !kitOk || !codeCheck.ok) {
-    await noteFailure(owner || String(ownerEmail || ''), ip);
+    await noteFailure(ownerTyped, contactTyped, ip);
     throw genericFailure();
   }
-  return { access: found.access, user: found.user, k1, codeId: codeCheck.id, consume: () => codes.consumeContactCode(codeCheck.id), ownerAddress: owner, consumeNow: consume };
+  return { access: found.access, user: found.user, k1, codeId: codeCheck.id, consume: () => codes.consumeContactCode(codeCheck.id), ownerAddress: ownerTyped, contactAddress: contactTyped, consumeNow: consume };
 }
 
 /** The contact asks for access. On success the owner is emailed at once and the clock starts. */
 async function submitRequest({ ownerEmail, contactEmail, code, kit, req }) {
   const auth = await authenticateContact({ ownerEmail, contactEmail, kit, code, purpose: codes.PURPOSES.request, ip: req?.ip });
   const { access, user } = auth;
+
+  // A request whose owner was never told (the server stopped between creating it and sending the mail) is unusable and
+  // must not block a new one. A brand-new one may still be mid-send, so only older ones are removed.
+  await EmergencyRequest.deleteMany({ accessId: access._id, active: true, ownerNotifiedAt: null, requestedAt: { $lt: new Date(Date.now() - UNNOTIFIED_GRACE_MS) } });
 
   // Authenticated from here on, so specific answers do not help a stranger.
   const denied = await EmergencyRequest.findOne({ accessId: access._id, status: 'denied', deniedAt: { $gt: new Date(Date.now() - config.LIMITS.DENY_COOLDOWN_MS) } });
@@ -401,12 +420,15 @@ async function submitRequest({ ownerEmail, contactEmail, code, kit, req }) {
     throw httpError(409, 'There is already an open request for this vault.');
   }
   if (!(await auth.consume())) {
-    await noteFailure(auth.ownerAddress, req?.ip);
+    await noteFailure(auth.ownerAddress, auth.contactAddress, req?.ip);
     throw genericFailure();
   }
 
   const now = new Date();
-  const releaseAt = new Date(now.getTime() + access.waitMinutes * 60 * 1000);
+  const waitMs = access.waitMinutes * 60 * 1000;
+  // Provisional times: the request is not usable until the owner has been told (ownerNotifiedAt), and the wait is then
+  // counted from THAT moment (below). These only fill the required fields and the text of the owner's email.
+  const releaseAt = new Date(now.getTime() + waitMs);
   const denyToken = crypto.randomBytes(32).toString('base64url');
   let request;
   try {
@@ -418,6 +440,7 @@ async function submitRequest({ ownerEmail, contactEmail, code, kit, req }) {
       requestedAt: now,
       releaseAt,
       claimExpiresAt: new Date(releaseAt.getTime() + config.claimDays() * DAY),
+      ownerNotifiedAt: null,
       denyTokenHash: sha256(denyToken),
       requestCountry: countryFrom(req),
     });
@@ -425,11 +448,33 @@ async function submitRequest({ ownerEmail, contactEmail, code, kit, req }) {
     if (error && (error.code === 11000 || /E11000/.test(String(error.message)))) throw httpError(409, 'There is already an open request for this vault.');
     throw error;
   }
+
+  // The owner MUST hear about it. If the mail cannot be handed over (an outage, a daily sending cap), the request is
+  // withdrawn - nothing is left running that the owner does not know about - and the contact is asked to try again.
+  let notified = false;
+  try {
+    notified = (await sendEmail({ to: user.email, ...templates.emergencyOwnerRequestReceived({ releaseAt, denyUrl: denyUrlFor(denyToken) }) })) === true;
+  } catch {
+    notified = false;
+  }
+  if (!notified) {
+    await EmergencyRequest.deleteOne({ _id: request._id });
+    throw httpError(503, 'We could not process your request right now. Please try again later.');
+  }
+
+  // The wait starts now, from the moment the owner was told.
+  const notifiedAt = new Date();
+  const confirmedReleaseAt = new Date(notifiedAt.getTime() + waitMs);
+  const confirmed = await EmergencyRequest.findOneAndUpdate(
+    { _id: request._id, active: true, ownerNotifiedAt: null },
+    { $set: { ownerNotifiedAt: notifiedAt, releaseAt: confirmedReleaseAt, claimExpiresAt: new Date(confirmedReleaseAt.getTime() + config.claimDays() * DAY) } },
+    { new: true }
+  );
+  if (!confirmed) throw httpError(409, 'This request changed. Please try again.');
   await audit(req, access.userId, 'emergency_requested', { targetId: request._id, country: countryFrom(req) });
-  // The owner hears about it immediately; the contact gets a receipt.
-  await sendEmail({ to: user.email, ...templates.emergencyOwnerRequestReceived({ releaseAt, denyUrl: denyUrlFor(denyToken) }) }).catch(() => false);
-  sendEmail({ to: access.contactEmail, ...templates.emergencyContactReceipt({ releaseAt }) }).catch(() => false);
-  return { requested: true, releaseAt };
+  // The contact gets a receipt.
+  sendEmail({ to: access.contactEmail, ...templates.emergencyContactReceipt({ releaseAt: confirmedReleaseAt }) }).catch(() => false);
+  return { requested: true, releaseAt: confirmedReleaseAt };
 }
 
 /** The contact starts a session once the wait is over. Returns the bearer token and what it may see. */
@@ -440,6 +485,8 @@ async function startSession({ ownerEmail, contactEmail, code, kit, req }) {
 
   let request = await EmergencyRequest.findOne({ accessId: access._id, active: true });
   if (!request) throw httpError(409, 'There is no open request. Request access first.', { code: 'NO_REQUEST' });
+  // A request the owner was never told about cannot start anything (and is not "open" to the contact either).
+  if (!request.ownerNotifiedAt) throw httpError(403, 'Access is not available.', { code: 'NOT_AVAILABLE' });
   if (request.claimExpiresAt.getTime() <= now.getTime()) {
     await EmergencyRequest.updateOne({ _id: request._id, active: true }, { $set: { status: 'expired', ...finishFields(now) } });
     throw httpError(410, 'The time to start a session has passed. Make a new request.', { code: 'EXPIRED' });
@@ -451,14 +498,14 @@ async function startSession({ ownerEmail, contactEmail, code, kit, req }) {
     }
     // Atomic: only one of "deny" and "start" can move a pending request.
     const moved = await EmergencyRequest.findOneAndUpdate(
-      { _id: request._id, status: 'pending', active: true, releaseAt: { $lte: now } },
+      { _id: request._id, status: 'pending', active: true, ownerNotifiedAt: { $ne: null }, releaseAt: { $lte: now } },
       { $set: { status: 'released', releasedAt: now, denyTokenHash: null } },
       { new: true }
     );
     if (!moved) {
       request = await EmergencyRequest.findOne({ _id: request._id });
       if (!request || request.status !== 'released') {
-        await noteFailure(auth.ownerAddress, req?.ip);
+        await noteFailure(auth.ownerAddress, auth.contactAddress, req?.ip);
         throw httpError(403, 'Access is not available.', { code: 'NOT_AVAILABLE' });
       }
     } else {
@@ -470,7 +517,7 @@ async function startSession({ ownerEmail, contactEmail, code, kit, req }) {
 
   // Everything checked out: use up the code (only one caller can), then open the vault key with K1 xor K2.
   if (!(await auth.consume())) {
-    await noteFailure(auth.ownerAddress, req?.ip);
+    await noteFailure(auth.ownerAddress, auth.contactAddress, req?.ip);
     throw genericFailure();
   }
   const dek = kitLib.unwrapWithKit(access, k1);
@@ -481,6 +528,18 @@ async function startSession({ ownerEmail, contactEmail, code, kit, req }) {
   const token = await createSession(access.userId, dek, {
     emergency: { accessId: access._id, requestId: request._id, scopeMode: access.scope.mode, scopePaths, absoluteMs: config.LIMITS.SESSION_ABSOLUTE_MS },
   });
+
+  // A revoke (or a denial/cancel) can land between the checks above and the session row existing. Revoke ends the
+  // request FIRST and the sessions second, so a session created in that gap is found here: check once more that the
+  // request is still released and the setup still active, and if not, take the session straight back.
+  const [stillReleased, stillActive] = await Promise.all([
+    EmergencyRequest.findOne({ _id: request._id, status: 'released', active: true }),
+    EmergencyAccess.findOne({ _id: access._id, status: 'active' }),
+  ]);
+  if (!stillReleased || !stillActive) {
+    await destroySession(token);
+    throw httpError(403, 'Access is not available.', { code: 'NOT_AVAILABLE' });
+  }
 
   // The wait ended: make sure the "released" notices went out (the daily job usually does this first).
   await noticeRelease(request);
@@ -529,6 +588,9 @@ async function denyByToken(token) {
 async function runMaintenance({ now = new Date() } = {}) {
   const result = { reminders: 0, released: 0, expired: 0 };
 
+  // (0) a request the owner was never told about (the server stopped mid-way) is simply removed
+  await EmergencyRequest.deleteMany({ active: true, ownerNotifiedAt: null, requestedAt: { $lt: new Date(now.getTime() - UNNOTIFIED_GRACE_MS) } });
+
   // (c) expire first, so nothing below talks about a dead request
   const stale = await EmergencyRequest.find({ active: true, claimExpiresAt: { $lte: now } });
   for (const request of stale) {
@@ -538,14 +600,14 @@ async function runMaintenance({ now = new Date() } = {}) {
   }
 
   // (b) the wait ended
-  const due = await EmergencyRequest.find({ status: 'pending', active: true, releaseAt: { $lte: now }, releaseNoticedAt: null });
+  const due = await EmergencyRequest.find({ status: 'pending', active: true, ownerNotifiedAt: { $ne: null }, releaseAt: { $lte: now }, releaseNoticedAt: null });
   for (const request of due) {
     // eslint-disable-next-line no-await-in-loop
     if (await noticeRelease(request)) result.released += 1;
   }
 
   // (a) a reminder a day to the owner while it is open
-  const open = await EmergencyRequest.find({ status: 'pending', active: true });
+  const open = await EmergencyRequest.find({ status: 'pending', active: true, ownerNotifiedAt: { $ne: null } });
   for (const request of open) {
     const last = request.lastOwnerReminderAt || request.requestedAt;
     if (now.getTime() - new Date(last).getTime() < config.LIMITS.OWNER_REMINDER_EVERY_MS) continue;

@@ -27,11 +27,11 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Share links have their own key',
-    body: 'A share is a copy encrypted under a fresh random key that goes into the link and is never stored by the server. You can add a password (your browser locks the key with it), a download limit, or an email-code check; those decide who the server will serve the encrypted copy to. They are checks on our server, not a different kind of encryption.',
+    body: 'A share is a copy encrypted under a fresh random key. The key is generated when you create the link and placed after the # in the address, so it isn’t sent to our server when someone opens the link; the server does handle it while it creates the link, and does not store it. You can add a password (your browser locks the key with it), a download limit, or an email-code check; those decide who the server will serve the encrypted copy to. They are checks on our server, not a different kind of encryption.',
   },
   {
     title: 'Logging in needs your password and an emailed code',
-    body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime. If you tick "Trust this browser for 30 days" after a correct code, that browser keeps a random token in a cookie and later logins there skip the emailed code but still need your password. Deleting your account, recovering with a paired phone and restricting a share to an email address always ask for a fresh code. Remove trusted browsers any time from the Account page.',
+    body: 'After your password is checked, Warden emails a 6-digit code that expires after a few minutes, and you enter it to finish logging in. The code is stored only as a salted hash while it is valid, and the unlocked key is not held on the server in the meantime. If you tick "Trust this browser for 30 days" after a correct code, that browser keeps a random token in a cookie and later logins there skip the emailed code but still need your password. Deleting your account and restricting a share to an email address always ask for a fresh code. Remove trusted browsers any time from the Account page.',
   },
   {
     title: 'Deleted files wait in Trash for 30 days',
@@ -43,11 +43,11 @@ const DESIGN_POINTS = [
   },
   {
     title: 'Sessions hold the key only while you use it',
-    body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in the tab’s sessionStorage, so reloading the page keeps you signed in, and closing the tab ends it. The server unlocks the key for each request. Logging out deletes the session, and sessions expire after 30 minutes without activity. Your password and the unlocked key are never stored in the browser.',
+    body: 'When you log in, your unlocked key is locked again for your session with a random key that exists only in your session token. The token is kept in the tab’s sessionStorage, so reloading the page keeps you signed in, and closing the tab ends it. The server unlocks the key for each request. Logging out deletes the session. Signed in sessions end after 30 minutes without activity, and after 12 hours at most. Your password and the unlocked key are never stored in the browser.',
   },
   {
     title: 'Recovery is checked before anything changes',
-    body: 'Forgot your password? An emailed 6-digit code starts the reset, and your recovery key is what keeps the vault: it is checked against your exact vault before any password or key is rewritten. Without the recovery key, the reset erases the vault and starts a new, empty one. The recovery key alone can also reset the password, with no email, under strict limits. A paired phone can still approve a reset too.',
+    body: 'Forgot your password? An emailed 6-digit code starts the reset, and your recovery key is what keeps the vault: it is checked against your exact vault before any password or key is rewritten. Without the recovery key, the reset erases the vault and starts a new, empty one. The recovery key alone can also reset the password, with no email, under strict limits.',
   },
 ];
 

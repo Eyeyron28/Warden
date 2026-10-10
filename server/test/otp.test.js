@@ -15,6 +15,7 @@ delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
 
 const cryptoUtils = require('../utils/crypto');
+require('./helpers/fakeDb').installLoginFailures(); // the login-lockout counter (the models below are hand-made)
 
 function stub(modulePath, exportsObject) {
   const resolved = require.resolve(modulePath);

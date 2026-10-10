@@ -47,6 +47,7 @@ const FAILURE_MESSAGE = 'That code is incorrect or has expired.';
 function httpError(status, message, extra = {}) {
   const error = new Error(message);
   error.status = status;
+  if (status >= 500) error.expose = true; // app-authored 5xx text is safe to show (see middleware/errorHandler.js)
   return Object.assign(error, extra);
 }
 

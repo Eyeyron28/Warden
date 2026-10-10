@@ -38,12 +38,14 @@ export const SECTIONS = [
           </li>
           <li>
             <strong>Shared copies</strong>: when you create a share link, encrypted copies of the files you chose
-            and an encrypted list of their names. We do not store the link&apos;s key, so we cannot open them. They
+            and an encrypted list of their names. The key is generated when you create the link and placed after the # in the
+            address, so it isn&apos;t sent to our server when someone opens the link. The server does handle the key while it
+            creates the link, but it does not store it, so afterwards we cannot open the copies. They
             are deleted when the link expires (at most 30 days), reaches its download limit, or you stop sharing. If
             you use the extra options we also keep: how many times it was downloaded and its limit; the recipient
             email address you entered (to send them a code); and, for a password, a random salt, the password-locked
-            copy of the link&apos;s key and a hash of a value made from the password. We never receive the password or
-            the plain key. For your own share list we keep the shared files&apos; names encrypted under your vault key.
+            copy of the link&apos;s key and a hash of a value made from the password. We never receive the password. The plain key
+            was made by the server when the link was created and is not kept. For your own share list we keep the shared files&apos; names encrypted under your vault key.
           </li>
           <li>
             <strong>Devices and activity</strong>: each browser that signs in gets a random id kept in a strictly functional cookie
@@ -53,8 +55,9 @@ export const SECTIONS = [
             hosting platform&apos;s own headers (never an IP address, and no third-party location service). Alongside it we keep, for 30
             days, a log of what happened on your account (sign-ins and failures, files opened, downloaded, renamed, moved, deleted or shared,
             exports, and when your share links are opened, with only a coarse country for a visitor). The log holds ids only: no file names,
-            no content, no email addresses and no IP addresses; names are looked up when you read it. Each entry is signed in a chain so that
-            changes to the stored log can be detected; that does not protect against someone who also holds our signing key. We also count, per
+            no content, no email addresses and no IP addresses; names are looked up when you read it. Each entry is signed in a chain. The
+            check detects edits and gaps. It cannot detect the removal of the newest entries by someone who can write to the
+            database, and it does not protect against someone who also holds our signing key. We also count, per
             file, how often you opened or downloaded it and when you last did, and per share link how many times it was opened, to show you
             the Overview. Deleting your account or erasing your vault removes all of it.
           </li>
@@ -69,8 +72,9 @@ export const SECTIONS = [
             kit) is shown to you once and is not stored, logged or emailed by us. Your vault key is stored wrapped under the combination of both
             halves, so a stolen kit alone, or a copy of our database alone, cannot open your vault. A copy of our database together with the kit can,
             and an operator working with your contact could skip the wait: this is not end-to-end encryption, because Warden encrypts files on the
-            server. When your contact asks for access we email you at once and every day until you deny it or the wait ends; you can deny it by one
-            click until a session starts. After a denial they cannot ask again for 24 hours. A session is read-only, ends within 4 hours, and can
+            server. When your contact asks for access we email you when the request is made, and the request is refused if that email cannot be sent.
+            The waiting period is counted from that email, and we email you every day until you deny it or the wait ends; you can deny it by
+            one click until a session starts. After a denial they cannot ask again for 24 hours. A session is read-only, ends within 4 hours, and can
             only see the folders you chose; that limit is enforced by our server, not by encryption. Everything they do is written to your activity
             log (file ids only, no names). Turning it off, or changing your vault key, ends any session and removes the setup. Deleting your account
             or erasing your vault removes all of it.
@@ -96,8 +100,8 @@ export const SECTIONS = [
           </li>
           <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per
-            email (to slow down password guessing), sign-in sessions that expire after 30 minutes of inactivity,
-            and ordinary server logs.
+            email (to slow down password guessing), sign-in sessions that end after 30 minutes without activity and after
+            12 hours at most, and ordinary server logs (which hold error text and a request number, never email addresses).
           </li>
         </ul>
       </>
@@ -111,14 +115,15 @@ export const SECTIONS = [
         <p>
           Your files are stored encrypted with a key unique to your vault. That key is itself only ever stored in
           locked form, so the stored data on its own cannot be read by us or by anyone who obtains a copy of the
-          database. A share link is separate: it carries its own key after the # symbol, and the server stores
-          only encrypted copies of the shared files, never that key.
+          database. A share link is separate: it carries its own key after the # symbol. The key is generated when you create the link, so it
+          isn&apos;t sent to our server when someone opens the link; the server does handle it while it creates the link, and stores only
+          encrypted copies of the shared files, not that key.
         </p>
         <p>
           This is not end-to-end encryption. Files travel to and from the server over HTTPS, and while you are
           signed in the server unlocks your vault key for each request to encrypt the files you upload and decrypt
           the ones you open. Your session token is kept in your browser tab&apos;s sessionStorage (so a reload keeps you signed in; closing the tab ends it),
-          never in a cookie or localStorage, and sessions end after 30 minutes without activity. Script injected into a page could read that token,
+          never in a cookie or localStorage, and signed in sessions end after 30 minutes without activity, and after 12 hours at most. Script injected into a page could read that token,
           which is why Warden loads no third-party script and sets a strict Content-Security-Policy. Your password and the unlocked key are never
           stored in the browser. Warden is a website: there is no phone vault and no offline copy of your files.
         </p>

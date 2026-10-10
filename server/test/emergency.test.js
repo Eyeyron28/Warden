@@ -166,7 +166,9 @@ test('the waiting period is 3, 7 or 14 days; 2 minutes only in demo mode; a clie
   const sent = await W.contactRequests(made.kit, { releaseAt: '2000-01-01T00:00:00Z', waitMinutes: 2, now: '2000-01-01', requestedAt: '2000-01-01', at: 0 });
   assert.equal(sent.status, 201);
   const row = W.requestRows()[0];
-  const wait = row.releaseAt.getTime() - row.requestedAt.getTime();
+  // The wait is counted from the moment the owner was told, never from anything the client sent.
+  assert.ok(row.ownerNotifiedAt instanceof Date && row.ownerNotifiedAt.getTime() >= row.requestedAt.getTime());
+  const wait = row.releaseAt.getTime() - row.ownerNotifiedAt.getTime();
   assert.equal(wait, 4320 * 60 * 1000, 'the stored wait decides, not the request');
   assert.ok(row.requestedAt.getTime() >= before - 1000, 'the clock is the server clock');
   assert.equal(row.claimExpiresAt.getTime() - row.releaseAt.getTime(), config.claimDays() * 864e5);
@@ -382,7 +384,7 @@ function kitLibWrongKit() {
   return kitLib.encodeKit(crypto.randomBytes(32));
 }
 
-test('lockouts: eight failures lock an owner address (even for the right kit), per-connection limits hold, five code guesses kill a code', async () => {
+test('lockouts: failures count against the connection and the details it typed, never against the owner alone; five code guesses kill a code', async () => {
   W.reset();
   W.seedVault();
   const made = await W.setupEmergency({ waitMinutes: 2 });
@@ -397,29 +399,50 @@ test('lockouts: eight failures lock an owner address (even for the right kit), p
   const dead = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code, kit: made.kit }, { ip: '203.0.113.120' });
   assert.equal(dead.error?.status, 401, 'the code is gone after five guesses');
 
-  // the owner address is now at 5 failures; three more lock it
-  for (let i = 0; i < 3; i += 1) {
+  // Eight more failures from OTHER connections do not lock the owner's real contact (F6): a stranger who only knows the
+  // owner's address can no longer shut the contact out.
+  for (let i = 0; i < 8; i += 1) {
     await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: `203.0.113.${130 + i}` });
   }
   const freshCode = await W.contactCode({ ip: '203.0.113.140' });
-  const locked = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: freshCode, kit: made.kit }, { ip: '203.0.113.141' });
-  assert.equal(locked.error?.status, 429, 'locked, even with the right kit and a live code');
+  const real = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: freshCode, kit: made.kit }, { ip: '203.0.113.141' });
+  assert.equal(real.status, 201, 'the real contact still gets through');
+  W.reset();
+  W.seedVault();
+  const again = await W.setupEmergency({ waitMinutes: 2 });
+
+  // The same connection repeating the same details is locked after eight failures (even with the right kit afterwards)...
+  const statuses = [];
+  for (let i = 0; i < 9; i += 1) {
+    statuses.push((await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '198.51.100.7' })).error?.status);
+  }
+  assert.deepEqual(statuses, [401, 401, 401, 401, 401, 401, 401, 401, 429]);
+  const lockedCode = await W.contactCode({ ip: '203.0.113.150' });
+  const locked = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: lockedCode, kit: again.kit }, { ip: '198.51.100.7' });
+  assert.equal(locked.error?.status, 429, 'locked for that connection, even with the right kit and a live code');
   assert.equal(W.requestRows().length, 0);
-  // the lockout says the same for an address that does not exist (it counts attempts, not accounts)
+  // ...and says the same for an address that does not exist (it counts attempts, not accounts)
   const unknown = [];
   for (let i = 0; i < 9; i += 1) {
-    unknown.push((await W.publicCall(E.request, { ownerEmail: 'ghost@example.com', contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: `192.0.2.${i + 1}` })).error?.status);
+    unknown.push((await W.publicCall(E.request, { ownerEmail: 'ghost@example.com', contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '192.0.2.77' })).error?.status);
   }
   assert.deepEqual(unknown, [401, 401, 401, 401, 401, 401, 401, 401, 429], 'a made-up address locks after the same number of tries');
 
-  // one connection that keeps failing is locked too, whichever owner it names
+  // one connection that keeps failing is locked too (coarser limit), whichever owner it names
   W.reset();
-  const statuses = [];
+  const many = [];
   for (let i = 0; i < 27; i += 1) {
-    statuses.push((await W.publicCall(E.request, { ownerEmail: `ghost${i}@example.com`, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '198.51.100.250' })).error?.status);
+    many.push((await W.publicCall(E.request, { ownerEmail: `ghost${i}@example.com`, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '198.51.100.250' })).error?.status);
   }
-  assert.equal(statuses[0], 401);
-  assert.equal(statuses.at(-1), 429, 'per-connection lockout');
+  assert.equal(many[0], 401);
+  assert.equal(many.at(-1), 429, 'per-connection lockout');
+  // an IPv6 connection is counted by its /64, so rotating the low bits does not buy a new budget
+  W.reset();
+  const v6 = [];
+  for (let i = 0; i < 27; i += 1) {
+    v6.push((await W.publicCall(E.request, { ownerEmail: `ghost${i}@example.com`, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: `2001:db8:1:2:${i.toString(16)}::${(i + 1).toString(16)}` })).error?.status);
+  }
+  assert.equal(v6.at(-1), 429, 'one /64 shares one budget');
 });
 
 test('code emails: at most five an hour per owner address, and a code can only be used for its own purpose', async () => {

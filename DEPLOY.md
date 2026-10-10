@@ -55,15 +55,16 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `SIGNUP_MODE` | no | `invite` (recommended) or `open`. |
 | `INVITE_CODE` | **Secret** | Required when `SIGNUP_MODE=invite`. At least 16 characters, random. Share it only with the people you invite. |
 | `REQUEST_ACCESS_TEXT` | no | Optional. One plain-text line (max 200 characters) shown on the landing page and the sign-up form in invite mode, e.g. `Email sam@example.com to ask for a code.` It is public and shown as text only. Never put the code in it. |
-| `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it (`Authorization: Bearer <CRON_SECRET>`) to both daily jobs: the Trash purge and the **expiry reminders**. Without it neither endpoint exists (404), so **no reminder email is ever sent**: set it. |
+| `CRON_SECRET` | **Secret** | At least 16 random characters. Vercel sends it (`Authorization: Bearer <CRON_SECRET>`) to both daily jobs: the Trash purge and the **expiry reminders**. **Required in production: the server refuses to start without it** (and the same for a value shorter than 16 characters), because without it neither endpoint exists (404) and **no reminder email is ever sent**. Both routes are also rate limited (30 requests a minute per connection) before the secret is checked. |
 | `STORAGE_QUOTA_MB` | no | Optional. Per-account storage limit in MB; must be a positive number. Default 25. |
 | `TRUST_PROXY_HOPS` | no | Optional. Leave it unset: the app uses **1** automatically on Vercel. If you set it, it must be `1`; any other value makes the rate limiter see the wrong IP address. |
 | `OTP_ENABLED` | no | **Do not set it.** The emailed login code is on by default, and the server refuses to start in production if it is `false`. |
 | `OTP_TTL_MINUTES` | no | Optional, 1 to 60 (default 5). |
-| `AUDIT_HMAC_KEY` | **Secret** | **Required in production** (the server refuses to start without it). At least 32 random characters, e.g. from a password manager. It signs each entry of the activity log so changes to the stored log can be detected. Keep it separate from `MONGO_URI`: it protects nothing if the same person holds both. Rotating it makes older entries show as "cannot be verified". |
+| `AUDIT_HMAC_KEY` | **Secret** | **Required in production** (the server refuses to start without it). At least 32 random characters, e.g. from a password manager. It signs each entry of the activity log so edits and gaps in the stored log can be detected (removing the newest entries is not detectable by someone who can write to the database). Keep it separate from `MONGO_URI`: it protects nothing if the same person holds both. Rotating it makes older entries show as "cannot be verified". |
 | `EMERGENCY_CLAIM_DAYS` | no | Optional, 1 to 30 (default 7). How long after the Emergency Access waiting period ends the contact can still start a session. |
 | `EMERGENCY_DEMO_MODE` | no | **Demo only. Leave it unset.** `true` also allows a 2-minute waiting period (used by `server/scripts/emergency-demo.js`); the server warns at start-up if it is on in production. |
 | `AUDIT_RETENTION_DAYS` | no | Optional. How long activity entries are kept (default 30). |
+| `SESSION_ABSOLUTE_HOURS` | no | Optional, 1 to 168 (default **12**). The longest a sign-in can last however busy it is. The 30-minute idle timeout always applies as well. A value outside the range stops a production start. |
 | `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
 
 Never put these values in the repository, in screenshots or in chat. `server/.env` is git-ignored; keep it that way.
@@ -90,7 +91,7 @@ Never put these values in the repository, in screenshots or in chat. `server/.en
 | `/api/cron/purge-trash` | `17 3 * * *` | Removes Trash items whose 30 days are over. |
 | `/api/cron/reminders` | `0 1 * * *` (09:00 in Manila) | Emails an account about documents that expire in 60, 30 or 7 days, or today. One email per account per run, counts only (no file names). |
 
-Both refuse every request unless `Authorization: Bearer <CRON_SECRET>` matches (constant-time compare); with `CRON_SECRET` unset the endpoints return 404. The reminder job is safe to run twice (a reminder is claimed in the database before it is sent, so nothing goes out twice), does at most 40 emails and about 20 seconds of work per run (the rest waits for the next run), and logs counts only. To run it by hand against a database you choose: `cd server && node scripts/run-reminders.js` (it uses `MONGO_URI` and the SMTP settings from the environment or `server/.env`, and prints the database name, never the URI).
+Both refuse every request unless `Authorization: Bearer <CRON_SECRET>` matches (constant-time compare); with `CRON_SECRET` unset the endpoints return 404 (production refuses to start without it). They are limited to 30 requests a minute per connection, checked before the secret. The reminder job is safe to run twice (a reminder is claimed in the database before it is sent, so nothing goes out twice), does at most 40 emails and about 20 seconds of work per run (the rest waits for the next run), and logs counts only. To run it by hand against a database you choose: `cd server && node scripts/run-reminders.js` (it uses `MONGO_URI` and the SMTP settings from the environment or `server/.env`, and prints the database name, never the URI).
 
 **Emergency Access upkeep rides on the reminders job** (no third cron entry: Hobby has few): each day it emails the owner one reminder while a request is open, tells the contact and the owner once when a waiting period ends, and expires requests nobody claimed in time. Idempotent, counts only.
 
@@ -133,7 +134,7 @@ Run this on the real URL, with a throwaway email address you control.
 1. [ ] Sign in, open **Devices & activity**. This browser is listed as "This device" with a label such as "Chrome on Windows" and your country (the city and country come from Vercel's own headers; no IP is shown or stored).
 2. [ ] Sign in from a second browser or a private window (the code email arrives; this is a new device, so a "New sign-in" email arrives too). Both devices are listed. Use **Sign out** on the second one and reload it: "Your session expired. Sign in again."
 3. [ ] Open and download a file, then check the timeline: "Opened" and "Downloaded" entries appear, with no file names stored (names are looked up when you read it).
-4. [ ] Press **Verify log**: it reports the chain intact.
+4. [ ] Press **Verify log**: it reports no edits or gaps (it detects edits and gaps; it cannot detect the removal of the newest entries by someone who can write to the database).
 5. [ ] In the email's **This wasn't me** link: it opens a page that only explains and links to the password reset.
 6. [ ] Open **Overview**: most viewed, most downloaded, recently opened, files untouched for 180 days, share statistics. "My files" shows a "Frequently used" row after a few opens.
 7. [ ] Reload a page while signed in: you stay signed in (the token is in this tab's sessionStorage). Close the tab and reopen the site: you are signed out.
@@ -153,11 +154,13 @@ Run this on the real URL, with a throwaway email address you control.
 
 1. [ ] **Emergency Access** (sidebar). The owner sets it up with a short wizard (contact, waiting period, what they can see, an emailed code) and gets an **Emergency Kit** screen with a printable sheet. Every change needs a **fresh emailed code**: set up, replace the kit, turn off, approve early. The contact's page is `<your-url>/emergency` (linked from the footer). A full demo script is in `docs/DEMO-EMERGENCY.md`.
 2. [ ] The waiting period is **3, 7 or 14 days**. A 2-minute option exists only with `EMERGENCY_DEMO_MODE=true`.
-3. [ ] The contact has **no account**: they request a code (the answer is the same whatever they type), then enter the code and the kit to make a request. The owner is emailed **at once**, with a one-click **Deny** link (single use, can only deny) and a signed-in Deny button. The owner also gets a reminder each day while it is open.
+3. [ ] The contact has **no account**: they request a code (the answer is the same whatever they type), then enter the code and the kit to make a request. The owner is emailed when the request is made (**the request is refused with a 503 if that email cannot be sent**, and the waiting period is counted from that email), with a one-click **Deny** link (single use, can only deny) and a signed-in Deny button. The owner also gets a reminder each day while it is open.
 4. [ ] After the wait, if nobody denied, the contact starts a session with a new code and the kit. It is **read-only**, limited to the chosen folders (or the whole vault), ends after **4 hours at most** (30 minutes idle), and is refused everywhere except: sign-in check, log out, list files and folders in scope, preview and download files in scope. Out-of-scope items are a 404.
-5. [ ] Every step is on the owner's **Devices & activity** timeline (group "Emergency access", marked as the emergency actor) and a started session always shows the warning banner. **Verify log** stays Intact.
+5. [ ] Every step is on the owner's **Devices & activity** timeline (group "Emergency access", marked as the emergency actor) and a started session always shows the warning banner. **Verify log** still finds no edits or gaps.
 6. [ ] A denial blocks a new request for 24 hours. Turning access off, replacing the kit, or any change of the vault key ends sessions at once and cancels requests.
 7. [ ] Try the whole flow without waiting days: `cd server && MONGO_URI="<a throwaway database>" node scripts/emergency-demo.js` (real 2-minute waits, about 5 minutes) or add `--fast`. It never reads `server/.env`, never sends email, and deletes the account it creates.
+
+**Upgrading from the first Emergency Access release.** A request records `ownerNotifiedAt` (the moment the owner's email was handed to the mail server) and no session can start without it. A request that was already open before this upgrade has no such time, so the daily job removes it and the contact simply asks again. Nothing else is affected.
 
 ## 9c. Emails and share-link previews
 
@@ -192,4 +195,4 @@ Tested locally against a stand-in for Vercel (static files, headers and rewrites
 
 ## Where the sign-in token lives
 
-The session token is kept in the browser tab's sessionStorage so a reload keeps you signed in; closing the tab ends it, and it expires after 30 idle minutes on the server. The trade-off is that script running inside the page could read it, which is why there is no third-party script and why the Content-Security-Policy in `vercel.json` is strict (scripts only from this origin plus one hashed theme snippet, no frames, no plugins, `upgrade-insecure-requests`). `style-src 'unsafe-inline'` is still needed for React inline styles and was not removed.
+The session token is kept in the browser tab's sessionStorage so a reload keeps you signed in; closing the tab ends it, and on the server it expires after 30 idle minutes and after 12 hours at most (`SESSION_ABSOLUTE_HOURS`). The trade-off is that script running inside the page could read it, which is why there is no third-party script and why the Content-Security-Policy in `vercel.json` is strict (scripts only from this origin plus one hashed theme snippet, no frames, no plugins, `upgrade-insecure-requests`). `style-src 'unsafe-inline'` is still needed for React inline styles and was not removed.

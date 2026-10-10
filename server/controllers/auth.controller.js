@@ -25,9 +25,8 @@ const { sendEmail, normalizeRecipient } = require('../utils/email');
 const { otpEnabled } = require('../utils/otpConfig');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
 const { finalizeReset, extractRecoverySalt } = require('../utils/accountReset');
-
-const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 3;
-const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const { reserveLoginAttempt, clearLoginFailures } = require('../utils/loginLimiter');
+const { recordDuration, padLikeReal } = require('../utils/sendTiming');
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -60,6 +59,9 @@ const DUMMY_HASH = hashPassword('warden-timing-parity-dummy-password', DUMMY_SAL
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
 // every handler below can just `throw` instead of repeating try/catch.
+// MongoDB's unique-index violation (also what the in-memory test fakes throw).
+const isDuplicateKey = (error) => Boolean(error && (error.code === 11000 || /E11000/.test(String(error.message))));
+
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function badRequest(message) {
@@ -133,10 +135,9 @@ function invalidVerificationTokenError() {
  * DEK). For an email that already has an account, it's a second,
  * unrelated generateRecoveryKey() call whose output is never used or
  * stored anywhere - its only purpose is making the two responses
- * indistinguishable by shape, not just by message text. This is why the
- * recovery key is generated AFTER the existing-account check rather than
- * shown only on success: showing it solely on a real signup would itself
- * be the enumeration oracle (recoveryKey present = new account).
+ * indistinguishable by shape, not just by message text. All the key work is
+ * done BEFORE the existing-account check, for every address, so the time to
+ * answer is the same too (see the comments in the handler).
  */
 const signup = asyncHandler(async (req, res) => {
   // First of all, before the email is looked at (see utils/inviteGate.js). The
@@ -169,17 +170,10 @@ const signup = asyncHandler(async (req, res) => {
     message: 'If this email can be registered, a verification link has been sent.',
   };
 
-  const existingUser = await User.findOne({ email: normalizedEmail });
-  if (existingUser) {
-    // Nothing created, nothing changed - just an optional heads-up to the
-    // real owner, in case this was them forgetting they already have an
-    // account rather than someone else probing their email.
-    await sendEmail({ to: normalizedEmail, ...templates.signupAttempt({ when: new Date() }) });
-    // Decoy recovery key - see function comment above for why this exists.
-    res.status(200).json({ ...responseBody, recoveryKey: generateRecoveryKey() });
-    return;
-  }
-
+  // ALL of the work a new account needs is done up front, for every address, before anyone looks at whether it is
+  // taken: the password hash, the recovery key and both key wraps (the expensive part, three scrypt runs). An address
+  // that already has an account pays exactly the same, so the time to answer cannot tell the two apart. What is not
+  // needed is simply thrown away.
   const salt = generateSalt();
   const passwordHash = hashPassword(password, salt);
 
@@ -197,27 +191,48 @@ const signup = asyncHandler(async (req, res) => {
 
   const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_BYTES).toString('hex');
 
-  await User.create({
-    email: normalizedEmail,
-    emailVerified: false,
-    verificationTokenHash: hashToken(verificationToken),
-    verificationTokenExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
-    passwordHash,
-    salt,
-    recoveryKeyHash,
-    wrappedDEKPassword: wrappedPassword.wrappedKey,
-    wrappedDEKPasswordIv: wrappedPassword.iv,
-    wrappedDEKPasswordAuthTag: wrappedPassword.authTag,
-    wrappedDEKRecovery: wrappedRecovery.wrappedKey,
-    wrappedDEKRecoveryIv: wrappedRecovery.iv,
-    wrappedDEKRecoveryAuthTag: wrappedRecovery.authTag,
-    dekFingerprint: fingerprintDEK(dek),
-  });
+  let created = false;
+  const existingUser = await User.findOne({ email: normalizedEmail });
+  if (!existingUser) {
+    try {
+      await User.create({
+        email: normalizedEmail,
+        emailVerified: false,
+        verificationTokenHash: hashToken(verificationToken),
+        verificationTokenExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+        passwordHash,
+        salt,
+        recoveryKeyHash,
+        wrappedDEKPassword: wrappedPassword.wrappedKey,
+        wrappedDEKPasswordIv: wrappedPassword.iv,
+        wrappedDEKPasswordAuthTag: wrappedPassword.authTag,
+        wrappedDEKRecovery: wrappedRecovery.wrappedKey,
+        wrappedDEKRecoveryIv: wrappedRecovery.iv,
+        wrappedDEKRecoveryAuthTag: wrappedRecovery.authTag,
+        dekFingerprint: fingerprintDEK(dek),
+      });
+      created = true;
+    } catch (error) {
+      // Two sign-ups for the same new address at once: the database lets one in, and the other one is simply "an
+      // address that already has an account" - it must get that same answer, never the driver's duplicate-key error.
+      if (!isDuplicateKey(error)) throw error;
+    }
+  }
 
-  const appUrl = resolvePublicAppUrl(req);
-  const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
-  await sendEmail({ to: normalizedEmail, ...templates.verifyEmail({ verifyUrl }) });
+  if (created) {
+    const appUrl = resolvePublicAppUrl(req);
+    const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
+    await sendEmail({ to: normalizedEmail, ...templates.verifyEmail({ verifyUrl }) });
+  } else {
+    // Nothing created, nothing changed - just an optional heads-up to the
+    // real owner, in case this was them forgetting they already have an
+    // account rather than someone else probing their email.
+    await sendEmail({ to: normalizedEmail, ...templates.signupAttempt({ when: new Date() }) });
+  }
 
+  // The same body either way, including a `recoveryKey` of the same shape: for a new account the real, one-time key;
+  // otherwise one that was never stored anywhere and works for nothing (generating it only after the existing-account
+  // check, and only for a real signup, would itself be the oracle).
   res.status(200).json({ ...responseBody, recoveryKey });
 });
 
@@ -270,6 +285,7 @@ const resendVerification = asyncHandler(async (req, res) => {
     return res.status(200).json({ message: RESEND_GENERIC_MESSAGE });
   }
 
+  const startedAt = Date.now();
   const user = await User.findOne({ email: normalizedEmail });
   if (user && !user.emailVerified) {
     const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_BYTES).toString('hex');
@@ -280,6 +296,11 @@ const resendVerification = asyncHandler(async (req, res) => {
     const appUrl = resolvePublicAppUrl(req);
     const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
     await sendEmail({ to: normalizedEmail, ...templates.verifyEmailResend({ verifyUrl }) });
+    recordDuration('resend-verification', Date.now() - startedAt);
+  } else {
+    // Nothing to send (no such account, or already verified): take about as long as a real send does, so the time to
+    // answer says nothing about which of the two this was.
+    await padLikeReal('resend-verification', startedAt);
   }
 
   res.status(200).json({
@@ -307,29 +328,21 @@ const getPublicConfig = (req, res) => {
 
 /**
  * Verifies a password for a known account with the lockout rules every
- * password check shares: while locked, the check does not even run; 3
- * consecutive failures lock the account for 5 minutes. Used by login and by
- * the re-check before an account deletion code is sent, so a stolen session
- * cannot be used to guess the password any faster than a login can.
+ * password check shares: 3 checks per 5-minute window, then a 5-minute lock,
+ * during which the check does not even run. The count lives in
+ * utils/loginLimiter.js, keyed by the address and updated atomically, and an
+ * address with no account is counted the same way (see unlock). Used by login
+ * and by the re-check before an account deletion code is sent, so a stolen
+ * session cannot be used to guess the password any faster than a login can.
  */
 async function checkPasswordWithLockout(user, password) {
-  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-    throw lockoutError(user.lockedUntil);
-  }
+  const gate = await reserveLoginAttempt(user.email);
+  if (!gate.granted) throw lockoutError(gate.lockedUntil);
 
   if (!verifyPassword(password, user.salt, user.passwordHash)) {
-    user.failedAttempts += 1;
-
-    if (user.failedAttempts >= FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
-      user.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
-      user.failedAttempts = 0;
-      await user.save();
-      throw lockoutError(user.lockedUntil);
-    }
-
-    await user.save();
-    throw genericLoginError();
+    throw gate.locked ? lockoutError(gate.lockedUntil) : genericLoginError();
   }
+  await clearLoginFailures(user.email);
 }
 
 /**
@@ -386,13 +399,14 @@ async function respondWithLoginChallenge(req, res, user, dek) {
  * Login. Route path kept as "unlock" to avoid an unrelated client churn,
  * but it's a real multi-account login now, by email.
  *
- * Lockout, same as before: 3 consecutive failed attempts sets lockedUntil
- * 5 minutes out, tracked per account (User.failedAttempts/lockedUntil),
- * and while that's in the future, login is rejected before password
- * verification even runs.
+ * Lockout: 3 password checks per 5-minute window, then a 5-minute lock during
+ * which login is rejected before password verification even runs. The count
+ * is kept per ADDRESS TYPED, real or not, and updated atomically
+ * (utils/loginLimiter.js), so parallel guesses cannot exceed the limit and an
+ * unknown address locks exactly like a real one.
  *
- * Unknown email and wrong password are byte-identical (status, body, and
- * - via the dummy-salt scrypt call below - response time). Only once the
+ * Unknown email and wrong password are byte-identical (status, body, lock
+ * behavior and - via the dummy-salt scrypt call below - response time). Only once the
  * password has been verified correct does an unverified account get its
  * own distinct message; a wrong password against an unverified account
  * still gets the same generic error as any other wrong password, so
@@ -407,23 +421,33 @@ const unlock = asyncHandler(async (req, res) => {
   }
   const normalizedEmail = email.trim().toLowerCase();
 
+  // The attempt is counted FIRST, for any address typed: one atomic update that also says whether this attempt may be
+  // checked at all (utils/loginLimiter.js). A real and an unknown address take exactly the same road from here.
+  const gate = await reserveLoginAttempt(normalizedEmail);
   const user = await User.findOne({ email: normalizedEmail });
+  const failedLogin = async () =>
+    recordEvent(req, 'login_failed', { userId: user._id, deviceId: (await deviceFromCookie(req, user._id))?._id || null });
+
+  if (!gate.granted) {
+    // Locked: the password is not even looked at. (Only a real account has an activity log to write to.)
+    if (user) await failedLogin();
+    throw lockoutError(gate.lockedUntil);
+  }
 
   if (!user) {
     // Same scrypt cost as a real verifyPassword call below, against a
     // fixed dummy salt/hash - the result is discarded, only the timing
     // matters.
     verifyPassword(password, DUMMY_SALT, DUMMY_HASH);
-    throw genericLoginError();
+    throw gate.locked ? lockoutError(gate.lockedUntil) : genericLoginError();
   }
 
-  try {
-    await checkPasswordWithLockout(user, password);
-  } catch (failure) {
-    // A wrong password (or a locked account): one `login_failed` event, then the same error as before.
-    await recordEvent(req, 'login_failed', { userId: user._id, deviceId: (await deviceFromCookie(req, user._id))?._id || null });
-    throw failure;
+  if (!verifyPassword(password, user.salt, user.passwordHash)) {
+    // A wrong password: one `login_failed` event, then the same answer an unknown address gets.
+    await failedLogin();
+    throw gate.locked ? lockoutError(gate.lockedUntil) : genericLoginError();
   }
+  await clearLoginFailures(normalizedEmail);
 
   if (!user.emailVerified) {
     throw unverifiedAccountError();
@@ -436,10 +460,6 @@ const unlock = asyncHandler(async (req, res) => {
     user.wrappedDEKPasswordIv,
     user.wrappedDEKPasswordAuthTag
   );
-
-  user.failedAttempts = 0;
-  user.lockedUntil = undefined;
-  await user.save();
 
   // A browser the owner trusted after an earlier code skips the code - but
   // only here, AFTER the password has been proven. Phone recovery, deletion

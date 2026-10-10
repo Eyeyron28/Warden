@@ -24,6 +24,8 @@ export function publicFailureMessage(error) {
   const code = error?.response?.data?.error?.code;
   if (status === 409 && code === 'NOT_YET') return 'The waiting period has not ended yet. Come back after the time we showed you.';
   if (status === 410) return 'The time to open the vault has passed. You can make a new request.';
+  // Only ever given to someone who has already passed the kit and code checks: the owner could not be emailed, so no request was made.
+  if (status === 503) return 'We could not process your request right now. Please try again later; you will need to ask for a new code.';
   return GENERIC_FAILURE;
 }
 

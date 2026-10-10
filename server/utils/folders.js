@@ -19,6 +19,8 @@ const MAX_FOLDER_NAME_LENGTH = 100;
 function httpError(status, message, code) {
   const error = new Error(message);
   error.status = status;
+  // An app-authored 5xx message is written for the user; any other 5xx is replaced by the error handler.
+  if (status >= 500) error.expose = true;
   if (code) error.code = code;
   return error;
 }

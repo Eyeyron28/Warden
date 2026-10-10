@@ -17,6 +17,9 @@ const emergencyRequestSchema = new mongoose.Schema({
   deniedAt: { type: Date, default: null },
   deniedBy: { type: String, enum: ['owner', 'email-link', null], default: null },
   approvedEarlyAt: { type: Date, default: null },
+  // The moment the owner's email was handed to the mail sender. The waiting period counts from here, and a session can
+  // never start without it: a request whose owner could not be told does not exist (see submitRequest).
+  ownerNotifiedAt: { type: Date, default: null },
   releaseNoticedAt: { type: Date, default: null }, // the wait ended: the contact and the owner were told (once)
   releasedAt: { type: Date, default: null }, // the first session was started
   finishedAt: { type: Date, default: null },

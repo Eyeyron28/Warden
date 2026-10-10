@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 
 const { isProduction } = require('./runtimeEnv');
+const { scrubForLog, shortHash } = require('./logSafe');
 
 /**
  * Thin Nodemailer wrapper, configured entirely from env (SMTP_HOST,
@@ -139,9 +140,8 @@ async function sendEmail({ to, subject, text, html }) {
   }
 
   if (!isSafeRecipient(to)) {
-    // JSON.stringify so a hostile value (CRLF, control characters) can't
-    // forge extra log lines; truncated so it can't flood them either.
-    console.error(`Refusing to send email: invalid recipient ${JSON.stringify(String(to).slice(0, 80))}`);
+    // Only the length is logged: what was typed can be somebody's address (or a hostile string), and neither belongs in a log.
+    console.error(`Refusing to send email: invalid recipient (${String(to).length} characters).`);
     return false;
   }
 
@@ -176,7 +176,8 @@ async function sendEmail({ to, subject, text, html }) {
     // reason for operator visibility, never the SMTP credentials
     // themselves (err.message from Nodemailer/the SMTP server doesn't
     // include SMTP_PASS - only the auth outcome).
-    console.error(`Failed to send email to ${to}: ${err.message}`);
+    // The recipient is identified by a short hash only, and the provider's message is scrubbed (SMTP errors often repeat the address).
+    console.error(`Failed to send email to recipient ${shortHash(to)}: ${scrubForLog(err.message)}`);
     return false;
   }
 }

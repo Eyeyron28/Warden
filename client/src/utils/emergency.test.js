@@ -378,6 +378,8 @@ test('the public page speaks in one voice: the same neutral confirmation, the sa
   assert.match(publicFailureMessage({ response: { status: 429, data: { error: { message: 'The owner denied the last request. You can ask again 24 hours after that.' } } } }), /24 hours/);
   assert.match(publicFailureMessage({ response: { status: 409, data: { error: { code: 'NOT_YET' } } } }), /waiting period has not ended/);
   assert.match(publicFailureMessage({ response: { status: 410 } }), /time to open the vault has passed/);
+  // The owner could not be emailed, so no request was made: said only to someone who passed the kit and code checks.
+  assert.match(publicFailureMessage({ response: { status: 503 } }), /could not process your request right now.*try again later/);
   assert.equal(requestSentText('2026-10-12T01:00:00Z', (v) => `<${v}>`), 'Your request was sent. Access can be available on <2026-10-12T01:00:00Z>. Come back to this page then.');
 });
 

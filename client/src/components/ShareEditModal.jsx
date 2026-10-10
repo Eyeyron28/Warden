@@ -188,7 +188,7 @@ function ShareEditModal({ share, onClose, onChanged }) {
     <Modal title={`Edit "${share.name}"`} onClose={onClose}>
       <div className={styles.generateSection}>
         <p className={styles.hint}>
-          Nothing is re-uploaded. We never keep a share&apos;s link or key, so changing the password needs your original
+          Nothing is re-uploaded. We don&apos;t keep a share&apos;s link or key after it is created, so changing the password needs your original
           link or the current password.
         </p>
 
@@ -300,7 +300,7 @@ function ShareEditModal({ share, onClose, onChanged }) {
           hint={
             share.passwordProtected
               ? 'Change it or remove it with the current password. Your browser unlocks the key with it and locks it again; we never see either password.'
-              : 'To add a password, paste this share’s original link: its key is in the part after the #, and only your browser handles it.'
+              : 'To add a password, paste this share’s original link: its key is in the part after the #. Your browser locks it with the password; the key is not sent to us again.'
           }
           error={pw.error}
           note={pw.note}

@@ -23,6 +23,7 @@ const Device = require('../models/Device');
 const AuditEvent = require('../models/AuditEvent');
 const ReminderLog = require('../models/ReminderLog');
 const { cleanupForUser: cleanupEmergencyAccess, invalidateForKeyChange } = require('./emergency/service');
+const { clearLoginFailures } = require('./loginLimiter');
 
 /**
  * What every password reset ends with, whichever way it started (recovery key
@@ -80,6 +81,8 @@ async function finalizeReset(user, dek, newPassword, { newRecoveryKey } = {}) {
   user.failedAttempts = 0;
   user.lockedUntil = undefined;
   await user.save();
+  // A completed reset ends any password lockout on the address.
+  await clearLoginFailures(user.email);
   if (keyChanged) await invalidateForKeyChange(user._id);
 }
 

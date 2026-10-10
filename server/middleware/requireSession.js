@@ -45,7 +45,7 @@ const requireSession = asyncHandler(async (req, res, next) => {
   // any handler runs (middleware/emergencyGuard.js).
   if (session.emergency) assertEmergencyAllowed(req);
 
-  await refreshSession(token, { absoluteExpiresAt: session.emergency?.absoluteExpiresAt || null });
+  await refreshSession(token, { absoluteExpiresAt: session.absoluteExpiresAt || null });
 
   req.userId = session.userId;
   req.dek = session.dek;

@@ -17,6 +17,7 @@ const { normalizeRecipient } = require('../utils/email');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge, FAILURE_MESSAGE } = require('../utils/otpChallenge');
 const { extractRecoverySalt, finalizeReset, wipeVault, finishReset } = require('../utils/accountReset');
 const { consumeBudget, budgetRetryAfterSeconds } = require('../middleware/rateLimit');
+const { ipKey } = require('../utils/clientIp');
 
 /**
  * Forgot password, built around the emailed code:
@@ -41,7 +42,7 @@ const MAX_EMAIL_LENGTH = 254;
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function httpError(status, message, extra = {}) {
-  return Object.assign(new Error(message), { status }, extra);
+  return Object.assign(new Error(message), { status, ...(status >= 500 ? { expose: true } : {}) }, extra);
 }
 const badRequest = (message) => httpError(400, message);
 const passwordPolicyError = (errors) => httpError(400, 'Password does not meet the security requirements.', { errors });
@@ -234,9 +235,14 @@ const resetWithWipe = asyncHandler(async (req, res) => {
 
 // ---- 4. "Try another way": the recovery key alone -------------------------
 
-// Failures only. Per email: a short gap after the first miss, a longer one after
-// the second, longer again after the third, and a lock for the hour after the
-// fifth (the delay grows with every failure). Per IP: 10 an hour.
+// Per email: a short gap after the first attempt, a longer one after the second, longer again after the third, and a lock
+// for the hour after the fifth (the delay grows with every attempt). Per IP: 10 an hour.
+//
+// Every attempt is COUNTED BEFORE its key is looked at (one atomic increment per budget), not after it fails. Checking a
+// budget first and recording the failure afterwards let a burst of parallel requests all pass the check before any of them
+// had been counted, so the limits did not hold against exactly the caller they are for. An attempt that is over a budget
+// is refused without any key work. (A success ends the reset, so counting it costs nothing; the limits for failures are the
+// same as before: the 1st attempt opens a 10 s gap, the 2nd a 2 min one, ... the 6th in an hour is refused.)
 const KEY_ONLY_EMAIL_BUDGETS = [
   { name: 'rk-gap-10s', max: 1, windowMs: 10 * 1000 },
   { name: 'rk-gap-2m', max: 2, windowMs: 2 * 60 * 1000 },
@@ -245,28 +251,25 @@ const KEY_ONLY_EMAIL_BUDGETS = [
 ];
 const KEY_ONLY_IP_BUDGETS = [{ name: 'rk-ip-1h', max: 10, windowMs: 60 * 60 * 1000 }];
 
-async function keyOnlyWait(emailKey, ip) {
+/** Counts this attempt against every budget, in order, and returns how many seconds to wait (0 = go ahead). */
+async function keyOnlyReserve(emailKey, ip) {
+  // The connection first: an attempt refused because of the connection must not use up the email's budgets (that would
+  // let one noisy address lock an account out from every other address).
+  const budgets = [
+    ...KEY_ONLY_IP_BUDGETS.map((b) => ({ ...b, key: ip })),
+    ...KEY_ONLY_EMAIL_BUDGETS.map((b) => ({ ...b, key: emailKey })),
+  ];
   let wait = 0;
-  for (const b of KEY_ONLY_EMAIL_BUDGETS) {
+  for (const b of budgets) {
     // eslint-disable-next-line no-await-in-loop
-    wait = Math.max(wait, await budgetRetryAfterSeconds({ name: b.name, key: emailKey, max: b.max }));
-  }
-  for (const b of KEY_ONLY_IP_BUDGETS) {
-    // eslint-disable-next-line no-await-in-loop
-    wait = Math.max(wait, await budgetRetryAfterSeconds({ name: b.name, key: ip, max: b.max }));
+    const allowed = await consumeBudget({ name: b.name, key: b.key, max: b.max, windowMs: b.windowMs });
+    if (!allowed) {
+      // eslint-disable-next-line no-await-in-loop
+      wait = Math.max(wait, await budgetRetryAfterSeconds({ name: b.name, key: b.key, max: b.max }));
+      break; // the later budgets are not charged for an attempt that is already refused
+    }
   }
   return wait;
-}
-
-async function keyOnlyRecordFailure(emailKey, ip) {
-  for (const b of KEY_ONLY_EMAIL_BUDGETS) {
-    // eslint-disable-next-line no-await-in-loop
-    await consumeBudget({ name: b.name, key: emailKey, max: b.max, windowMs: b.windowMs });
-  }
-  for (const b of KEY_ONLY_IP_BUDGETS) {
-    // eslint-disable-next-line no-await-in-loop
-    await consumeBudget({ name: b.name, key: ip, max: b.max, windowMs: b.windowMs });
-  }
 }
 
 const resetWithRecoveryKeyOnly = asyncHandler(async (req, res) => {
@@ -277,9 +280,10 @@ const resetWithRecoveryKeyOnly = asyncHandler(async (req, res) => {
   validateNewPassword(newPassword);
 
   const emailKey = (normalizeRecipient(email) || email.trim().toLowerCase()).slice(0, MAX_EMAIL_LENGTH);
-  const ip = req.ip || 'unknown';
+  const ip = ipKey(req.ip);
 
-  const wait = await keyOnlyWait(emailKey, ip);
+  // Counted first, atomically, then checked (see the budgets above).
+  const wait = await keyOnlyReserve(emailKey, ip);
   if (wait > 0) {
     throw httpError(429, 'Too many attempts. Please try again later.', { retryAfterSeconds: wait });
   }
@@ -289,7 +293,6 @@ const resetWithRecoveryKeyOnly = asyncHandler(async (req, res) => {
   // The same scrypt work whether or not the account exists.
   const dek = real ? recoverDek(user, recoveryKey) : recoverDek({}, recoveryKey, { dummy: true });
   if (!real || !dek) {
-    await keyOnlyRecordFailure(emailKey, ip);
     throw keyOnlyFailure();
   }
 

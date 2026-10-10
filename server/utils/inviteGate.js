@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const { consumeBudget, budgetRetryAfterSeconds } = require('../middleware/rateLimit');
+const { ipKey } = require('./clientIp');
 
 /**
  * The sign-up invite code, enforced on the server (the form is only a courtesy).
@@ -62,7 +63,7 @@ function codesMatch(given, expected) {
 async function assertInviteCode(req) {
   if (signupMode() === 'open') return;
 
-  const key = req.ip || 'unknown';
+  const key = ipKey(req.ip);
 
   let wait = 0;
   for (const budget of FAILURE_BUDGETS) {

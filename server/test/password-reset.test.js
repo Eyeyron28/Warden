@@ -508,6 +508,46 @@ test('try another way: failures lock with growing delays, and an IP is limited a
   assert.equal((await keyOnly(user.email, recoveryKey, NEW_PASSWORD, '198.51.100.78')).status, 200, 'another IP is not affected');
 });
 
+// ---- the recovery-key-only budgets cover every case (security review, F4) ----
+
+test('try another way: a burst of parallel guesses is counted before it is checked - exactly one gets a key check', async () => {
+  clearWorld();
+  const { user } = addUser('ana@example.com');
+  const wrong = 'ABCD-EFGH-JKMN-PQRS';
+  const burst = await Promise.all(Array.from({ length: 30 }, () => keyOnly(user.email, wrong)));
+  const checked = burst.filter((out) => out.error?.status === 401).length;
+  const refused = burst.filter((out) => out.error?.status === 429).length;
+  assert.equal(checked, 1, 'only the first attempt of the 10-second gap reaches the key check');
+  assert.equal(refused, 29);
+  // The same holds across different emails from one connection: 10 an hour, however they arrive.
+  budgets.clear();
+  const ip = '198.51.100.90';
+  const spread = await Promise.all(Array.from({ length: 25 }, (_, i) => keyOnly(`burst${i}@example.com`, wrong, NEW_PASSWORD, ip)));
+  assert.equal(spread.filter((out) => out.error?.status === 401).length, 10, 'ten checks from one connection, no more');
+  assert.equal(spread.filter((out) => out.error?.status === 429).length, 15);
+});
+
+test('try another way: an attempt refused because of the connection does not use up the email’s budget', async () => {
+  clearWorld();
+  const { user, recoveryKey } = addUser('ana@example.com');
+  const ip = '198.51.100.91';
+  for (let i = 0; i < 10; i += 1) await keyOnly(`n${i}@example.com`, 'ABCD-EFGH-JKMN-PQRS', NEW_PASSWORD, ip);
+  assert.equal((await keyOnly(user.email, recoveryKey, NEW_PASSWORD, ip)).error.status, 429, 'the noisy connection is refused');
+  assert.equal((await keyOnly(user.email, recoveryKey, NEW_PASSWORD, '198.51.100.92')).status, 200, 'the account’s owner is not locked out by it');
+});
+
+test('try another way: nothing looks at a key before the attempt has been counted, and a weak password is not a guess', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'controllers', 'passwordReset.controller.js'), 'utf8');
+  const body = source.slice(source.indexOf('const resetWithRecoveryKeyOnly'));
+  assert.ok(body.indexOf('keyOnlyReserve(') !== -1 && body.indexOf('keyOnlyReserve(') < body.indexOf('recoverDek('), 'counted first');
+  assert.ok(body.indexOf('validateNewPassword(') < body.indexOf('keyOnlyReserve('), 'a form mistake is refused before anything is counted');
+  assert.doesNotMatch(body, /keyOnlyWait|keyOnlyRecordFailure/, 'no check-then-record left');
+  clearWorld();
+  const { user } = addUser('ana@example.com');
+  assert.equal((await keyOnly(user.email, 'ABCD-EFGH-JKMN-PQRS', 'weak')).error.status, 400);
+  assert.equal(budgets.size, 0, 'a weak new password uses no attempt');
+});
+
 test('try another way: the notification email has the time and browser, no IP, no link, no token', async () => {
   clearWorld();
   const { user, recoveryKey } = addUser('ana@example.com');

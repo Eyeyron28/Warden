@@ -1,3 +1,7 @@
+const crypto = require('crypto');
+
+const { scrubForLog } = require('../utils/logSafe');
+
 // Consistent JSON error format for all routes.
 // Usage: pass errors to next(err), or let thrown errors in async handlers bubble up.
 const notFound = (req, res, next) => {
@@ -14,16 +18,29 @@ const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INV
   // the kit and code checks).
   'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY']);
 
+// What a caller is told for any server-side failure. The real error stays in the server log, next to the request id.
+const GENERIC_SERVER_ERROR = 'Something went wrong on our side. Please try again.';
+
 const errorHandler = (err, req, res, next) => {
   const status = err.status || (res.statusCode !== 200 ? res.statusCode : 500);
 
+  // Anything >= 500 is answered with ONE fixed message and a request id, so a driver error (a duplicate-key message
+  // naming a collection and a value, a stack, a path) can never reach the caller. The only exception is an error the
+  // app itself raised with `expose` set, whose text was written for the user (e.g. "We couldn't send the code email").
+  const hidden = status >= 500 && !err.expose;
+  const requestId = status >= 500 ? crypto.randomBytes(6).toString('hex') : undefined;
+  if (hidden) {
+    console.error(`[request ${requestId}] ${status} ${scrubForLog(err.name)}: ${scrubForLog(err.message)}${err.code ? ` (code ${scrubForLog(err.code)})` : ''}`);
+  }
+
   const errorBody = {
-    message: err.message || 'Internal Server Error',
+    message: hidden ? GENERIC_SERVER_ERROR : err.message || 'Internal Server Error',
     status,
   };
+  if (requestId) errorBody.requestId = requestId;
   // Optional: a list of specific validation failures (e.g. password
   // policy violations), for callers that need more than one message.
-  if (Array.isArray(err.errors)) {
+  if (!hidden && Array.isArray(err.errors)) {
     errorBody.errors = err.errors;
   }
   // Optional: vault lockout state (see POST /api/auth/unlock), so the
@@ -63,4 +80,4 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-module.exports = { notFound, errorHandler };
+module.exports = { notFound, errorHandler, GENERIC_SERVER_ERROR, scrubForLog };

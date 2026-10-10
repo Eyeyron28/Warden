@@ -71,7 +71,7 @@ const FAQ_ITEMS = [
       <>
         <p>
           No. Your sign-in token is kept in that tab&apos;s sessionStorage, so a reload keeps you signed in; closing the tab (or the browser) ends
-          it, and a session also ends after 30 minutes without activity. A second tab you open picks the session up from the first. Your
+          it. Signed in sessions end after 30 minutes without activity, and after 12 hours at most. A second tab you open picks the session up from the first. Your
           password and your unlocked vault key are never stored in the browser.
         </p>
         <p>
@@ -88,7 +88,8 @@ const FAQ_ITEMS = [
       <p>
         For 30 days, a log of what happened on your account: sign-ins, which files were opened, downloaded or shared, and when, from which of your
         browsers and which country. It never holds file names, the contents, other people&apos;s emails, or IP addresses. You can read it on
-        Devices &amp; activity, sign any browser out from there, and check that the log has not been altered.
+        Devices &amp; activity, sign any browser out from there, and check it: the check detects edits and gaps. It cannot
+        detect the removal of the newest entries by someone who can write to the database.
       </p>
     ),
   },
@@ -163,9 +164,11 @@ const FAQ_ITEMS = [
       <p>
         Yes, with any of three optional settings: a password, a limit of 1 to 100 downloads (after which the share is
         deleted), or restricting it to one email address that must enter a code we email. They control who our server
-        will give the encrypted files to. A password also locks the link&apos;s key in your browser, so we never see
-        it. The link itself is still a secret, and none of this makes Warden end-to-end encrypted. You can change or
-        stop any share from Shared in the vault, but we can&apos;t show you a link again: we don&apos;t keep it.
+        will give the encrypted files to. The key is generated when you create the link and placed after the # in the
+        address, so it isn&apos;t sent to our server when someone opens the link. The server does handle the key while it
+        creates the link. A password adds a lock on that key, made in your browser, so the password itself never
+        reaches us. The link itself is still a secret, and none of this makes Warden end-to-end encrypted. You can
+        change or stop any share from Shared in the vault, but we can&apos;t show you a link again: we don&apos;t keep it.
       </p>
     ),
   },
@@ -176,8 +179,9 @@ const FAQ_ITEMS = [
         <p>
           An optional safety net for when you can&apos;t be reached. You name one person you trust, choose a waiting period (3, 7 or 14
           days) and what they may see (everything, or only some folders). They get an Emergency Kit: half of a key. If they ever ask for
-          access, we email you straight away and you can deny it until the wait ends. If you don&apos;t, they can open a read-only session
-          that lasts a few hours, and everything they do appears in your activity log.
+          access, we email you when the request is made, and the request is refused if that email cannot be sent. The wait is counted from
+          that email, and you can deny it until the wait ends. If you don&apos;t, they can open a read-only session that lasts a few hours
+          (never more than 4), and everything they do appears in your activity log.
         </p>
         <p>
           It is not end-to-end encryption: Warden encrypts files on its server. A stolen kit alone, or a copy of our database alone, can&apos;t

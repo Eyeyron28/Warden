@@ -727,6 +727,7 @@ const viewDocument = asyncHandler(async (req, res) => {
   if (actualChecksum !== document.checksum) {
     const error = new Error('Integrity check failed: this document may be corrupted.');
     error.status = 500;
+    error.expose = true; // app-authored message, written for the user
     throw error;
   }
 

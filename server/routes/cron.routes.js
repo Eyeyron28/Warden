@@ -4,6 +4,7 @@ const express = require('express');
 const { purgeExpired } = require('../utils/trash');
 const { runReminders } = require('../utils/reminders');
 const { runMaintenance: runEmergencyMaintenance } = require('../utils/emergency/service');
+const createRateLimiter = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -23,9 +24,13 @@ function requireCronSecret(req, res, next) {
   return next();
 }
 
+// Limited per connection BEFORE the secret is looked at, so the secret cannot be guessed at speed. The real callers are
+// two scheduled requests a day, so this is far above anything legitimate.
+const cronLimit = createRateLimiter({ name: 'cron', max: 30, windowMs: 60 * 1000 });
+
 // Safe to run twice or not at all (Vercel cron delivery is best effort): it
 // only removes Trash items whose 30 days are already over.
-router.get('/purge-trash', requireCronSecret, async (req, res, next) => {
+router.get('/purge-trash', cronLimit, requireCronSecret, async (req, res, next) => {
   try {
     const result = await purgeExpired(null);
     res.status(200).json({ success: true, ...result });
@@ -37,7 +42,7 @@ router.get('/purge-trash', requireCronSecret, async (req, res, next) => {
 // Daily at 01:00 UTC (09:00 in Manila): one email per account that has documents due a reminder, merged.
 // Idempotent (a reminder is claimed in the database before it is sent), bounded in time and in emails per run,
 // and it returns counts only.
-router.get('/reminders', requireCronSecret, async (req, res, next) => {
+router.get('/reminders', cronLimit, requireCronSecret, async (req, res, next) => {
   try {
     const result = await runReminders();
     // Emergency Access upkeep rides on the same daily job (Hobby has few cron slots): owner reminders, "the wait ended"

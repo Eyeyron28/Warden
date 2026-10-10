@@ -28,6 +28,8 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
+  // An app-authored 5xx message is written for the user; any other 5xx is replaced by the error handler.
+  if (status >= 500) error.expose = true;
   return error;
 }
 const badRequest = (message) => httpError(400, message);

@@ -273,7 +273,10 @@ function cronCall(authorization) {
   const layer = cronRouter.stack.find((l) => l.route?.path === '/reminders');
   assert.ok(layer, 'GET /reminders exists');
   assert.equal(layer.route.methods.get, true);
-  const [secretCheck, handler] = layer.route.stack.map((s) => s.handle);
+  // rate limit first (F14), then the secret check, then the job
+  const handles = layer.route.stack.map((s) => s.handle);
+  assert.equal(handles.length, 3, 'limit, secret check, job');
+  const [, secretCheck, handler] = handles;
   const out = { status: null, json: null, ran: false };
   const res = { status(code) { out.status = code; return this; }, json(payload) { out.json = payload; return this; } };
   const req = { get: (name) => (name.toLowerCase() === 'authorization' ? authorization : undefined) };

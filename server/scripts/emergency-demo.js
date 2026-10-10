@@ -241,7 +241,7 @@ async function main() {
     }
     say(`  banner count (flagged in the last 7 days): ${activity.json.flaggedRecent}`);
     const verifyLog = await api('POST', '/api/security/verify-log', { token: ownerAgain });
-    say(`  Verify log -> ${verifyLog.json.ok ? 'INTACT' : 'BROKEN'} (${verifyLog.json.checked} events checked${verifyLog.json.reason ? `, ${verifyLog.json.reason}` : ''})`);
+    say(`  Verify log -> ${verifyLog.json.ok ? 'NO EDITS OR GAPS FOUND' : 'BROKEN'} (${verifyLog.json.checked} events checked${verifyLog.json.reason ? `, ${verifyLog.json.reason}` : ''})`);
     const titles = JSON.stringify(activity.json.events);
     say(`  events contain a file name? ${/tax-return|medical-record|passport/.test(titles) ? 'yes (names are looked up for display only)' : 'no'}; contain the kit? ${titles.includes(kit.replace(/-/g, '')) ? 'YES (BAD)' : 'no'}`);
 

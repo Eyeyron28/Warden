@@ -18,8 +18,9 @@ const GOOD = {
   SIGNUP_MODE: 'invite',
   INVITE_CODE: 'a-long-random-invite-code',
   AUDIT_HMAC_KEY: 'a-long-random-signing-key-for-the-activity-log-0123456789',
+  CRON_SECRET: 'a-long-random-cron-secret-0123456789',
 };
-const KEYS = [...Object.keys(GOOD), 'OTP_ENABLED', 'STORAGE_QUOTA_MB', 'VERCEL', 'AUDIT_RETENTION_DAYS'];
+const KEYS = [...Object.keys(GOOD), 'OTP_ENABLED', 'STORAGE_QUOTA_MB', 'VERCEL', 'AUDIT_RETENTION_DAYS', 'SESSION_ABSOLUTE_HOURS'];
 
 function withEnv(env, fn) {
   const saved = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -43,7 +44,7 @@ test('a complete production configuration passes', () => {
 });
 
 test('each required setting is reported by name when missing or invalid', () => {
-  for (const key of ['MONGO_URI', 'PUBLIC_APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'SIGNUP_MODE', 'INVITE_CODE', 'AUDIT_HMAC_KEY']) {
+  for (const key of ['MONGO_URI', 'PUBLIC_APP_URL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'SIGNUP_MODE', 'INVITE_CODE', 'AUDIT_HMAC_KEY', 'CRON_SECRET']) {
     const env = { ...GOOD };
     delete env[key];
     assert.ok(names(env).includes(key), `${key} missing`);
@@ -57,6 +58,14 @@ test('each required setting is reported by name when missing or invalid', () => 
   for (const bad of ['0', '-5', 'abc']) assert.ok(names({ ...GOOD, STORAGE_QUOTA_MB: bad }).includes('STORAGE_QUOTA_MB'), bad);
   // the key that signs the activity log: required, and long enough to mean something
   assert.ok(names({ ...GOOD, AUDIT_HMAC_KEY: 'too-short' }).includes('AUDIT_HMAC_KEY'));
+  // F14: the cron secret is required, and long enough to mean something
+  assert.ok(names({ ...GOOD, CRON_SECRET: 'short-secret' }).includes('CRON_SECRET'));
+  assert.ok(names({ ...GOOD, CRON_SECRET: '   ' }).includes('CRON_SECRET'));
+  assert.ok(!names({ ...GOOD, CRON_SECRET: '0123456789abcdef' }).includes('CRON_SECRET'), 'exactly 16 is enough');
+  assert.ok(names({ ...GOOD, CRON_SECRET: '0123456789abcde' }).includes('CRON_SECRET'), '15 is not');
+  // the optional session lifetime
+  assert.deepEqual(names({ ...GOOD, SESSION_ABSOLUTE_HOURS: '12' }), []);
+  for (const bad of ['0', '0.5', '169', 'abc', '-1']) assert.ok(names({ ...GOOD, SESSION_ABSOLUTE_HOURS: bad }).includes('SESSION_ABSOLUTE_HOURS'), bad);
   for (const bad of ['0', '400', 'x', '1.5']) assert.ok(names({ ...GOOD, AUDIT_RETENTION_DAYS: bad }).includes('AUDIT_RETENTION_DAYS'), bad);
   assert.deepEqual(names({ ...GOOD, AUDIT_RETENTION_DAYS: '90' }), []);
 });
@@ -115,6 +124,10 @@ test('CORS: the deployed app origin (PUBLIC_APP_URL) may call its own API; other
   });
 });
 
+// The cron routes are rate limited (F14); the limiter's counter table is the in-memory fake.
+const cronWorld = require('./helpers/fakeDb').createWorld();
+require('./helpers/fakeDb').stubModule(path.join(__dirname, '..', 'models', 'RateLimit'), require('./helpers/fakeDb').fakeModel(cronWorld, 'ratelimits'));
+
 test('cron route: absent without CRON_SECRET, 401 without the right bearer token', async () => {
   const express = require('express');
   const http = require('node:http');
@@ -139,6 +152,36 @@ test('cron route: absent without CRON_SECRET, 401 without the right bearer token
     assert.equal(await get(), 401);
     assert.equal(await get({ authorization: 'Bearer wrong' }), 401);
     assert.equal(await get({ authorization: 'a-long-random-cron-secret' }), 401, 'the Bearer prefix is required');
+  } finally {
+    if (saved === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = saved;
+    server.close();
+  }
+});
+
+test('cron routes are rate limited per connection before the secret is checked (F14)', async () => {
+  const express = require('express');
+  const http = require('node:http');
+  const cron = require('../routes/cron.routes');
+  cronWorld.tables.ratelimits.length = 0;
+  const app = express();
+  app.use('/api/cron', cron);
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const get = (route) =>
+    new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: `/api/cron/${route}`, headers: { authorization: 'Bearer guess' } }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      }).on('error', reject);
+    });
+  const saved = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'a-long-random-cron-secret';
+  try {
+    const seen = [];
+    for (let i = 0; i < 32; i += 1) seen.push(await get(i % 2 ? 'reminders' : 'purge-trash'));
+    assert.deepEqual([...new Set(seen.slice(0, 30))], [401], 'the first 30 guesses are answered (and refused)');
+    assert.deepEqual(seen.slice(30), [429, 429], 'the 31st and later are throttled, whichever of the two routes');
   } finally {
     if (saved === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = saved;
     server.close();

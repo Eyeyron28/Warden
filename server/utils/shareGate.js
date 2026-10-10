@@ -29,7 +29,7 @@ const CODE_FAILURE = 'That code is incorrect or has expired.';
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 function httpError(status, message, extra = {}) {
-  return Object.assign(Object.assign(new Error(message), { status }), extra);
+  return Object.assign(Object.assign(new Error(message), { status, ...(status >= 500 ? { expose: true } : {}) }), extra);
 }
 
 /** "j***@example.com": enough to recognise the mailbox, not to reuse it. */

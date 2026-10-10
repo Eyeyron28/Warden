@@ -31,7 +31,7 @@ const EMAIL_RE = /^[^\s@,;<>()[\]"]+@[^\s@,;<>()[\]"]+\.[^\s@,;<>()[\]"]+$/;
 /**
  * /emergency: the page a trusted contact uses. No account, no sign-in, three plain steps:
  *   1. Request access: the owner's email and yours, then "Send me a code" (always the same confirmation).
- *   2. Confirm: the emailed code and the Emergency Kit code. The owner is told at once.
+ *   2. Confirm: the emailed code and the Emergency Kit code. The owner is emailed; the request is refused if that email cannot be sent.
  *   3. Open the vault: once the waiting period has ended, a NEW emailed code and the kit start a read-only session.
  *
  * Every failure is the same sentence, so nothing here reveals whether an account or setup exists. The kit is typed or
@@ -265,7 +265,7 @@ function EmergencyContactPage() {
 
         <p className={styles.note}>{ONLY_IF_SETUP_NOTE}</p>
         <p className={styles.note}>
-          Access is read-only, limited to what the owner chose, and the owner is told about every request. Owner? <Link to="/login">Sign in</Link> to manage Emergency Access.
+          Access is read-only and limited to what the owner chose. The owner is emailed when a request is made, and a request is refused if that email cannot be sent. Owner? <Link to="/login">Sign in</Link> to manage Emergency Access.
         </p>
       </div>
     </AuthLayout>

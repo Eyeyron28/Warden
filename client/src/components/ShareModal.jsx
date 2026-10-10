@@ -422,10 +422,11 @@ function ShareModal({ documentIds, title, onClose }) {
           <p className={styles.demoNote}>
             A share link contains a key after the # symbol (or, with a password, the key is locked by the password
             instead). Anyone who has the full link, and any password or code you required, can open the shared files
-            until it expires or you revoke it. The server stores only encrypted copies of the shared files and never
-            stores the link&apos;s key. You can&apos;t get the link back later, so copy it when it appears. A share is a
-            snapshot: deleting or editing the original file does not change or remove existing shared copies; stop
-            sharing to remove them.
+            until it expires or you revoke it. The key is generated when you create the link, so it isn&apos;t sent to our
+            server when someone opens the link; the server does handle it while it creates the link, but it stores only
+            encrypted copies of the shared files, not the key. You can&apos;t get the link back later, so copy it when it
+            appears. A share is a snapshot: editing the original file does not change existing shared copies, but moving
+            the original to Trash stops every share that includes it right away; stop sharing to remove copies yourself.
           </p>
         </div>
       ) : (

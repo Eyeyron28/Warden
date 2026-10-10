@@ -1,4 +1,5 @@
 const RateLimit = require('../models/RateLimit');
+const { ipKey } = require('../utils/clientIp');
 
 /**
  * Mongo-backed rate limiter, replacing the old in-memory-Map version - an
@@ -86,12 +87,10 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 
   return async function rateLimit(req, res, next) {
     try {
-      const key = keyFn ? keyFn(req) : req.ip;
-      // A limiter that can't determine its key (e.g. no email in a
-      // malformed body) just doesn't limit that request - the controller's
-      // own input validation rejects it on different grounds immediately
-      // after, so there's nothing useful to rate-limit yet.
-      if (!key) return next();
+      // The address is always reduced through ONE helper (utils/clientIp.js: IPv6 by its /64). A limiter that cannot
+      // determine its own key (e.g. no email in a malformed body) falls back to the address; it is never skipped, so
+      // leaving the field out cannot be a way around a limit.
+      const key = (keyFn ? keyFn(req) : null) || (keyFn ? `no-key:${ipKey(req.ip)}` : ipKey(req.ip));
 
       const doc = await incrementWindow(name, key, windowMs);
 

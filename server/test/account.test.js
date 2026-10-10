@@ -16,6 +16,7 @@ delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
 
 const cryptoUtils = require('../utils/crypto');
+const loginFailures = require('./helpers/fakeDb').installLoginFailures(); // the login-lockout counter (the models below are hand-made)
 
 function stub(modulePath, exportsObject) {
   const resolved = require.resolve(modulePath);
@@ -166,6 +167,7 @@ function addUser(email) {
     failedAttempts: 0, save: async () => {},
   };
   world.tables.users.push(user);
+  loginFailures.tables.loginfailures.length = 0; // each test starts with no lockout history for the address
   return user;
 }
 

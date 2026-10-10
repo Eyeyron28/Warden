@@ -54,6 +54,49 @@ function matches(doc, filter) {
   });
 }
 
+
+// A small evaluator for the aggregation-pipeline UPDATES the code uses ($set / $unset stages over $ifNull, $cond, $add,
+// $gt/$gte/$lt/$lte, $or, $and, $not, $max and field references). Lets tests run the real pipeline from
+// utils/loginLimiter.js against the in-memory table. Anything else throws, so a new operator is noticed.
+const rank = (v) => (v === undefined || v === null ? -Infinity : isDate(v) ? v.getTime() : v);
+function evalExpr(doc, expr) {
+  if (typeof expr === 'string') return expr.startsWith('$') ? doc[expr.slice(1)] : expr;
+  if (Array.isArray(expr)) return expr.map((e) => evalExpr(doc, e));
+  if (expr === null || typeof expr !== 'object' || isDate(expr) || isId(expr)) return expr;
+  const [op] = Object.keys(expr);
+  const args = expr[op];
+  const list = () => (Array.isArray(args) ? args : [args]).map((a) => evalExpr(doc, a));
+  switch (op) {
+    case '$ifNull': { const [a, b] = list(); return a === undefined || a === null ? b : a; }
+    case '$cond': { const [c, t, e] = list(); return c ? t : e; }
+    case '$add': {
+      const values = list();
+      const total = values.reduce((sum, v) => sum + (isDate(v) ? v.getTime() : v), 0);
+      return values.some(isDate) ? new Date(total) : total;
+    }
+    case '$gt': { const [a, b] = list(); return rank(a) > rank(b); }
+    case '$gte': { const [a, b] = list(); return rank(a) >= rank(b); }
+    case '$lt': { const [a, b] = list(); return rank(a) < rank(b); }
+    case '$lte': { const [a, b] = list(); return rank(a) <= rank(b); }
+    case '$or': return list().some(Boolean);
+    case '$and': return list().every(Boolean);
+    case '$not': return !list()[0];
+    case '$min': return list().filter((v) => v !== null && v !== undefined).reduce((m, v) => (m === undefined || rank(v) < rank(m) ? v : m), undefined);
+    case '$max': return list().filter((v) => v !== null && v !== undefined).reduce((m, v) => (m === undefined || rank(v) > rank(m) ? v : m), undefined);
+    default: throw new Error(`fakeDb: unsupported expression ${op}`);
+  }
+}
+function runPipelineUpdate(doc, stages) {
+  for (const stage of stages) {
+    if (stage.$set) {
+      const computed = Object.fromEntries(Object.entries(stage.$set).map(([key, expr]) => [key, evalExpr(doc, expr)]));
+      Object.assign(doc, computed);
+    } else if (stage.$unset) {
+      for (const key of [].concat(stage.$unset)) delete doc[key];
+    } else throw new Error('fakeDb: unsupported pipeline stage');
+  }
+}
+
 // Unique indexes the code under test relies on (a create that repeats one fails like MongoDB's E11000).
 const UNIQUE = { auditevents: ['userId', 'seq'], devices: ['userId', 'deviceIdHash'], reminderlogs: ['userId', 'fileId', 'threshold'] };
 
@@ -112,10 +155,16 @@ function fakeModel(world, table, extras = {}) {
     },
     findById: (id) => query(() => rows().find((r) => String(r._id) === String(id)) || null),
     findOneAndUpdate: async (filter, update, options) => {
-      const doc = rows().find((r) => matches(r, filter));
+      let doc = rows().find((r) => matches(r, filter));
+      if (!doc && Array.isArray(update) && options?.upsert) {
+        const seed = Object.fromEntries(Object.entries(filter).filter(([, v]) => v === null || typeof v !== 'object' || isDate(v) || isId(v)));
+        doc = { _id: oid(), ...seed };
+        rows().push(doc);
+      }
       if (!doc) return null;
       const before = { ...doc };
-      applyUpdate(doc, update);
+      if (Array.isArray(update)) runPipelineUpdate(doc, update);
+      else applyUpdate(doc, update);
       return options?.new ? doc : before;
     },
     findOneAndDelete: async (filter) => {
@@ -124,7 +173,8 @@ function fakeModel(world, table, extras = {}) {
     },
     updateOne: async (filter, update) => {
       const doc = rows().find((r) => matches(r, filter));
-      if (doc) applyUpdate(doc, update);
+      if (doc && Array.isArray(update)) runPipelineUpdate(doc, update);
+      else if (doc) applyUpdate(doc, update);
       return { matchedCount: doc ? 1 : 0 };
     },
     updateMany: async (filter, update) => {
@@ -189,11 +239,18 @@ function stubModule(modulePath, exportsObject) {
 const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs', EmergencyAccess: 'emergencyaccesses', EmergencyRequest: 'emergencyrequests',
+  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs', EmergencyAccess: 'emergencyaccesses', EmergencyRequest: 'emergencyrequests', LoginFailure: 'loginfailures',
 };
 
 function createWorld() {
   return { tables: Object.fromEntries(Object.values(MODEL_TABLES).map((t) => [t, []])), mails: [], fail: null };
+}
+
+/** For tests that stub models by hand: just the login-lockout counter (utils/loginLimiter.js), as its own tiny world. */
+function installLoginFailures() {
+  const world = { tables: { loginfailures: [] } };
+  stubModule(path.join(__dirname, '..', '..', 'models', 'LoginFailure'), fakeModel(world, 'loginfailures'));
+  return world;
 }
 
 /** Installs a fake for every model (call BEFORE requiring any controller). */
@@ -226,6 +283,7 @@ function installMailer(world) {
   stubModule(path.join(__dirname, '..', '..', 'utils', 'email'), {
     ...real,
     sendEmail: async (message) => {
+      if (world.throwMail) throw new Error('SMTP exploded');
       if (world.failMail) return false;
       if (world.sendDelayMs) await new Promise((resolve) => setTimeout(resolve, world.sendDelayMs));
       world.mails.push(message);
@@ -250,4 +308,4 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
   return out;
 }
 
-module.exports = { oid, matches, fakeModel, stubModule, createWorld, installModels, installRateLimit, installMailer, call };
+module.exports = { oid, matches, fakeModel, stubModule, createWorld, installModels, installLoginFailures, installRateLimit, installMailer, call };

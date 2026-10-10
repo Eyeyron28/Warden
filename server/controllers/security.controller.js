@@ -19,6 +19,8 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
+  // An app-authored 5xx message is written for the user; any other 5xx is replaced by the error handler.
+  if (status >= 500) error.expose = true;
   return error;
 }
 const deviceNotFound = () => httpError(404, 'Device not found.');
@@ -237,8 +239,9 @@ const listActivity = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/security/verify-log
- * Walks this account's remaining events and checks the hash chain. Says "intact" or where it is broken. It
- * detects edits to the database; it cannot protect against someone who also holds the server's signing key.
+ * Walks this account's remaining events and checks the hash chain. Says "no edits or gaps found" or where it is
+ * broken. It detects edits and gaps; it cannot detect the removal of the newest entries by someone who can write to the
+ * database, nor protect against someone who also holds the server's signing key.
  */
 const verifyLog = asyncHandler(async (req, res) => {
   const result = await verifyChain(req.userId);

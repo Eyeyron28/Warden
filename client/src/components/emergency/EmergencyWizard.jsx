@@ -108,7 +108,7 @@ function EmergencyWizard({ demoMode, ownEmail, replace = false, onCancel, onCrea
 
       {step === 'wait' && (
         <div className={styles.stepBody}>
-          <p className={styles.muted}>After your contact asks, nothing happens until this time has passed. You are emailed straight away and can deny it until then.</p>
+          <p className={styles.muted}>After your contact asks, nothing happens until this time has passed. You are emailed when your contact asks (the request is refused if that email cannot be sent), the wait is counted from that email, and you can deny it until then.</p>
           <div className={styles.choices} role="radiogroup" aria-label="Waiting period">
             {waitChoices(demoMode).map((choice) => (
               <label key={choice.minutes} className={`${styles.choice} ${form.waitMinutes === choice.minutes ? styles.choiceOn : ''}`}>

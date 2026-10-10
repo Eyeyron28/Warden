@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 const DEFAULT_DESCRIPTION =
-  'Warden keeps your IDs, contracts and records encrypted with a key only your password or recovery key can unlock.';
+  'Warden keeps your IDs, contracts and records encrypted with a key that is stored locked by your password and your recovery key.';
 
 function setMeta(selector, attribute, value) {
   const element = document.head.querySelector(selector);

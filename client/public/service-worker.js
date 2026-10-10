@@ -7,6 +7,9 @@
 //   /assets/* (hashed)   cache first: the file name changes with the content
 //   other static files   network first, cached copy when offline
 //   /api/*               never touched (live, session-gated, encrypted data)
+//   /shared/*            never touched (a share link: the page is fetched fresh every time and nothing about it,
+//                        including the response, is kept by the worker)
+//   any response marked  never stored (Cache-Control: no-store or private)
 //
 // A new worker takes over at once (skipWaiting + clients.claim) and deletes
 // every older cache; open tabs are told to offer a reload (see main.jsx).
@@ -33,8 +36,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Paths the worker leaves entirely to the browser: it neither answers them nor keeps a copy.
+const BYPASS_PREFIXES = ['/api/', '/shared/'];
+
+// Only ordinary, public static responses are ever stored; a response that says it must not be kept is not.
+const storable = (response) => response.ok && !/(no-store|private)/i.test(response.headers.get('Cache-Control') || '');
+
 const remember = (request, response) => {
-  if (response.ok) {
+  if (storable(response)) {
     const copy = response.clone();
     caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
   }
@@ -46,14 +55,14 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return;
+  if (BYPASS_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
           // The shell is the same document for every route; keep the newest.
-          if (response.ok) remember(SHELL, response.clone());
+          remember(SHELL, response.clone());
           return response;
         })
         .catch(() => caches.match(SHELL))
