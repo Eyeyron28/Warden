@@ -10,7 +10,7 @@ import styles from './FolderBreadcrumb.module.css';
  * to that point in the tree; the last one is the current location and
  * isn't clickable, matching how Drive's own breadcrumb behaves.
  */
-function FolderBreadcrumb({ path, onNavigate }) {
+function FolderBreadcrumb({ path, onNavigate, rootLabel = 'My files' }) {
   const segments = splitPath(path);
 
   return (
@@ -23,7 +23,7 @@ function FolderBreadcrumb({ path, onNavigate }) {
         disabled={segments.length === 0}
       >
         <House size={14} weight="bold" />
-        <span>My files</span>
+        <span>{rootLabel}</span>
       </button>
 
       {segments.map((segment, index) => {

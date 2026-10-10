@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import Header from './Header.jsx';
 import Sidebar from './Sidebar.jsx';
+import EmergencyBanner from './EmergencyBanner.jsx';
 import ToastRegion from './Toast.jsx';
 import { ShellContext } from './ShellContext.js';
 import { useMediaQuery } from '../utils/useMediaQuery.js';
@@ -62,6 +63,7 @@ function AppLayout({ onLocked }) {
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
         />
+        <EmergencyBanner />
         <div className={styles.body}>
           <Sidebar
             drawer={isDrawer}

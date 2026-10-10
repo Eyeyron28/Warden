@@ -29,6 +29,8 @@ const byAccount = createRateLimiter({
 });
 ownerRouter.use(requireSession, byAccount);
 ownerRouter.get('/status', c.status);
+ownerRouter.get('/session-info', c.sessionInfo);
+ownerRouter.get('/folders', c.folderChoices);
 ownerRouter.post('/challenge', c.startCode);
 ownerRouter.post('/challenge/resend', c.resendCode);
 ownerRouter.post('/setup', c.setup);

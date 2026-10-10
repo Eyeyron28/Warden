@@ -15,6 +15,8 @@ const { templates } = require('../emailTemplates');
 const { recordEvent, countryFrom } = require('../audit');
 const { getPublicAppUrl } = require('../publicAppUrl');
 const { fullPathOf } = require('../folders');
+const AuditEvent = require('../../models/AuditEvent');
+const { aliasesFor } = require('./scope');
 const config = require('./config');
 const kitLib = require('./kit');
 const codes = require('./codes');
@@ -185,10 +187,20 @@ async function setup(req, body, { challengeToken, code }) {
   const user = await User.findById(req.userId).select('_id email');
   if (!user) throw httpError(404, 'Account not found.');
   const existing = await EmergencyAccess.findOne({ userId: user._id });
-  if (existing && existing.status === 'active') throw httpError(409, 'Emergency access is already set up. Replace the kit or turn it off first.');
+  // "Change contact or settings" sends replace: true: the new setup takes the old one's place (with a fresh code, as always).
+  const replacing = Boolean(existing && existing.status === 'active' && body?.replace === true);
+  if (existing && existing.status === 'active' && !replacing) throw httpError(409, 'Emergency access is already set up. Replace the kit or turn it off first.');
   const input = await validateSetupInput(user, body);
   await useOwnerCode(req, 'setup', challengeToken, code);
 
+  if (replacing) {
+    // The old setup is over: its open request is cancelled, its sessions end, its contact is told.
+    await cancelOpenRequests(existing._id);
+    await destroyEmergencySessions(req.userId);
+    await OtpChallenge.deleteMany({ userId: req.userId, purpose: { $in: Object.values(codes.PURPOSES) } });
+    await audit(req, user._id, 'emergency_revoked', { targetId: existing._id });
+    sendEmail({ to: existing.contactEmail, ...templates.emergencyContactKitChanged({ kind: 'revoked' }) }).catch(() => false);
+  }
   const split = kitLib.createSplit(req.dek);
   if (existing) await EmergencyAccess.deleteOne({ _id: existing._id });
   const access = await EmergencyAccess.create({
@@ -249,10 +261,18 @@ async function revoke(req, { challengeToken, code }) {
 
 async function status(req) {
   const access = await EmergencyAccess.findOne({ userId: req.userId, status: 'active' });
-  const base = { allowedWaits: config.allowedWaits(), demoMode: config.demoMode(), claimDays: config.claimDays() };
+  const origin = getPublicAppUrl();
+  const base = {
+    allowedWaits: config.allowedWaits(),
+    demoMode: config.demoMode(),
+    claimDays: config.claimDays(),
+    // Where the contact goes (printed on the kit sheet): the same address every emailed link uses.
+    contactUrl: origin ? `${origin}/emergency` : null,
+  };
   if (!access) return { ...base, configured: false };
   const request = await EmergencyRequest.findOne({ accessId: access._id, active: true });
   const sessions = await Session.countDocuments({ userId: req.userId, emergency: true, expiresAt: { $gt: new Date() } });
+  const started = await AuditEvent.find({ userId: req.userId, type: 'emergency_session_started', at: { $gte: new Date(Date.now() - 30 * DAY) } }).sort({ seq: -1 });
   return {
     ...base,
     ...describe(access, await scopeFolders(req.userId, access.scope)),
@@ -268,6 +288,8 @@ async function status(req) {
         }
       : null,
     activeSessions: sessions,
+    // How often a contact has come in, from the owner's own log (the log keeps 30 days).
+    recentSessions: { last30Days: started.length, lastStartedAt: started[0]?.at ?? null },
   };
 }
 
@@ -467,8 +489,18 @@ async function startSession({ ownerEmail, contactEmail, code, kit, req }) {
   return {
     sessionToken: token,
     endsAt: new Date(now.getTime() + config.LIMITS.SESSION_ABSOLUTE_MS),
-    scope: { mode: access.scope.mode, folders: scopePaths },
+    // Names start at the scope folder: the folders above it are never revealed to the contact.
+    scope: { mode: access.scope.mode, folders: aliasesFor(scopePaths).map((entry) => entry.alias) },
   };
+}
+
+/**
+ * The owner's folder tree with ids, for the "selected folders" picker in the setup wizard (a scope is a list of
+ * folder ids). Owner only: an emergency session is refused this route by the guard.
+ */
+async function listFolderChoices(userId) {
+  const folders = await Folder.find({ userId });
+  return folders.map((folder) => ({ id: String(folder._id), path: fullPathOf(folder) })).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /** One-click deny from the owner's email. Single use; it can only deny. Always the same generic outcome to the caller. */
@@ -563,6 +595,7 @@ async function invalidateForKeyChange(userId) {
 }
 
 module.exports = {
+  listFolderChoices,
   ACTIONS,
   GENERIC_FAILURE,
   NEUTRAL_CODE_MESSAGE,

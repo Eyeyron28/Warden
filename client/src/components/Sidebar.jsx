@@ -13,6 +13,7 @@ import {
   UserCircle,
   ShieldCheck,
   ChartBar,
+  Lifebuoy,
 } from '@phosphor-icons/react';
 
 import FolderTree from './FolderTree.jsx';
@@ -151,6 +152,11 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
         <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices & activity')}>
           <ShieldCheck size={ICON} weight="regular" aria-hidden="true" />
           {label('Devices & activity')}
+        </NavLink>
+
+        <NavLink to="/emergency-access" className={navClass} onClick={closeDrawer} {...tipFor('Emergency Access')}>
+          <Lifebuoy size={ICON} weight="regular" aria-hidden="true" />
+          {label('Emergency Access')}
         </NavLink>
 
         <div className={styles.spacer} />

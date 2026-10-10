@@ -412,7 +412,7 @@ const templates = {
       preheader: 'The waiting period ended without a denial. You can start a read-only session.',
       title: 'Emergency access is available',
       intro: `The waiting period ended and the owner did not deny your request. You can now start a read-only session for the next ${claimDays} day${claimDays === 1 ? '' : 's'}. You will need your kit and a new emailed code.`,
-      cta: appLink('/emergency/access') ? { label: 'Start a session', href: appLink('/emergency/access') } : null,
+      cta: appLink('/emergency') ? { label: 'Start a session', href: appLink('/emergency') } : null,
     }),
 
   emergencyContactSessionCode: ({ code, ttlMinutes }) =>
@@ -456,7 +456,7 @@ const templates = {
       details: [['Earliest access', formatManilaTime(releaseAt)]],
       warning: 'If this is not expected, deny it now. The link below can only deny this one request and works once.',
       cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
-      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+      secondaryCta: appLink('/emergency-access') ? { label: 'Review in Warden', href: appLink('/emergency-access') } : null,
     }),
 
   emergencyOwnerReminder: ({ releaseAt, released, denyUrl }) =>
@@ -469,7 +469,7 @@ const templates = {
         : 'Your trusted contact asked for read-only access to your vault. You can deny it until the waiting period ends.',
       details: [['Earliest access', formatManilaTime(releaseAt)]],
       cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
-      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+      secondaryCta: appLink('/emergency-access') ? { label: 'Review in Warden', href: appLink('/emergency-access') } : null,
     }),
 
   emergencyOwnerDenied: ({ when }) =>
@@ -489,7 +489,7 @@ const templates = {
       intro: `Your contact can now start a read-only session for the next ${claimDays} day${claimDays === 1 ? '' : 's'}. ${approvedEarly ? 'You approved this early.' : 'You did not deny the request during the waiting period.'}`,
       warning: 'You can still deny the request until a session starts. After that, turn emergency access off in Warden to end any session at once.',
       cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
-      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+      secondaryCta: appLink('/emergency-access') ? { label: 'Review in Warden', href: appLink('/emergency-access') } : null,
     }),
 
   emergencyOwnerSessionStarted: ({ when, scopeMode }) =>
@@ -500,7 +500,7 @@ const templates = {
       intro: 'Your trusted contact started a read-only session. It cannot change, delete or share anything, and it ends on its own within 4 hours.',
       details: [['When', formatManilaTime(when)], ['Access', scopeMode === 'folders' ? 'Chosen folders only' : 'The whole vault']],
       warning: 'If this is not expected, turn emergency access off in Warden now: that ends the session at once.',
-      cta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+      cta: appLink('/emergency-access') ? { label: 'Review in Warden', href: appLink('/emergency-access') } : null,
     }),
 
   emergencyOwnerSetupChanged: ({ kind, when }) => {
@@ -517,7 +517,7 @@ const templates = {
       intro: copy[2],
       details: [['When', formatManilaTime(when)]],
       warning: kind === 'configured' || kind === 'regenerated' ? 'If you did not do this, reset your password now.' : null,
-      cta: kind !== 'revoked' && appLink('/emergency') ? { label: 'Open Emergency Access', href: appLink('/emergency') } : null,
+      cta: kind !== 'revoked' && appLink('/emergency-access') ? { label: 'Open Emergency Access', href: appLink('/emergency-access') } : null,
     });
   },
 

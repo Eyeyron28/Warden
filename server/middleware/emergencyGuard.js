@@ -2,9 +2,10 @@
  * Deny-by-default guard for Emergency Access sessions (security model: utils/emergency/config.js).
  *
  * An emergency session (req.emergency, set by requireSession) is READ-ONLY and may call ONLY the routes listed
- * here: validate the session, log out, list folders and files (already narrowed to the scope), and preview or
- * download a file inside the scope. EVERYTHING else answers 403: uploads, renames, moves, deletes, Trash,
- * shares, export/import, the account, settings, devices, the activity log, Overview, health, and emergency setup.
+ * here: validate the session, log out, learn its own mode, list folders and files (already narrowed to the scope),
+ * and preview or download a file inside the scope. EVERYTHING else answers 403: uploads, renames, moves, deletes,
+ * Trash, shares, export/import, the account, settings, devices, the activity log, Overview, health, and emergency
+ * setup.
  *
  * The check lives in requireSession (the one place every signed-in route goes through), so a route added later is
  * refused for an emergency session unless somebody adds it to this list on purpose. The test
@@ -22,6 +23,7 @@ const ALLOWLIST = Object.freeze([
   { method: 'GET', path: /^\/api\/documents\/folders\/children$/, note: 'folder children in scope' },
   { method: 'GET', path: new RegExp(`^/api/documents/${ID}/view$`), note: 'preview / download a file in scope' },
   { method: 'GET', path: new RegExp(`^/api/documents/${ID}/thumbnail$`), note: 'small preview of a file in scope' },
+  { method: 'GET', path: /^\/api\/emergency\/session-info$/, note: 'the contact screen learns its own mode and end time' },
 ]);
 
 /** 'GET /api/documents/abc/view' -> the allowlist entry, or null. HEAD counts as GET. */

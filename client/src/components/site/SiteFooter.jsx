@@ -22,6 +22,7 @@ function SiteFooter({ compact = false }) {
             <Link to="/#how-it-works">How it works</Link>
             <Link to="/signup">Create a vault</Link>
             <Link to="/login">Log in</Link>
+            <Link to="/emergency">Emergency access</Link>
           </div>
           <div className={styles.column}>
             <p className={styles.heading}>Project</p>
@@ -42,6 +43,7 @@ function SiteFooter({ compact = false }) {
         <div className={`${site.container} ${styles.compactBar}`}>
           <p>&copy; {new Date().getFullYear()} Warden, {PROJECT.group}.</p>
           <nav aria-label="Legal">
+            <Link to="/emergency">Emergency access</Link>
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
           </nav>

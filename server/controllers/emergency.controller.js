@@ -1,4 +1,5 @@
 const service = require('../utils/emergency/service');
+const { scopeSummary } = require('../utils/emergency/scope');
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -39,6 +40,11 @@ const revoke = asyncHandler(async (req, res) => {
   res.status(200).json(await service.revoke(req, codeBody(req.body)));
 });
 
+/** GET /api/emergency/folders - the owner's folders with ids, for the setup wizard's folder picker. */
+const folderChoices = asyncHandler(async (req, res) => {
+  res.status(200).json({ folders: await service.listFolderChoices(req.userId) });
+});
+
 const status = asyncHandler(async (req, res) => {
   res.status(200).json(await service.status(req));
 });
@@ -49,6 +55,20 @@ const denyRequest = asyncHandler(async (req, res) => {
 
 const approveNow = asyncHandler(async (req, res) => {
   res.status(200).json(await service.approveNow(req, req.params.id, codeBody(req.body)));
+});
+
+/**
+ * GET /api/emergency/session-info - the ONE emergency route an emergency session itself may call besides reading files.
+ * Tells the contact screen it is read-only, when the session ends and which top-level folders it covers. Never the
+ * owner's name or email, and never a folder name above a scoped folder.
+ */
+const sessionInfo = asyncHandler(async (req, res) => {
+  if (!req.emergency) {
+    const error = new Error('Not found.');
+    error.status = 404;
+    throw error;
+  }
+  res.status(200).json({ readOnly: true, expiresAt: req.emergency.absoluteExpiresAt, scopeSummary: scopeSummary(req.emergency) });
 });
 
 // ---------------- the contact (public: no account, same answers whoever asks) ----------------
@@ -88,4 +108,4 @@ const denyByToken = asyncHandler(async (req, res) => {
   res.status(200).send(PAGE);
 });
 
-module.exports = { startCode, resendCode, setup, regenerateKit, revoke, status, denyRequest, approveNow, requestCode, request, startSession, denyByToken };
+module.exports = { folderChoices, sessionInfo, startCode, resendCode, setup, regenerateKit, revoke, status, denyRequest, approveNow, requestCode, request, startSession, denyByToken };

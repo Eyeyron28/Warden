@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import AppLayout from './components/AppLayout.jsx';
@@ -9,6 +9,7 @@ import { adoptTokenFromOtherTabs, clearToken, expireSession, getToken } from './
 import { getMe } from './services/authService.js';
 import { checkStoredSession } from './services/sessionCheck.js';
 import { useSessionToken } from './utils/useSessionToken.js';
+import { getEmergencyMode, setModeFromMe, subscribeEmergencyMode, wasEmergencyTab } from './services/emergencyMode.js';
 
 // Every route except the home page is its own chunk, so the landing page
 // downloads only what it shows. Home itself is imported eagerly - it's the
@@ -30,6 +31,9 @@ const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage.jsx'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage.jsx'));
 const WasntMePage = lazy(() => import('./pages/auth/WasntMePage.jsx'));
+const EmergencyAccessPage = lazy(() => import('./pages/EmergencyAccessPage.jsx'));
+const EmergencyContactPage = lazy(() => import('./pages/EmergencyContactPage.jsx'));
+const EmergencyShell = lazy(() => import('./components/emergency/EmergencyShell.jsx'));
 const SharesPage = lazy(() => import('./pages/SharesPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
 
@@ -46,15 +50,26 @@ function RequireSession({ children }) {
   // A token kept from before a reload (or handed over by another tab) is proved with the server first, so a
   // dead one sends you to the login page with a message instead of a screen full of failed requests.
   if (!ready) return null;
+  // An emergency session that ended (4 hours, turned off by the owner, signed out) says so on the contact's own page.
+  if (!token && wasEmergencyTab()) return <Navigate to="/emergency?ended=1" replace />;
   if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
   return children;
+}
+
+/**
+ * The signed-in app, or - when the server says this session is an Emergency Access session - the contact's read-only
+ * vault instead. The mode comes from GET /api/auth/me, so a reload cannot turn one into the other.
+ */
+function SignedInShell({ onLocked }) {
+  const mode = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
+  return mode.emergency ? <EmergencyShell /> : <AppLayout onLocked={onLocked} />;
 }
 
 // Checked once per page load, shared by every route that needs the session (services/sessionCheck.js).
 let sessionCheck = null;
 function checkSessionOnce() {
   if (!sessionCheck) {
-    sessionCheck = checkStoredSession({ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: getMe, expire: expireSession });
+    sessionCheck = checkStoredSession({ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: async () => setModeFromMe(await getMe()), expire: expireSession });
   }
   return sessionCheck;
 }
@@ -100,6 +115,7 @@ function App() {
           <Route path="reset-password" element={<ResetPasswordPage />} />
           <Route path="verify-email" element={<VerifyEmailPage />} />
           <Route path="wasnt-me" element={<WasntMePage />} />
+          <Route path="emergency" element={<EmergencyContactPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
@@ -109,7 +125,7 @@ function App() {
         <Route
           element={
             <RequireSession>
-              <AppLayout onLocked={handleLocked} />
+              <SignedInShell onLocked={handleLocked} />
             </RequireSession>
           }
         >
@@ -121,6 +137,7 @@ function App() {
           <Route path="/overview" element={<OverviewPage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/emergency-access" element={<EmergencyAccessPage />} />
         </Route>
         <Route path="/vault" element={<Navigate to="/files" replace />} />
         <Route path="/shares" element={<Navigate to="/shared" replace />} />

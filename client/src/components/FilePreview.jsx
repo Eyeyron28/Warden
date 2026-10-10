@@ -80,7 +80,7 @@ const isEditable = (target) =>
  * component: bytes go when the file changes or the viewer closes, object URLs
  * are revoked by the viewers, and locking the vault closes it.
  */
-function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, onSetExpiry, onTrash, onLoaded }) {
+function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, onSetExpiry, onTrash, onLoaded, readOnly = false }) {
   const doc = files[index];
   const overlayRef = useRef(null);
   const bytesRef = useRef(null);
@@ -184,7 +184,9 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
     try {
       let bytes = bytesRef.current;
       let name = nameRef.current;
-      if (!bytes) {
+      if (!bytes || readOnly) {
+        // A read-only (Emergency Access) session cannot record a download from cached bytes, so it always asks for the
+        // file as a download: the server logs it.
         ({ bytes, filename: name } = await fetchDocumentBytes(doc.id, { purpose: 'download' }));
       } else {
         // Saved from what the preview already holds: tell the server so it still counts as a download.
@@ -268,18 +270,22 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
             <DownloadSimple size={20} />
             <span>Download</span>
           </button>
-          <button type="button" onClick={() => onShare(doc)} aria-label="Share">
-            <ShareNetwork size={20} />
-            <span>Share</span>
-          </button>
-          <button type="button" onClick={() => onRename(doc)} aria-label="Rename">
-            <PencilSimple size={20} />
-            <span>Rename</span>
-          </button>
-          <button type="button" onClick={handleTrash} aria-label="Move to trash">
-            <Trash size={20} />
-            <span>Move to trash</span>
-          </button>
+          {!readOnly && (
+            <>
+              <button type="button" onClick={() => onShare(doc)} aria-label="Share">
+                <ShareNetwork size={20} />
+                <span>Share</span>
+              </button>
+              <button type="button" onClick={() => onRename(doc)} aria-label="Rename">
+                <PencilSimple size={20} />
+                <span>Rename</span>
+              </button>
+              <button type="button" onClick={handleTrash} aria-label="Move to trash">
+                <Trash size={20} />
+                <span>Move to trash</span>
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setDetailsOpen((open) => !open)}

@@ -5,7 +5,7 @@ const Document = require('../models/Document');
 const { recordEvent } = require('../utils/audit');
 const { parseExpiryInput, daysUntil, expiryStatus: docExpiryState } = require('../utils/docExpiry');
 const { rearmReminders } = require('../utils/reminderCleanup');
-const { documentScope, pathInScope } = require('../utils/emergency/scope');
+const { documentScope, pathInScope, toVirtual, toReal } = require('../utils/emergency/scope');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
@@ -231,6 +231,15 @@ const listDocuments = asyncHandler(async (req, res) => {
     { $sort: { createdAt: -1 } },
     { $project: LIST_PROJECTION },
   ]);
+  if (req.emergency) {
+    // A contact sees paths that start at the scope folder (never the names above it) and no sharing information.
+    return res.status(200).json(
+      documents.map((doc) => {
+        const summary = toListSummary(doc, null);
+        return { ...summary, folder: toVirtual(req.emergency, summary.folder) };
+      })
+    );
+  }
   const sharedIds = await activeSharedIds(req.userId);
   res.status(200).json(documents.map((doc) => toListSummary(doc, sharedIds)));
 });
@@ -290,7 +299,10 @@ const getStorage = asyncHandler(async (req, res) => {
  * lazily loaded tree. `hasChildren` says whether a folder can be expanded.
  */
 const listFolderChildren = asyncHandler(async (req, res) => {
-  const requested = typeof req.query.path === 'string' ? req.query.path : '';
+  const asked = typeof req.query.path === 'string' ? req.query.path : '';
+  // An emergency session names folders from its own scope root; translate to the real path (null = not in scope).
+  const requested = toReal(req.emergency, asked);
+  if (requested === null) throw httpError(404, 'Folder not found.');
   const canonical = await resolveFolderPath(req.userId, requested);
   if (canonical === null) {
     throw httpError(404, 'Folder not found.');
@@ -302,7 +314,8 @@ const listFolderChildren = asyncHandler(async (req, res) => {
       const scoped = req.emergency.scopePaths || [];
       const withKids = new Set(scoped.length ? await Folder.distinct('parentPath', { userId: req.userId, parentPath: { $in: scoped } }) : []);
       const top = scoped
-        .map((path) => ({ name: path.split('/').pop(), path, hasChildren: withKids.has(path) }))
+        .map((path) => ({ path, hasChildren: withKids.has(path) }))
+        .map(({ path, hasChildren }) => ({ name: toVirtual(req.emergency, path), path: toVirtual(req.emergency, path), hasChildren }))
         .sort((a, b) => a.name.localeCompare(b.name));
       return res.status(200).json({ path: '', folders: top });
     }
@@ -314,9 +327,9 @@ const listFolderChildren = asyncHandler(async (req, res) => {
     paths.length ? await Folder.distinct('parentPath', { userId: req.userId, parentPath: { $in: paths } }) : []
   );
   const folders = children
-    .map((folder, index) => ({ name: folder.name, path: paths[index], hasChildren: withChildren.has(paths[index]) }))
+    .map((folder, index) => ({ name: folder.name, path: toVirtual(req.emergency, paths[index]), hasChildren: withChildren.has(paths[index]) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  res.status(200).json({ path: canonical, folders });
+  res.status(200).json({ path: toVirtual(req.emergency, canonical), folders });
 });
 
 
@@ -351,7 +364,7 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
  * everything else is alphabetical.
  */
 const listFolders = asyncHandler(async (req, res) => {
-  const paths = (await listFolderPaths(req.userId)).filter((path) => pathInScope(req.emergency, path));
+  const paths = (await listFolderPaths(req.userId)).filter((path) => pathInScope(req.emergency, path)).map((path) => toVirtual(req.emergency, path));
   const sorted = paths.sort((a, b) => a.localeCompare(b));
   res.status(200).json([FOLDER_ROOT, ...sorted]);
 });

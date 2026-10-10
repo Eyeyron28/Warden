@@ -66,7 +66,7 @@ export function describeEvent(event) {
 /** Which icon name (utils in ActivityIcon) goes with an event. */
 export function iconKind(type) {
   if (['login', 'logout', 'login_failed', 'otp_sent', 'password_changed', 'trusted_added', 'trusted_removed', 'device_signed_out'].includes(type)) return 'account';
-  if (type.startsWith('emergency')) return 'account';
+  if (type.startsWith('emergency')) return 'emergency';
   if (type.startsWith('share')) return 'sharing';
   if (type === 'download' || type === 'export' || type === 'account_export') return 'download';
   if (type === 'upload' || type === 'import') return 'upload';

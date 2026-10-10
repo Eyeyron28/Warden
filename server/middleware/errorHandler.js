@@ -9,7 +9,10 @@ const notFound = (req, res, next) => {
 // SESSION_INVALID: the bearer token itself is missing, expired or unknown (as
 // opposed to some other 401, such as a wrong password or code on a signed-in
 // route), so the client knows to end its session.
-const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INVALID', 'STORAGE_QUOTA', 'INVITE_CODE_INVALID', 'RESET_TICKET_INVALID']);
+const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INVALID', 'STORAGE_QUOTA', 'INVITE_CODE_INVALID', 'RESET_TICKET_INVALID',
+  // Emergency Access: answers the screens act on (the first three are only ever given to someone who has already passed
+  // the kit and code checks).
+  'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY']);
 
 const errorHandler = (err, req, res, next) => {
   const status = err.status || (res.statusCode !== 200 ? res.statusCode : 500);
@@ -51,6 +54,8 @@ const errorHandler = (err, req, res, next) => {
   if (PUBLIC_ERROR_CODES.has(err.code)) {
     errorBody.code = err.code;
   }
+  // "Not yet" tells an authenticated contact when the waiting period ends.
+  if (err.code === 'NOT_YET' && err.releaseAt) errorBody.releaseAt = err.releaseAt;
 
   res.status(status).json({
     success: false,

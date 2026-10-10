@@ -115,6 +115,8 @@ function FileBrowser({
   onItemContextMenu,
   onDropOnFolder,
   showListHeader = true,
+  // false = read-only browsing (Emergency Access): no checkboxes, no select-all, a click always opens.
+  selectable = true,
   label,
 }) {
   const [draggable] = useState(canDragDocuments);
@@ -126,7 +128,7 @@ function FileBrowser({
   const handleClick = (item, event) => {
     if (Date.now() < suppressClickUntil.current) return;
     if (event.target.closest('[data-no-open]')) return;
-    const action = rowClickAction(item, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey });
+    const action = selectable ? rowClickAction(item, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey }) : 'open';
     if (action === 'range') selection.click(item.key, { shift: true });
     else if (action === 'toggle') selection.click(item.key, { shift: false });
     else onOpen(item);
@@ -167,7 +169,7 @@ function FileBrowser({
         }
       : {};
 
-  const checkbox = (item) => (
+  const renderCheckbox = (item) => (
     <span className={styles.check} data-no-open>
       <input
         type="checkbox"
@@ -181,6 +183,9 @@ function FileBrowser({
       />
     </span>
   );
+
+  // Read-only browsing keeps the (empty, zero-width) cell so the grid columns still line up.
+  const checkbox = (item) => (selectable ? renderCheckbox(item) : <span className={styles.check} data-no-open aria-hidden="true" />);
 
   const dropProps = (item) => {
     if (!onDropOnFolder || item.kind !== 'folder') return {};
@@ -283,14 +288,16 @@ function FileBrowser({
 
   const wide = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', ...columns.map((column) => column.width), '44px'].join(' ');
   const narrow = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', '44px'].join(' ');
-  const gridVars = { '--cols-wide': wide, '--cols-narrow': narrow };
+  const gridVars = { '--cols-wide': wide, '--cols-narrow': narrow, ...(selectable ? {} : { '--check-w': '0px' }) };
 
   return (
     <ul className={styles.list} data-any-selected={anySelected || undefined} style={gridVars} aria-label={label}>
       {showListHeader && (
         <li className={`${styles.row} ${styles.headRow}`}>
           <span className={styles.headCheckCell}>
-            <SelectAllCheckbox header={selection.header} onChange={() => (selection.header === 'all' ? selection.clear() : selection.selectAll())} />
+            {selectable ? (
+              <SelectAllCheckbox header={selection.header} onChange={() => (selection.header === 'all' ? selection.clear() : selection.selectAll())} />
+            ) : null}
           </span>
           <span />
           <span className={styles.headLabel}>Name</span>

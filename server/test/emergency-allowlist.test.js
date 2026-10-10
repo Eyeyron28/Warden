@@ -75,7 +75,7 @@ async function startEmergency({ scope = { mode: 'all' } } = {}) {
   return { ...vault, made, token: started.json.sessionToken, started };
 }
 
-test('the allowlist is exactly these seven routes', () => {
+test('the allowlist is exactly these eight routes', () => {
   assert.deepEqual(
     ALLOWLIST.map((entry) => `${entry.method} ${entry.path.source}`),
     [
@@ -86,6 +86,7 @@ test('the allowlist is exactly these seven routes', () => {
       'GET ^\\/api\\/documents\\/folders\\/children$',
       'GET ^\\/api\\/documents\\/[0-9a-f]{24}\\/view$',
       'GET ^\\/api\\/documents\\/[0-9a-f]{24}\\/thumbnail$',
+      'GET ^\\/api\\/emergency\\/session-info$',
     ]
   );
   assert.ok(Object.isFrozen(ALLOWLIST));
@@ -390,7 +391,7 @@ test('the guard sits inside requireSession, so a route added later is refused un
       if (/req\.emergency/.test(fs.readFileSync(path.join(SERVER_DIR, dir, entry.name), 'utf8'))) using.push(`${dir}/${entry.name}`);
     }
   }
-  assert.deepEqual(using.sort(), ['controllers/auth.controller.js', 'controllers/documents.controller.js', 'middleware/emergencyGuard.js', 'middleware/requireSession.js']);
+  assert.deepEqual(using.sort(), ['controllers/auth.controller.js', 'controllers/documents.controller.js', 'controllers/emergency.controller.js', 'middleware/emergencyGuard.js', 'middleware/requireSession.js']);
 });
 
 test('the kit and the codes are read nowhere but the emergency service (no other module touches K1)', () => {

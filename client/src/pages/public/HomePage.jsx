@@ -170,6 +170,27 @@ const FAQ_ITEMS = [
     ),
   },
   {
+    question: 'What is Emergency Access?',
+    answer: (
+      <>
+        <p>
+          An optional safety net for when you can&apos;t be reached. You name one person you trust, choose a waiting period (3, 7 or 14
+          days) and what they may see (everything, or only some folders). They get an Emergency Kit: half of a key. If they ever ask for
+          access, we email you straight away and you can deny it until the wait ends. If you don&apos;t, they can open a read-only session
+          that lasts a few hours, and everything they do appears in your activity log.
+        </p>
+        <p>
+          It is not end-to-end encryption: Warden encrypts files on its server. A stolen kit alone, or a copy of our database alone, can&apos;t
+          open your vault, but a kit together with a leak of our database could, and someone running the server together with your contact
+          could skip the wait. The folder limit is enforced by our server, not by cryptography.{' '}
+          <Link to="/emergency" className={site.textLink}>
+            If you were named as someone&apos;s contact, start here.
+          </Link>
+        </p>
+      </>
+    ),
+  },
+  {
     question: 'How much can I store?',
     answer: (
       <p>
@@ -405,7 +426,11 @@ function HomePage() {
               Straight answers.
             </h2>
             <p className={site.lede}>
-              Something missing?{' '}
+              Named as someone&apos;s trusted contact?{' '}
+              <Link to="/emergency" className={site.textLink}>
+                Emergency access
+              </Link>
+              . Something else missing?{' '}
               <Link to="/#contact" className={site.textLink}>
                 Ask us
               </Link>

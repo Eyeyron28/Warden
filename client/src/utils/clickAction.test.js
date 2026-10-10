@@ -60,7 +60,7 @@ test('downloading is reachable only from explicit Download controls', () => {
       if (/\bdownloadBytes\(/.test(text)) callers.push(`${dir}/${name}`);
     }
   }
-  assert.deepEqual(callers.sort(), ['components/FilePreview.jsx', 'pages/FilesPage.jsx', 'pages/PhotosPage.jsx']);
+  assert.deepEqual(callers.sort(), ['components/FilePreview.jsx', 'pages/EmergencyFilesPage.jsx', 'pages/FilesPage.jsx', 'pages/PhotosPage.jsx']);
   // ...and in each one only inside a function named like a download action.
   for (const file of callers) {
     const text = strip(fs.readFileSync(path.join(src, file), 'utf8'));

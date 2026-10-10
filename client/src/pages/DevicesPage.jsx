@@ -4,6 +4,7 @@ import {
   Desktop,
   DownloadSimple,
   Eye,
+  Lifebuoy,
   ShareNetwork,
   ShieldCheck,
   Trash,
@@ -27,7 +28,7 @@ import { GROUP_OPTIONS, describeEvent, formatManila, iconKind, manilaDayBoundary
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './DevicesPage.module.css';
 
-const ICONS = { account: UserCircle, sharing: ShareNetwork, download: DownloadSimple, upload: UploadSimple, trash: Trash, vault: Eye };
+const ICONS = { emergency: Lifebuoy, account: UserCircle, sharing: ShareNetwork, download: DownloadSimple, upload: UploadSimple, trash: Trash, vault: Eye };
 
 /**
  * Devices & activity: the browsers signed in to this account (and a way to end any of them), and a timeline of
@@ -292,7 +293,7 @@ function DevicesPage() {
                     ))}
                   </span>
                   <span className={styles.sub}>
-                    {event.device ? `${event.device.label}${event.device.current ? ' (this device)' : ''}` : event.type.startsWith('share_') ? 'A visitor' : 'A device'}
+                    {event.actor === 'emergency' ? 'Trusted contact' : event.device ? `${event.device.label}${event.device.current ? ' (this device)' : ''}` : event.type.startsWith('share_') ? 'A visitor' : 'A device'}
                     {event.countryName ? ` · ${event.countryName}` : ''} · {formatManila(event.at)}
                   </span>
                 </div>

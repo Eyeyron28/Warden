@@ -220,7 +220,7 @@ test('the axios interceptor ends a session the server no longer accepts, and the
   assert.match(api, /if \(getToken\(\)\) expireSession\(\);\s*else clearToken\(\);/);
   const app = readFileSync(fileURLToPath(new URL('../App.jsx', import.meta.url)), 'utf8');
   assert.match(app, /if \(!ready\) return null;/);
-  assert.match(app, /checkStoredSession\(\{ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: getMe, expire: expireSession \}\)/);
+  assert.match(app, /checkStoredSession\(\{ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: async \(\) => setModeFromMe\(await getMe\(\)\), expire: expireSession \}\)/);
   const login = readFileSync(fileURLToPath(new URL('../pages/auth/LoginPage.jsx', import.meta.url)), 'utf8');
   assert.match(login, /takeSessionNotice\(\)/);
   assert.match(login, /\{sessionNotice &&/);
