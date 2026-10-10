@@ -31,9 +31,13 @@ const GROUPS = Object.freeze({
   vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export', 'expiry_set', 'expiry_cleared'],
   sharing: ['share_created', 'share_revoked', 'share_opened', 'share_downloaded', 'shares_stopped_all'],
   account: ['login', 'login_failed', 'logout', 'otp_sent', 'password_changed', 'trusted_added', 'trusted_removed', 'device_signed_out'],
+  emergency: [
+    'emergency_configured', 'emergency_kit_regenerated', 'emergency_revoked', 'emergency_requested', 'emergency_denied',
+    'emergency_approved_early', 'emergency_released', 'emergency_session_started', 'emergency_file_viewed', 'emergency_file_downloaded',
+  ],
 });
 
-const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared']);
+const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared', 'emergency_file_viewed', 'emergency_file_downloaded']);
 const SHARE_TARGET_TYPES = new Set(['share_created', 'share_revoked', 'share_opened', 'share_downloaded']);
 
 /** A country's English name from its two-letter code ("PH" -> "Philippines"), or the code itself. */
@@ -175,7 +179,7 @@ function describeTarget(event, lookup) {
  */
 const listActivity = asyncHandler(async (req, res) => {
   const { device, group, before, flagged } = req.query;
-  if (group !== undefined && group !== '' && !GROUPS[group]) throw httpError(400, 'group must be vault, sharing or account.');
+  if (group !== undefined && group !== '' && !GROUPS[group]) throw httpError(400, 'group must be vault, sharing, account or emergency.');
   if (device !== undefined && device !== '' && (typeof device !== 'string' || !mongoose.Types.ObjectId.isValid(device))) throw httpError(400, 'device must be a device id.');
   const from = parseDate(req.query.from, 'from');
   const to = parseDate(req.query.to, 'to');
@@ -212,6 +216,8 @@ const listActivity = asyncHandler(async (req, res) => {
       at: event.at,
       country: event.country || null,
       countryName: countryName(event.country),
+      // 'emergency' when an Emergency Access contact did it (not the owner's own session).
+      actor: event.actor || null,
       device: dev ? { id: String(dev._id), label: dev.label, current: req.deviceId !== null && String(dev._id) === String(req.deviceId) } : null,
       target: describeTarget(event, lookup),
       flags: (flagMap.get(event.seq) || []).map((flag) => ({ code: flag, label: FLAG_LABELS[flag] })),

@@ -189,7 +189,7 @@ function stubModule(modulePath, exportsObject) {
 const MODEL_TABLES = {
   User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
-  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs',
+  RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs', EmergencyAccess: 'emergencyaccesses', EmergencyRequest: 'emergencyrequests',
 };
 
 function createWorld() {
@@ -206,7 +206,10 @@ function installModels(world, extras = {}) {
 /** A budget counter standing in for middleware/rateLimit (windows are not simulated). */
 function installRateLimit() {
   const counts = new Map();
-  stubModule(path.join(__dirname, '..', '..', 'middleware', 'rateLimit'), {
+  // Callable like the real module (route files build limiters with it); the per-route limiters are pass-throughs here,
+  // the budgets below are what the tests exercise.
+  const factory = () => (req, res, next) => next();
+  stubModule(path.join(__dirname, '..', '..', 'middleware', 'rateLimit'), Object.assign(factory, {
     consumeBudget: async ({ name, key, max }) => {
       const id = `${name}:${key}`;
       counts.set(id, (counts.get(id) || 0) + 1);
@@ -214,7 +217,7 @@ function installRateLimit() {
     },
     isBudgetExhausted: async ({ name, key, max }) => (counts.get(`${name}:${key}`) || 0) >= max,
     budgetRetryAfterSeconds: async ({ name, key, max }) => ((counts.get(`${name}:${key}`) || 0) >= max ? 900 : 0),
-  });
+  }));
   return counts;
 }
 
@@ -243,7 +246,7 @@ async function call(handler, { userId, dek, body = {}, params = {}, headers = {}
     cookie(name, value, options) { out.cookies[name] = { value, ...options }; return this; },
     clearCookie(name) { out.cleared.push(name); return this; },
   };
-  await handler({ userId, dek, body, params, headers, query, secure, files, file, ip, ...extra }, res, (err) => { out.error = err; });
+  await handler({ userId, dek, body, params, headers, query, secure, files, file, ip, ...extra }, res, (err) => { out.error = err; if (err && err.status) out.status = err.status; });
   return out;
 }
 

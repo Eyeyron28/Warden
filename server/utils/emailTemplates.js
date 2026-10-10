@@ -134,11 +134,12 @@ function renderDetailsHtml(details) {
  * }} input
  * @returns {{ subject: string, html: string, text: string }}
  */
-function renderEmail({ subject, preheader, title, intro, code, codeNote, details, warning, cta, footerNote }) {
+function renderEmail({ subject, preheader, title, intro, code, codeNote, details, warning, cta, secondaryCta, footerNote }) {
   const hasCode = typeof code === 'string' && code !== '';
   if (hasCode && !/^\d{6}$/.test(code)) throw new Error('A code must be a single unbroken string of 6 digits.');
   if (/[\r\n]/.test(subject) || (hasCode && subject.includes(code))) throw new Error('The subject must be a single line without the code.');
   if (cta && !/^https:\/\//.test(cta.href)) throw new Error('A link must be an https address.');
+  if (secondaryCta && !/^https:\/\//.test(secondaryCta.href)) throw new Error('A link must be an https address.');
 
   const pre = esc(preheader);
   // Pad the preheader so the inbox preview never pulls in body text.
@@ -161,6 +162,13 @@ function renderEmail({ subject, preheader, title, intro, code, codeNote, details
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;"><tr>` +
       `<td align="center" bgcolor="${BRAND.accent}" style="border-radius:8px;background:${BRAND.accent};">` +
       `<a href="${esc(cta.href)}" style="display:inline-block;padding:12px 22px;font-size:15px;font-weight:600;color:${BRAND.dark};text-decoration:none;">${esc(cta.label)}</a>` +
+      `</td></tr></table>`
+    : '';
+
+  const secondaryBlock = secondaryCta
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 0;"><tr>` +
+      `<td align="center" style="border-radius:8px;border:1px solid ${BRAND.accent};">` +
+      `<a href="${esc(secondaryCta.href)}" style="display:inline-block;padding:11px 21px;font-size:15px;font-weight:600;color:${BRAND.accent};text-decoration:none;">${esc(secondaryCta.label)}</a>` +
       `</td></tr></table>`
     : '';
 
@@ -189,6 +197,7 @@ function renderEmail({ subject, preheader, title, intro, code, codeNote, details
     renderDetailsHtml(details) +
     warningBlock +
     ctaBlock +
+    secondaryBlock +
     '\n</td></tr>\n' +
     `<tr><td align="center" style="padding:18px 12px 0;font-family:${FONT_STACK};font-size:12px;line-height:18px;color:${BRAND.muted};">` +
     (footerNote ? `<span class="muted" style="color:${BRAND.muted};">${esc(footerNote)}</span><br>` : '') +
@@ -204,6 +213,7 @@ function renderEmail({ subject, preheader, title, intro, code, codeNote, details
   if (details?.length) parts.push('', ...details.map(([label, value]) => `${line(label)}: ${line(value)}`));
   if (warning) parts.push('', line(warning));
   if (cta) parts.push('', `${line(cta.label)}: ${cta.href}`);
+  if (secondaryCta) parts.push(`${line(secondaryCta.label)}: ${secondaryCta.href}`);
   parts.push('', '--');
   if (footerNote) parts.push(line(footerNote));
   parts.push(FOOTER_AUTOMATED, FOOTER_PROJECT);
@@ -370,6 +380,144 @@ const templates = {
       details: rows,
       footerNote: 'You get this because "Email me about expiring documents" is on. You can turn it off in Account settings. This email never lists file names.',
       cta: appLink('/overview') ? { label: 'Review in Warden', href: appLink('/overview') } : null,
+    });
+  },
+
+  // ---------- Emergency Access (no file names, ever) ----------
+
+  // To the contact
+  emergencyContactRequestCode: ({ code, ttlMinutes }) =>
+    codeEmail({
+      subject: 'Your code to request emergency access',
+      preheader: 'Use this code to request emergency access to a Warden vault.',
+      title: 'Request emergency access',
+      purposeLine: 'Someone asked to request emergency access to a Warden vault that names this address as its trusted contact.',
+      code,
+      ttlMinutes,
+    }),
+
+  emergencyContactReceipt: ({ releaseAt }) =>
+    renderEmail({
+      subject: 'We received your emergency access request',
+      preheader: 'The vault owner has been told. Access can be started after the waiting period.',
+      title: 'Your request was received',
+      intro: 'The owner of the vault has been told about your request. They can deny it during the waiting period. If they do not, you will be able to start a read-only session once it ends.',
+      details: [['Earliest access', formatManilaTime(releaseAt)]],
+      warning: 'We will email you again when access is available. Keep your kit safe: it is needed to start a session.',
+    }),
+
+  emergencyContactAvailable: ({ claimDays }) =>
+    renderEmail({
+      subject: 'Emergency access is now available',
+      preheader: 'The waiting period ended without a denial. You can start a read-only session.',
+      title: 'Emergency access is available',
+      intro: `The waiting period ended and the owner did not deny your request. You can now start a read-only session for the next ${claimDays} day${claimDays === 1 ? '' : 's'}. You will need your kit and a new emailed code.`,
+      cta: appLink('/emergency/access') ? { label: 'Start a session', href: appLink('/emergency/access') } : null,
+    }),
+
+  emergencyContactSessionCode: ({ code, ttlMinutes }) =>
+    codeEmail({
+      subject: 'Your code to start emergency access',
+      preheader: 'Use this code to start a read-only emergency session.',
+      title: 'Start an emergency session',
+      purposeLine: 'Someone is starting a read-only emergency access session using this contact address.',
+      code,
+      ttlMinutes,
+    }),
+
+  emergencyContactKitChanged: ({ kind }) =>
+    renderEmail({
+      subject: kind === 'revoked' ? 'Emergency access was turned off' : 'Your emergency access kit was replaced',
+      preheader: kind === 'revoked' ? 'The vault owner turned emergency access off.' : 'The kit you were given no longer works.',
+      title: kind === 'revoked' ? 'Emergency access was turned off' : 'Your kit was replaced',
+      intro:
+        kind === 'revoked'
+          ? 'The owner of the vault turned emergency access off. Any request or session you had has ended.'
+          : 'The owner of the vault replaced the emergency access kit. The old kit no longer works and any request or session you had has ended. Ask the owner for the new kit.',
+    }),
+
+  // To the owner
+  emergencyOwnerSetupCode: ({ code, ttlMinutes }) =>
+    codeEmail({
+      subject: 'Your code to change emergency access',
+      preheader: 'Use this code to confirm a change to emergency access.',
+      title: 'Confirm an emergency access change',
+      purposeLine: 'You asked to set up, replace, turn off or approve emergency access to your vault.',
+      code,
+      ttlMinutes,
+    }),
+
+  emergencyOwnerRequestReceived: ({ releaseAt, denyUrl }) =>
+    renderEmail({
+      subject: 'Someone requested emergency access to your vault',
+      preheader: 'Your trusted contact asked for access. You can deny it until the waiting period ends.',
+      title: 'Emergency access was requested',
+      intro: 'Your trusted contact used their kit and an emailed code to request read-only access to your vault. If you do nothing, they can start a session after the waiting period ends.',
+      details: [['Earliest access', formatManilaTime(releaseAt)]],
+      warning: 'If this is not expected, deny it now. The link below can only deny this one request and works once.',
+      cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
+      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+    }),
+
+  emergencyOwnerReminder: ({ releaseAt, released, denyUrl }) =>
+    renderEmail({
+      subject: 'Reminder: an emergency access request is waiting',
+      preheader: 'A request for emergency access to your vault is still open.',
+      title: 'An emergency access request is still open',
+      intro: released
+        ? 'The waiting period has ended and your contact can start a read-only session at any time. You can still deny it until they do.'
+        : 'Your trusted contact asked for read-only access to your vault. You can deny it until the waiting period ends.',
+      details: [['Earliest access', formatManilaTime(releaseAt)]],
+      cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
+      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+    }),
+
+  emergencyOwnerDenied: ({ when }) =>
+    renderEmail({
+      subject: 'You denied the emergency access request',
+      preheader: 'The request was denied. Your contact cannot ask again for 24 hours.',
+      title: 'Request denied',
+      intro: 'The emergency access request was denied. Nobody was given access. Your contact cannot make another request for 24 hours.',
+      details: [['When', formatManilaTime(when)]],
+    }),
+
+  emergencyOwnerReleased: ({ approvedEarly, claimDays, denyUrl }) =>
+    renderEmail({
+      subject: approvedEarly ? 'You approved emergency access early' : 'The waiting period ended: emergency access is available',
+      preheader: 'Your contact can now start a read-only session.',
+      title: approvedEarly ? 'Emergency access approved' : 'Emergency access is available',
+      intro: `Your contact can now start a read-only session for the next ${claimDays} day${claimDays === 1 ? '' : 's'}. ${approvedEarly ? 'You approved this early.' : 'You did not deny the request during the waiting period.'}`,
+      warning: 'You can still deny the request until a session starts. After that, turn emergency access off in Warden to end any session at once.',
+      cta: denyUrl ? { label: 'Deny this request', href: denyUrl } : null,
+      secondaryCta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+    }),
+
+  emergencyOwnerSessionStarted: ({ when, scopeMode }) =>
+    renderEmail({
+      subject: 'Your emergency contact started a session',
+      preheader: 'Read-only access to your vault has begun.',
+      title: 'An emergency session started',
+      intro: 'Your trusted contact started a read-only session. It cannot change, delete or share anything, and it ends on its own within 4 hours.',
+      details: [['When', formatManilaTime(when)], ['Access', scopeMode === 'folders' ? 'Chosen folders only' : 'The whole vault']],
+      warning: 'If this is not expected, turn emergency access off in Warden now: that ends the session at once.',
+      cta: appLink('/emergency') ? { label: 'Review in Warden', href: appLink('/emergency') } : null,
+    }),
+
+  emergencyOwnerSetupChanged: ({ kind, when }) => {
+    const copy = {
+      configured: ['Emergency access was set up', 'Emergency access was set up', 'A trusted contact can now request read-only access to your vault, after a waiting period during which you can deny.'],
+      regenerated: ['You replaced your emergency access kit', 'The emergency access kit was replaced', 'The old kit no longer works, and any open request or session ended.'],
+      revoked: ['You turned off emergency access', 'Emergency access was turned off', 'Your contact can no longer request access, and any open request or session ended.'],
+      invalidated: ['Emergency access was turned off because your vault key changed', 'Emergency access was turned off', 'Your vault key changed, so the old setup cannot work. Set it up again if you still want it.'],
+    }[kind];
+    return renderEmail({
+      subject: copy[0],
+      preheader: copy[2],
+      title: copy[1],
+      intro: copy[2],
+      details: [['When', formatManilaTime(when)]],
+      warning: kind === 'configured' || kind === 'regenerated' ? 'If you did not do this, reset your password now.' : null,
+      cta: kind !== 'revoked' && appLink('/emergency') ? { label: 'Open Emergency Access', href: appLink('/emergency') } : null,
     });
   },
 

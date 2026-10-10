@@ -61,6 +61,8 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `OTP_ENABLED` | no | **Do not set it.** The emailed login code is on by default, and the server refuses to start in production if it is `false`. |
 | `OTP_TTL_MINUTES` | no | Optional, 1 to 60 (default 5). |
 | `AUDIT_HMAC_KEY` | **Secret** | **Required in production** (the server refuses to start without it). At least 32 random characters, e.g. from a password manager. It signs each entry of the activity log so changes to the stored log can be detected. Keep it separate from `MONGO_URI`: it protects nothing if the same person holds both. Rotating it makes older entries show as "cannot be verified". |
+| `EMERGENCY_CLAIM_DAYS` | no | Optional, 1 to 30 (default 7). How long after the Emergency Access waiting period ends the contact can still start a session. |
+| `EMERGENCY_DEMO_MODE` | no | **Demo only. Leave it unset.** `true` also allows a 2-minute waiting period (used by `server/scripts/emergency-demo.js`); the server warns at start-up if it is on in production. |
 | `AUDIT_RETENTION_DAYS` | no | Optional. How long activity entries are kept (default 30). |
 | `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
 
@@ -89,6 +91,8 @@ Never put these values in the repository, in screenshots or in chat. `server/.en
 | `/api/cron/reminders` | `0 1 * * *` (09:00 in Manila) | Emails an account about documents that expire in 60, 30 or 7 days, or today. One email per account per run, counts only (no file names). |
 
 Both refuse every request unless `Authorization: Bearer <CRON_SECRET>` matches (constant-time compare); with `CRON_SECRET` unset the endpoints return 404. The reminder job is safe to run twice (a reminder is claimed in the database before it is sent, so nothing goes out twice), does at most 40 emails and about 20 seconds of work per run (the rest waits for the next run), and logs counts only. To run it by hand against a database you choose: `cd server && node scripts/run-reminders.js` (it uses `MONGO_URI` and the SMTP settings from the environment or `server/.env`, and prints the database name, never the URI).
+
+**Emergency Access upkeep rides on the reminders job** (no third cron entry: Hobby has few): each day it emails the owner one reminder while a request is open, tells the contact and the owner once when a waiting period ends, and expires requests nobody claimed in time. Idempotent, counts only.
 
 **Document expiry dates** are stored readable by the server (so a reminder can be sent while nobody is signed in); the file's contents and name stay encrypted. `AUDIT_HMAC_KEY`, `CRON_SECRET` and the SMTP settings are the only configuration this needs: there are no new variables.
 
@@ -142,6 +146,18 @@ Run this on the real URL, with a throwaway email address you control.
 4. [ ] A request without the header, or with a wrong one, gets 401 (404 if CRON_SECRET is unset).
 5. [ ] **Overview** shows the Vault health card (score ring and checklist, each non-OK row with a button) and the Expiring documents card. Fix an item (for example stop a share link that has no password) and reload: the score changes. **Account** has "Email me about expiring documents" (on by default); turned off, the job sends nothing for that account.
 6. [ ] The Vercel dashboard (Settings, Cron Jobs) lists both jobs; after the first scheduled run their logs show counts only.
+
+## 9b-3. Emergency Access
+
+**What it is, honestly.** Warden encrypts uploads on the server, so this is **not end-to-end**. Emergency Access is a **2-of-2 key split with a time gate**: the contact holds half of a key (the kit), the server holds the other half and will use it only after the owner's waiting period ends without a denial. A stolen kit alone, or a leaked database alone, cannot open the vault. A leaked database **plus** the kit can. A malicious operator colluding with the contact can bypass the wait. Folder scope is enforced by the server (policy), not by cryptography.
+
+1. [ ] **Account, Emergency access** (coming in the next update; until then use the API or `node scripts/emergency-demo.js`, below). The owner needs a **fresh emailed code** for every change: set up, replace the kit, turn off, approve early.
+2. [ ] The waiting period is **3, 7 or 14 days**. A 2-minute option exists only with `EMERGENCY_DEMO_MODE=true`.
+3. [ ] The contact has **no account**: they request a code (the answer is the same whatever they type), then enter the code and the kit to make a request. The owner is emailed **at once**, with a one-click **Deny** link (single use, can only deny) and a signed-in Deny button. The owner also gets a reminder each day while it is open.
+4. [ ] After the wait, if nobody denied, the contact starts a session with a new code and the kit. It is **read-only**, limited to the chosen folders (or the whole vault), ends after **4 hours at most** (30 minutes idle), and is refused everywhere except: sign-in check, log out, list files and folders in scope, preview and download files in scope. Out-of-scope items are a 404.
+5. [ ] Every step is on the owner's **Devices & activity** timeline (group "Emergency access", marked as the emergency actor) and a started session always shows the warning banner. **Verify log** stays Intact.
+6. [ ] A denial blocks a new request for 24 hours. Turning access off, replacing the kit, or any change of the vault key ends sessions at once and cancels requests.
+7. [ ] Try the whole flow without waiting days: `cd server && MONGO_URI="<a throwaway database>" node scripts/emergency-demo.js` (real 2-minute waits, about 5 minutes) or add `--fast`. It never reads `server/.env`, never sends email, and deletes the account it creates.
 
 ## 9c. Emails and share-link previews
 

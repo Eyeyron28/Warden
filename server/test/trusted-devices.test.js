@@ -467,6 +467,7 @@ test('a trusted browser still needs a fresh code for deleting the account and sh
   const users = [];
   for (const folder of ['controllers', 'routes', 'middleware', 'utils']) {
     for (const name of fs.readdirSync(path.join(root, folder))) {
+      if (fs.statSync(path.join(root, folder, name)).isDirectory()) continue;
       const text = fs.readFileSync(path.join(root, folder, name), 'utf8');
       if (/isTrustedFor/.test(text)) users.push(`${folder}/${name}`);
     }

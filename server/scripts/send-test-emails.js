@@ -52,6 +52,18 @@ const samples = [
   ['new-device', templates.newDevice({ browser: 'Chrome', os: 'Windows', country: 'PH', city: 'Manila', when })],
   ['trusted-browser', templates.trustedBrowser({ browser: 'Chrome on Windows', when })],
   ['expiring-documents', templates.expiringDocuments({ within7: 1, within30: 1, within60: 2 })],
+  ['emergency-contact-request-code', templates.emergencyContactRequestCode({ code: '482915', ttlMinutes })],
+  ['emergency-contact-receipt', templates.emergencyContactReceipt({ releaseAt: new Date(when.getTime() + 3 * 864e5) })],
+  ['emergency-contact-available', templates.emergencyContactAvailable({ claimDays: 7 })],
+  ['emergency-contact-session-code', templates.emergencyContactSessionCode({ code: '730164', ttlMinutes })],
+  ['emergency-contact-kit-replaced', templates.emergencyContactKitChanged({ kind: 'regenerated' })],
+  ['emergency-owner-setup-code', templates.emergencyOwnerSetupCode({ code: '615204', ttlMinutes })],
+  ['emergency-owner-request-received', templates.emergencyOwnerRequestReceived({ releaseAt: new Date(when.getTime() + 3 * 864e5), denyUrl: 'https://warden.example.com/api/emergency/public/deny/EXAMPLE-NOT-A-REAL-TOKEN-0123456789' })],
+  ['emergency-owner-reminder', templates.emergencyOwnerReminder({ releaseAt: new Date(when.getTime() + 864e5), released: false, denyUrl: null })],
+  ['emergency-owner-denied', templates.emergencyOwnerDenied({ when })],
+  ['emergency-owner-released', templates.emergencyOwnerReleased({ approvedEarly: false, claimDays: 7, denyUrl: null })],
+  ['emergency-owner-session-started', templates.emergencyOwnerSessionStarted({ when, scopeMode: 'folders' })],
+  ['emergency-owner-setup-changed', templates.emergencyOwnerSetupChanged({ kind: 'configured', when })],
 ];
 
 (async () => {

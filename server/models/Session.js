@@ -47,6 +47,14 @@ const sessionSchema = new mongoose.Schema({
   // The browser this session belongs to (models/Device.js), so that one device can be signed out
   // without touching the others. Null for a session created before devices existed.
   deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
+  // Emergency Access sessions (utils/emergency): read-only, scoped, never longer than absoluteExpiresAt. A normal
+  // login session has none of these.
+  emergency: { type: Boolean, default: false, index: true },
+  accessId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  requestId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  scopePaths: { type: [String], default: undefined }, // folder paths, when the scope is folders
+  scopeMode: { type: String, enum: ['all', 'folders', null], default: null },
+  absoluteExpiresAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
   expiresAt: {
     type: Date,

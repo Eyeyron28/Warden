@@ -16,6 +16,8 @@ const auditEventSchema = new mongoose.Schema({
   targetId: { type: String, default: null },
   at: { type: Date, required: true },
   country: { type: String, default: null },
+  // Who did it, when it was not the owner's own session: 'emergency' (an Emergency Access contact). Signed in the chain.
+  actor: { type: String, enum: ['emergency', null], default: null },
   seq: { type: Number, required: true },
   prevHash: { type: String, default: '' },
   hash: { type: String, required: true },

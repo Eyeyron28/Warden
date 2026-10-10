@@ -12,11 +12,14 @@ const mongoose = require('mongoose');
 //     while someone is mid-login therefore cannot unwrap the DEK.
 // Verifying the code consumes the challenge and only then creates the real
 // session.
+// Codes for people without an account (a share's recipient, an emergency contact) carry no wrapped key.
+const NO_WRAPPED_KEY = new Set(['share-email', 'emergency-request', 'emergency-session']);
+
 const otpChallengeSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   // What this code is FOR. Every lookup includes it, so a login code can never
   // authorise deleting an account, nor a delete code log anyone in.
-  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset'], default: 'login', required: true },
+  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset', 'emergency-setup', 'emergency-request', 'emergency-session'], default: 'login', required: true },
   // 'share-email' codes belong to one visitor's access session on one share
   // (userId is the share's OWNER, so deleting the account removes them too).
   shareId: { type: String, default: null, index: true },
@@ -32,9 +35,9 @@ const otpChallengeSchema = new mongoose.Schema({
   lastSentAt: { type: Date, required: true },
   // A share-email code has no key to protect (the visitor is not signed in), so
   // these three exist only for login and delete-account challenges.
-  wrappedDek: { type: String, required() { return this.purpose !== 'share-email'; } },
-  wrappedDekIv: { type: String, required() { return this.purpose !== 'share-email'; } },
-  wrappedDekAuthTag: { type: String, required() { return this.purpose !== 'share-email'; } },
+  wrappedDek: { type: String, required() { return !NO_WRAPPED_KEY.has(this.purpose); } },
+  wrappedDekIv: { type: String, required() { return !NO_WRAPPED_KEY.has(this.purpose); } },
+  wrappedDekAuthTag: { type: String, required() { return !NO_WRAPPED_KEY.has(this.purpose); } },
   // TTL: Mongo reaps the document shortly after this passes; the controller
   // also checks it itself rather than waiting.
   expiresAt: { type: Date, required: true },

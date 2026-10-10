@@ -64,6 +64,18 @@ export const SECTIONS = [
             expires.
           </li>
           <li>
+            <strong>Emergency access</strong>: only if you set it up. We store your trusted contact&apos;s email address (to send them codes and
+            notices), a name you gave them, the waiting period (3, 7 or 14 days), which folders they may see, and half of a key. The other half (the
+            kit) is shown to you once and is not stored, logged or emailed by us. Your vault key is stored wrapped under the combination of both
+            halves, so a stolen kit alone, or a copy of our database alone, cannot open your vault. A copy of our database together with the kit can,
+            and an operator working with your contact could skip the wait: this is not end-to-end encryption, because Warden encrypts files on the
+            server. When your contact asks for access we email you at once and every day until you deny it or the wait ends; you can deny it by one
+            click until a session starts. After a denial they cannot ask again for 24 hours. A session is read-only, ends within 4 hours, and can
+            only see the folders you chose; that limit is enforced by our server, not by encryption. Everything they do is written to your activity
+            log (file ids only, no names). Turning it off, or changing your vault key, ends any session and removes the setup. Deleting your account
+            or erasing your vault removes all of it.
+          </li>
+          <li>
             <strong>Expiry dates and reminders</strong>: if you give a file an &quot;Expires on&quot; date, that date is stored readable by the
             server (it has to be, to email you while you are signed out). The file&apos;s contents and name stay encrypted. When a date is 60,
             30 or 7 days away, and on the day, we send one email with a count (never a file name). You can turn it off in Account settings.

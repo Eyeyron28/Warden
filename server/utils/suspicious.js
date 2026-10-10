@@ -8,6 +8,7 @@ const config = require('../config/suspicious');
  *   download_burst           10+ downloads within 5 minutes
  *   failed_then_success      a login that followed 3+ failed attempts within 15 minutes
  *   signed_out_device_active a login from a device the owner had signed out
+ *   emergency_session        an Emergency Access contact started a session (always flagged)
  *
  * @param {Array<{ seq: number, type: string, at: Date | string, country?: string | null, deviceId?: any, targetId?: any }>} events
  *   every known event of ONE account (any order)
@@ -76,10 +77,16 @@ function computeFlags(events) {
     }
   }
 
+  // An emergency session starting is always worth the owner's attention, whatever else is going on.
+  for (const event of ordered) {
+    if (event.type === 'emergency_session_started') add(event.seq, 'emergency_session');
+  }
+
   return flags;
 }
 
 const FLAG_LABELS = Object.freeze({
+  emergency_session: 'An emergency contact started a session',
   new_country: 'Sign-in from a new country',
   download_burst: 'Many downloads in a short time',
   failed_then_success: 'Sign-in after failed attempts',

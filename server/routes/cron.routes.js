@@ -3,6 +3,7 @@ const express = require('express');
 
 const { purgeExpired } = require('../utils/trash');
 const { runReminders } = require('../utils/reminders');
+const { runMaintenance: runEmergencyMaintenance } = require('../utils/emergency/service');
 
 const router = express.Router();
 
@@ -39,7 +40,15 @@ router.get('/purge-trash', requireCronSecret, async (req, res, next) => {
 router.get('/reminders', requireCronSecret, async (req, res, next) => {
   try {
     const result = await runReminders();
-    res.status(200).json({ success: true, ...result });
+    // Emergency Access upkeep rides on the same daily job (Hobby has few cron slots): owner reminders, "the wait ended"
+    // notices and expiry. Idempotent, counts only. A failure here must not hide the reminder result.
+    let emergency = null;
+    try {
+      emergency = await runEmergencyMaintenance();
+    } catch (err) {
+      console.error('Emergency Access upkeep failed.');
+    }
+    res.status(200).json({ success: true, ...result, emergency });
   } catch (err) {
     next(err);
   }

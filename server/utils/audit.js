@@ -30,7 +30,7 @@ const isDuplicateKey = (error) => error && (error.code === 11000 || /E11000/.tes
 
 /** The fields that are signed, in a fixed order. */
 function canonicalFields(event) {
-  return JSON.stringify([
+  const fields = [
     String(event.userId),
     Number(event.seq),
     event.type,
@@ -38,7 +38,10 @@ function canonicalFields(event) {
     event.targetId ? String(event.targetId) : null,
     new Date(event.at).toISOString(),
     event.country || null,
-  ]);
+  ];
+  // Only when set, so every event written before this field existed still verifies.
+  if (event.actor) fields.push(event.actor);
+  return JSON.stringify(fields);
 }
 
 function computeHash(prevHash, event) {
@@ -66,18 +69,21 @@ async function readHead(userId) {
  *
  * @returns {Promise<{ seq: number, hash: string }>}
  */
-async function appendEvent({ userId, deviceId = null, type, targetId = null, country = null, at = new Date() }) {
+async function appendEvent({ userId, deviceId = null, type, targetId = null, country = null, actor = null, at = new Date() }) {
   for (let attempt = 0; attempt < MAX_APPEND_TRIES; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
     const head = await readHead(userId);
     if (!head) throw new Error('No such account.');
 
-    const event = { userId, seq: head.seq + 1, type, deviceId, targetId, at, country };
+    const event = { userId, seq: head.seq + 1, type, deviceId, targetId, at, country, actor };
     const hash = computeHash(head.hash, event);
     try {
       // eslint-disable-next-line no-await-in-loop
+      // The actor field exists only on events an Emergency Access contact caused, so every other row keeps its old shape.
+      const stored = { ...event };
+      if (!actor) delete stored.actor;
       await AuditEvent.create({
-        ...event,
+        ...stored,
         prevHash: head.hash,
         hash,
         expiresAt: new Date(new Date(at).getTime() + retentionMs()),
@@ -139,6 +145,7 @@ async function recordEvent(req, type, options = {}) {
       deviceId: options.deviceId !== undefined ? options.deviceId : req?.deviceId || null,
       targetId: options.targetId !== undefined && options.targetId !== null ? String(options.targetId) : null,
       country: options.country !== undefined ? options.country : countryFrom(req),
+      actor: options.actor || null,
     });
   } catch (error) {
     failureCount += 1;

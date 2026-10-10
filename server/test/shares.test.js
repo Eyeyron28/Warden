@@ -320,6 +320,7 @@ test('the old token-based schema is gone', () => {
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'models', 'ShareToken.js')), false);
   for (const dir of ['controllers', 'routes', 'models', 'utils']) {
     for (const name of fs.readdirSync(path.join(__dirname, '..', dir))) {
+      if (fs.statSync(path.join(__dirname, '..', dir, name)).isDirectory()) continue;
       const text = fs.readFileSync(path.join(__dirname, '..', dir, name), 'utf8');
       assert.doesNotMatch(text, /wrappedDEKShare|ShareToken\b/, `${dir}/${name} still refers to the old share design`);
     }

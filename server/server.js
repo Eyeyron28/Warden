@@ -26,6 +26,8 @@ const sharedViewRoutes = require('./routes/sharedView.routes');
 const accountRoutes = require('./routes/account.routes');
 const trashRoutes = require('./routes/trash.routes');
 const cronRoutes = require('./routes/cron.routes');
+const { publicRouter: emergencyPublicRoutes, ownerRouter: emergencyOwnerRoutes } = require('./routes/emergency.routes');
+const { assertEmergencyConfig } = require('./utils/emergency/config');
 
 const app = express();
 
@@ -39,6 +41,8 @@ assertPublicAppUrlConfig();
 // The emailed login code cannot be turned off in production, and its lifetime
 // must be a sane number: refuse to start otherwise.
 assertOtpConfig();
+// EMERGENCY_CLAIM_DAYS must be sane; EMERGENCY_DEMO_MODE on a production deployment is warned about.
+assertEmergencyConfig();
 
 // Fired at module load (not inside the require.main guard below) so a
 // Vercel serverless instance starts warming up its connection the moment
@@ -138,6 +142,9 @@ app.use('/api/shares', shareTokenRoutes);
 // see routes/sharedView.routes.js.
 app.use('/api/shared', sharedViewRoutes);
 app.use('/api/account', accountRoutes);
+// Emergency Access: the contact's endpoints have no session (public router first), the owner's need a normal one.
+app.use('/api/emergency/public', emergencyPublicRoutes);
+app.use('/api/emergency', emergencyOwnerRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/trash', trashRoutes);

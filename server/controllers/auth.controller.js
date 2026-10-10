@@ -513,6 +513,15 @@ const getMe = asyncHandler(async (req, res) => {
     error.status = 404;
     throw error;
   }
+  if (req.emergency) {
+    // An emergency contact is told only what the screen needs: no owner address, a flag, the scope and the end time.
+    return res.status(200).json({
+      emergency: true,
+      readOnly: true,
+      scopeMode: req.emergency.scopeMode,
+      endsAt: req.emergency.absoluteExpiresAt,
+    });
+  }
   res.status(200).json({ email: user.email, emailVerified: user.emailVerified });
 });
 

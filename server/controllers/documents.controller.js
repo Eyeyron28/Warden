@@ -5,6 +5,7 @@ const Document = require('../models/Document');
 const { recordEvent } = require('../utils/audit');
 const { parseExpiryInput, daysUntil, expiryStatus: docExpiryState } = require('../utils/docExpiry');
 const { rearmReminders } = require('../utils/reminderCleanup');
+const { documentScope, pathInScope } = require('../utils/emergency/scope');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
@@ -226,7 +227,7 @@ const listDocuments = asyncHandler(async (req, res) => {
   // The blobs are never part of a list response (the size is computed inside
   // MongoDB), and trashed documents are not part of the vault.
   const documents = await Document.aggregate([
-    { $match: { userId: req.userId, deletedAt: null } },
+    { $match: { userId: req.userId, deletedAt: null, ...documentScope(req.emergency) } },
     { $sort: { createdAt: -1 } },
     { $project: LIST_PROJECTION },
   ]);
@@ -294,6 +295,19 @@ const listFolderChildren = asyncHandler(async (req, res) => {
   if (canonical === null) {
     throw httpError(404, 'Folder not found.');
   }
+  if (req.emergency?.scopeMode === 'folders') {
+    // An emergency session sees only its chosen folders, listed at the top level (the folders above them are
+    // not listed or openable), and what is inside them.
+    if (canonical === '') {
+      const scoped = req.emergency.scopePaths || [];
+      const withKids = new Set(scoped.length ? await Folder.distinct('parentPath', { userId: req.userId, parentPath: { $in: scoped } }) : []);
+      const top = scoped
+        .map((path) => ({ name: path.split('/').pop(), path, hasChildren: withKids.has(path) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return res.status(200).json({ path: '', folders: top });
+    }
+    if (!pathInScope(req.emergency, canonical)) throw httpError(404, 'Folder not found.');
+  }
   const children = await Folder.find({ userId: req.userId, parentPath: canonical }).select('name parentPath');
   const paths = children.map((folder) => joinPath(canonical, folder.name));
   const withChildren = new Set(
@@ -337,7 +351,7 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
  * everything else is alphabetical.
  */
 const listFolders = asyncHandler(async (req, res) => {
-  const paths = await listFolderPaths(req.userId);
+  const paths = (await listFolderPaths(req.userId)).filter((path) => pathInScope(req.emergency, path));
   const sorted = paths.sort((a, b) => a.localeCompare(b));
   res.status(200).json([FOLDER_ROOT, ...sorted]);
 });
@@ -680,7 +694,8 @@ const updateDocument = asyncHandler(async (req, res) => {
 const viewDocument = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
+  // An emergency session can only reach files inside its scope; anything else is the same 404 as a missing file.
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null, ...documentScope(req.emergency) });
   if (!document) {
     throw documentNotFound();
   }
@@ -709,7 +724,15 @@ const viewDocument = asyncHandler(async (req, res) => {
   // Download button), "silent" (an export, or drawing a preview: neither is the person opening the file),
   // and anything else is a view. Counters live on the document; the activity log gets one event.
   const purpose = req.query.for === 'download' || req.query.for === 'silent' ? req.query.for : 'view';
-  if (purpose !== 'silent') {
+  if (req.emergency) {
+    // Emergency access never touches the owner's counters, and EVERY read is logged (even ?for=silent): the
+    // activity log is how the owner learns what was looked at. The event holds the file id only.
+    await recordEvent(req, purpose === 'download' ? 'emergency_file_downloaded' : 'emergency_file_viewed', {
+      targetId: document._id,
+      deviceId: null,
+      actor: 'emergency',
+    });
+  } else if (purpose !== 'silent') {
     await Document.updateOne(
       { _id: document._id, userId: req.userId },
       { $set: { lastOpenedAt: new Date() }, $inc: purpose === 'download' ? { downloadCount: 1 } : { viewCount: 1 } },
@@ -756,7 +779,7 @@ const recordDownload = asyncHandler(async (req, res) => {
 const getThumbnail = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null, ...documentScope(req.emergency) });
   if (!document || !hasThumbnail(document)) {
     throw documentNotFound();
   }

@@ -4,6 +4,8 @@ const EVENT_TYPES = Object.freeze([
   'upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import',
   'share_created', 'share_revoked', 'share_opened', 'share_downloaded', 'shares_stopped_all', 'account_export',
   'expiry_set', 'expiry_cleared',
+  'emergency_configured', 'emergency_kit_regenerated', 'emergency_revoked', 'emergency_requested', 'emergency_denied',
+  'emergency_approved_early', 'emergency_released', 'emergency_session_started', 'emergency_file_viewed', 'emergency_file_downloaded',
 ]);
 
 module.exports = { EVENT_TYPES };

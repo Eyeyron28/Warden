@@ -38,23 +38,38 @@ function hashSessionId(sessionId) {
  *
  * @param {import('mongoose').Types.ObjectId | string} userId
  * @param {Buffer} dek
- * @param {{ deviceId?: any }} [options] the browser (models/Device.js) this session belongs to
+ * @param {{ deviceId?: any, emergency?: { accessId: any, requestId: any, scopeMode: 'all'|'folders', scopePaths?: string[], absoluteMs: number } }} [options]
+ *   deviceId: the browser (models/Device.js) this session belongs to.
+ *   emergency: makes it an Emergency Access session (read-only, scoped, never longer than absoluteMs). This is still
+ *   the ONE function that creates a session; nothing else writes Session rows.
  * @returns {Promise<string>} bearer token, `sessionId.sessionKey`
  */
-async function createSession(userId, dek, { deviceId = null } = {}) {
+async function createSession(userId, dek, { deviceId = null, emergency = null } = {}) {
   const sessionId = crypto.randomBytes(SESSION_ID_BYTES).toString('hex');
   const sessionKey = crypto.randomBytes(SESSION_KEY_BYTES);
   const wrapped = wrapKey(dek, sessionKey);
 
+  const now = Date.now();
+  const absoluteExpiresAt = emergency ? new Date(now + emergency.absoluteMs) : null;
   await Session.create({
     sessionIdHash: hashSessionId(sessionId),
     userId,
-    deviceId,
-    createdAt: new Date(),
+    deviceId: emergency ? null : deviceId,
+    createdAt: new Date(now),
     wrappedDEK: wrapped.wrappedKey,
     wrappedDEKIv: wrapped.iv,
     wrappedDEKAuthTag: wrapped.authTag,
-    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    expiresAt: new Date(Math.min(now + SESSION_TTL_MS, absoluteExpiresAt ? absoluteExpiresAt.getTime() : Infinity)),
+    ...(emergency
+      ? {
+          emergency: true,
+          accessId: emergency.accessId,
+          requestId: emergency.requestId,
+          scopeMode: emergency.scopeMode,
+          scopePaths: emergency.scopeMode === 'folders' ? emergency.scopePaths || [] : undefined,
+          absoluteExpiresAt,
+        }
+      : {}),
   });
 
   return `${sessionId}.${sessionKey.toString('hex')}`;
@@ -92,7 +107,9 @@ async function getSession(token) {
   const session = await Session.findOne({ sessionIdHash: hashSessionId(parsed.sessionId) });
   if (!session) return null;
 
-  if (Date.now() > session.expiresAt.getTime()) {
+  // An emergency session also has an absolute end that sliding refreshes can never push past.
+  const ended = Date.now() > session.expiresAt.getTime() || (session.absoluteExpiresAt && Date.now() > session.absoluteExpiresAt.getTime());
+  if (ended) {
     await Session.deleteOne({ _id: session._id });
     return null;
   }
@@ -104,7 +121,22 @@ async function getSession(token) {
     return null;
   }
 
-  return { userId: session.userId, dek, deviceId: session.deviceId || null, sessionIdHash: session.sessionIdHash };
+  return {
+    userId: session.userId,
+    dek,
+    deviceId: session.deviceId || null,
+    sessionIdHash: session.sessionIdHash,
+    emergency: session.emergency
+      ? {
+          accessId: session.accessId,
+          requestId: session.requestId,
+          scopeMode: session.scopeMode || 'all',
+          scopePaths: session.scopePaths || [],
+          absoluteExpiresAt: session.absoluteExpiresAt,
+          readOnly: true,
+        }
+      : null,
+  };
 }
 
 /**
@@ -113,13 +145,12 @@ async function getSession(token) {
  *
  * @param {string} token
  */
-async function refreshSession(token) {
+async function refreshSession(token, { absoluteExpiresAt = null } = {}) {
   const parsed = parseToken(token);
   if (!parsed) return;
-  await Session.updateOne(
-    { sessionIdHash: hashSessionId(parsed.sessionId) },
-    { $set: { expiresAt: new Date(Date.now() + SESSION_TTL_MS) } }
-  );
+  const slid = Date.now() + SESSION_TTL_MS;
+  const next = absoluteExpiresAt ? Math.min(slid, new Date(absoluteExpiresAt).getTime()) : slid;
+  await Session.updateOne({ sessionIdHash: hashSessionId(parsed.sessionId) }, { $set: { expiresAt: new Date(next) } });
 }
 
 /**
@@ -155,6 +186,16 @@ async function destroyOtherSessions(userId, keepSessionIdHash) {
 }
 
 /**
+ * Ends every Emergency Access session of an account at once (revoke, a new kit, a request that ended, a changed
+ * vault key). Normal login sessions are untouched.
+ * @returns {Promise<number>}
+ */
+async function destroyEmergencySessions(userId) {
+  const result = await Session.deleteMany({ userId, emergency: true });
+  return result?.deletedCount ?? 0;
+}
+
+/**
  * Deletes every session belonging to one account - called after a
  * password reset (utils/accountReset.js finishReset) so a stolen session
  * token from before the reset stops working immediately, same spirit as
@@ -177,5 +218,6 @@ module.exports = {
   destroySession,
   destroySessionsForDevice,
   destroyOtherSessions,
+  destroyEmergencySessions,
   destroyAllSessionsForUser,
 };

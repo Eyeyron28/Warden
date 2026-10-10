@@ -22,6 +22,7 @@ const { recordEvent } = require('./audit');
 const Device = require('../models/Device');
 const AuditEvent = require('../models/AuditEvent');
 const ReminderLog = require('../models/ReminderLog');
+const { cleanupForUser: cleanupEmergencyAccess, invalidateForKeyChange } = require('./emergency/service');
 
 /**
  * What every password reset ends with, whichever way it started (recovery key
@@ -70,10 +71,16 @@ async function finalizeReset(user, dek, newPassword, { newRecoveryKey } = {}) {
     user.wrappedDEKRecoveryAuthTag = wrappedRecovery.authTag;
   }
 
-  user.dekFingerprint = fingerprintDEK(dek);
+  // A password change or a new recovery key re-wraps the SAME vault key, so Emergency Access (wrapped under its own
+  // key) keeps working. If the vault key itself is different from the one on record, the old setup can never open
+  // this vault: remove it and tell the owner.
+  const newFingerprint = fingerprintDEK(dek);
+  const keyChanged = Boolean(user.dekFingerprint) && user.dekFingerprint !== newFingerprint;
+  user.dekFingerprint = newFingerprint;
   user.failedAttempts = 0;
   user.lockedUntil = undefined;
   await user.save();
+  if (keyChanged) await invalidateForKeyChange(user._id);
 }
 
 /**
@@ -98,6 +105,8 @@ async function wipeVault(userId) {
   await Device.deleteMany({ userId });
   await AuditEvent.deleteMany({ userId });
   await ReminderLog.deleteMany({ userId });
+  // Emergency Access belonged to the old vault key: the setup, its requests and any open emergency session go too.
+  await cleanupEmergencyAccess(userId);
   await User.updateOne({ _id: userId }, { $set: { auditHead: { seq: 0, hash: '', at: null } } });
 }
 

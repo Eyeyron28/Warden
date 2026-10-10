@@ -30,7 +30,9 @@ const {
  * challenge never involves the vault key at all).
  */
 
-const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset' };
+// 'emergency-setup' is the owner's fresh code for changing Emergency Access (bound to ONE action in `accessId`).
+// The contact's two codes (emergency-request, emergency-session) have no challenge token: see utils/emergency/codes.js.
+const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', emergencySetup: 'emergency-setup' };
 
 const MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
 const MAX_RESENDS = 3; // per challenge
@@ -57,6 +59,7 @@ function emailFor(purpose, code, ttlMinutes) {
   const input = { code, ttlMinutes };
   if (purpose === PURPOSES.passwordReset) return templates.passwordResetCode(input);
   if (purpose === PURPOSES.deleteAccount) return templates.deleteAccountCode(input);
+  if (purpose === PURPOSES.emergencySetup) return templates.emergencyOwnerSetupCode(input);
   return templates.signInCode(input);
 }
 
@@ -96,7 +99,7 @@ function spendEmailBudget(userId) {
  *   `secret` is what the challengeKey wraps (the DEK for logins).
  * @returns the payload to hand to the browser
  */
-async function startChallenge({ user, secret, purpose, decoy = false }) {
+async function startChallenge({ user, secret, purpose, decoy = false, accessId = null }) {
   const ttlMinutes = otpTtlMinutes();
   if (!(await spendEmailBudget(user._id))) throw tooManyEmails();
 
@@ -110,6 +113,7 @@ async function startChallenge({ user, secret, purpose, decoy = false }) {
     userId: user._id,
     purpose,
     decoy,
+    ...(accessId ? { accessId } : {}),
     codeHash: hashCode(salt, code),
     salt,
     lastSentAt: now,

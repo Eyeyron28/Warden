@@ -11,6 +11,8 @@ const ResetTicket = require('../models/ResetTicket');
 const RateLimit = require('../models/RateLimit');
 const TrashFolder = require('../models/TrashFolder');
 const ReminderLog = require('../models/ReminderLog');
+const EmergencyAccess = require('../models/EmergencyAccess');
+const EmergencyRequest = require('../models/EmergencyRequest');
 const { runInTransaction } = require('./folders');
 const { removeShares } = require('./shareCleanup');
 
@@ -62,6 +64,8 @@ async function deleteAccountData(userId, { email = null, transaction = true } = 
     await del('devices', Device, { userId });
     await del('auditevents', AuditEvent, { userId });
     await del('reminderlogs', ReminderLog, { userId });
+    await del('emergencyrequests', EmergencyRequest, { userId });
+    await del('emergencyaccesses', EmergencyAccess, { userId });
     // 2. The data itself.
     // Documents include everything in Trash (ciphertext and thumbnails); the
     // trashed-folder entries that group them go too.

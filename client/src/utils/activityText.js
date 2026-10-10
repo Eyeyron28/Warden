@@ -8,6 +8,7 @@ export const GROUP_OPTIONS = Object.freeze([
   { value: 'vault', label: 'Vault' },
   { value: 'sharing', label: 'Sharing' },
   { value: 'account', label: 'Account' },
+  { value: 'emergency', label: 'Emergency access' },
 ]);
 
 const quoted = (target, fallback) => {
@@ -39,6 +40,16 @@ export function describeEvent(event) {
     case 'restore': return `Restored ${file}`;
     case 'expiry_set': return `Set an expiry date on ${file}`;
     case 'expiry_cleared': return `Cleared the expiry date on ${file}`;
+    case 'emergency_configured': return 'Set up emergency access';
+    case 'emergency_kit_regenerated': return 'Replaced the emergency access kit';
+    case 'emergency_revoked': return 'Turned off emergency access';
+    case 'emergency_requested': return 'Your emergency contact requested access';
+    case 'emergency_denied': return 'Denied an emergency access request';
+    case 'emergency_approved_early': return 'Approved emergency access early';
+    case 'emergency_released': return 'The waiting period ended: emergency access is available';
+    case 'emergency_session_started': return 'Your emergency contact started a session';
+    case 'emergency_file_viewed': return `Emergency contact viewed ${file}`;
+    case 'emergency_file_downloaded': return `Emergency contact downloaded ${file}`;
     case 'trash_emptied': return 'Emptied Trash';
     case 'export':
     case 'account_export': return 'Exported all files as a zip';
@@ -55,6 +66,7 @@ export function describeEvent(event) {
 /** Which icon name (utils in ActivityIcon) goes with an event. */
 export function iconKind(type) {
   if (['login', 'logout', 'login_failed', 'otp_sent', 'password_changed', 'trusted_added', 'trusted_removed', 'device_signed_out'].includes(type)) return 'account';
+  if (type.startsWith('emergency')) return 'account';
   if (type.startsWith('share')) return 'sharing';
   if (type === 'download' || type === 'export' || type === 'account_export') return 'download';
   if (type === 'upload' || type === 'import') return 'upload';

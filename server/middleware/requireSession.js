@@ -1,5 +1,6 @@
 const { getSession, refreshSession } = require('../utils/sessionStore');
 const { touchDevice } = require('../utils/deviceIdentity');
+const { assertEmergencyAllowed } = require('./emergencyGuard');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -40,12 +41,18 @@ const requireSession = asyncHandler(async (req, res, next) => {
     throw error;
   }
 
-  await refreshSession(token);
+  // Emergency Access sessions are read-only and deny-by-default: anything off the allowlist is refused here, before
+  // any handler runs (middleware/emergencyGuard.js).
+  if (session.emergency) assertEmergencyAllowed(req);
+
+  await refreshSession(token, { absoluteExpiresAt: session.emergency?.absoluteExpiresAt || null });
 
   req.userId = session.userId;
   req.dek = session.dek;
   // The browser this session belongs to (null for a session made before devices existed).
   req.deviceId = session.deviceId || null;
+  // null for a normal session; { scopeMode, scopePaths, readOnly, ... } for an emergency one.
+  req.emergency = session.emergency || null;
   req.session = {
     token,
     idHash: session.sessionIdHash,
