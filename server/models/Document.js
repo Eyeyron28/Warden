@@ -154,7 +154,11 @@ documentSchema.pre('validate', function requireEncryptedBlob(next) {
 // index covers all of them without a separate index per field.
 documentSchema.index({ userId: 1, folder: 1 });
 documentSchema.index({ userId: 1, checksum: 1 });
-documentSchema.index({ userId: 1, deletedAt: 1 });
+// The vault list is "this account's live documents, newest first", and Photos / the expiry list filter the same way:
+// each has an index that ends with the field it sorts or filters by, so none of them reads every document to find its rows.
+documentSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
+documentSchema.index({ userId: 1, deletedAt: 1, sniffedType: 1 });
+documentSchema.index({ userId: 1, deletedAt: 1, docExpiresAt: 1 });
 documentSchema.index({ trashBatchId: 1 }, { sparse: true });
 // MongoDB removes the whole document (ciphertext and thumbnail included) when
 // purgeAt passes. Documents that are not in Trash have no purgeAt, so never expire.

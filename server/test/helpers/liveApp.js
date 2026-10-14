@@ -44,7 +44,7 @@ async function startLiveApp(name) {
     await require('../../config/db')();
     await mongoose.connection.dropDatabase();
     // The unique indexes the app relies on exist before the first write.
-    await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
+    await Promise.all(Object.values(mongoose.models).map((model) => model.createIndexes())); // autoIndex is off (config/db.js): build them here
   } catch (err) {
     Module._load = original;
     return { ok: false, reason: `the app could not start against ${'a local MongoDB'}: ${String(err.message).slice(0, 80)}` };

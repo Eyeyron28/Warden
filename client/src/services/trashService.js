@@ -1,4 +1,5 @@
 import api from './api.js';
+import { fetchCached, peek } from './dataCache.js';
 
 /**
  * GET /api/trash
@@ -7,10 +8,11 @@ import api from './api.js';
  *   itemCount: number, size: number, sniffedType: string | null, hasThumb: boolean,
  *   deletedAt: string, purgeAt: string, daysLeft: number }> }>}
  */
-export async function listTrash() {
-  const { data } = await api.get('/trash');
-  return data;
+export function listTrash() {
+  return fetchCached('trash', async () => (await api.get('/trash')).data);
 }
+
+export const peekTrash = () => peek('trash');
 
 /**
  * POST /api/trash/restore - back to the original folder, or to the top level

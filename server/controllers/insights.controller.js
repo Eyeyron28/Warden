@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const Share = require('../models/Share');
 const AuditEvent = require('../models/AuditEvent');
@@ -40,11 +41,26 @@ function liveDocuments(userId) {
  * The most-opened files in the last 30 days, from the activity log ("Frequently used"). Falls back to the
  * newest-opened files when the log has nothing yet. Trashed and deleted files never appear.
  */
-async function frequentFor(userId, docs, now = new Date()) {
+async function frequentFor(userId, knownDocs, now = new Date()) {
   const since = new Date(now.getTime() - FREQUENT_WINDOW_DAYS * DAY_MS);
-  const events = (await AuditEvent.find({ userId, type: 'view' })).filter((event) => event.targetId && new Date(event.at) >= since);
-  const counts = new Map();
-  for (const event of events) counts.set(String(event.targetId), (counts.get(String(event.targetId)) || 0) + 1);
+  // Counted inside MongoDB over the last 30 days of this account's `view` events (an index serves it), instead of
+  // reading every `view` event the account ever had into memory and counting them here.
+  const grouped = await AuditEvent.aggregate([
+    { $match: { userId, type: 'view', targetId: { $ne: null }, at: { $gte: since } } },
+    { $group: { _id: '$targetId', opens: { $sum: 1 } } },
+    { $sort: { opens: -1 } },
+    { $limit: 50 },
+  ]);
+  const counts = new Map(grouped.map((row) => [String(row._id), row.opens]));
+  // Overview already holds every live document; "Frequently used" on its own asks only for the few it can show: the
+  // most-opened ones, and (for the fallback below) the ones opened in the window.
+  const docs =
+    knownDocs ||
+    (await Document.find({
+      userId,
+      deletedAt: LIVE.deletedAt,
+      $or: [{ _id: { $in: [...counts.keys()].filter((id) => mongoose.Types.ObjectId.isValid(id)) } }, { viewCount: { $gt: 0 }, lastOpenedAt: { $gte: since } }],
+    }).select('filename folder viewCount downloadCount lastOpenedAt createdAt'));
   const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
   const ranked = [...counts.entries()]
     .filter(([id]) => byId.has(id))
@@ -118,8 +134,7 @@ const getStale = asyncHandler(async (req, res) => {
 
 /** GET /api/insights/frequent - the "Frequently used" row of My files (at most 5; empty when nothing was opened). */
 const getFrequent = asyncHandler(async (req, res) => {
-  const docs = await liveDocuments(req.userId);
-  res.status(200).json({ items: await frequentFor(req.userId, docs) });
+  res.status(200).json({ items: await frequentFor(req.userId, null) });
 });
 
 module.exports = { getOverview, getStale, getFrequent, staleOf, frequentFor, sharingStats, STALE_DAYS };

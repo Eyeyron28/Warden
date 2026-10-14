@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 import SiteHeader from './SiteHeader.jsx';
 import SiteFooter from './SiteFooter.jsx';
+import RouteErrorBoundary from '../RouteErrorBoundary.jsx';
 import styles from './PublicLayout.module.css';
 
 // Screens built on AuthLayout: on a desktop landscape window they fill the viewport,
@@ -58,9 +59,11 @@ function PublicLayout() {
       </a>
       <SiteHeader />
       <main id="main" tabIndex={-1} className={styles.main}>
-        <Suspense fallback={<div className={styles.loading} aria-busy="true" />}>
-          <Outlet />
-        </Suspense>
+        <RouteErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<div className={styles.loading} aria-busy="true" />}>
+            <Outlet />
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
       <SiteFooter compact={AUTH_PATHS.has(pathname)} />
     </div>

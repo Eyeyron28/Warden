@@ -1,4 +1,5 @@
 import api from './api.js';
+import { fetchCached, peek } from './dataCache.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
 import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileNames.js';
 
@@ -6,20 +7,23 @@ import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileName
  * GET /api/documents
  * @returns {Promise<Array<{ id: string, filename: string, folder: string, expiryDate: string|null, daysUntilExpiry: number|null, expiryStatus: 'expired'|'expiring_soon'|'ok', syncStatus: string, createdAt: string }>>}
  */
-export async function listDocuments() {
-  const { data } = await api.get('/documents');
-  return data;
+export function listDocuments(options) {
+  return fetchCached('documents', async () => (await api.get('/documents')).data, options);
 }
+
+/** What the last list answer was (this tab, this session), or undefined: a page's first state, refreshed after. */
+export const peekDocuments = () => peek('documents');
 
 /**
  * GET /api/documents/expiring - same shape as listDocuments, filtered to
  * expired/expiring_soon documents and sorted soonest-first. Not wired into
  * any view yet; this is what a future reminders widget would call.
  */
-export async function listExpiringDocuments() {
-  const { data } = await api.get('/documents/expiring');
-  return data;
+export function listExpiringDocuments(options) {
+  return fetchCached('documents/expiring', async () => (await api.get('/documents/expiring')).data, options);
 }
+
+export const peekExpiringDocuments = () => peek('documents/expiring');
 
 /**
  * GET /api/documents/folders - distinct folder names currently in use,
@@ -27,10 +31,11 @@ export async function listExpiringDocuments() {
  * filter and the edit form's folder combobox suggestions.
  * @returns {Promise<Array<string>>}
  */
-export async function listFolders() {
-  const { data } = await api.get('/documents/folders');
-  return data;
+export function listFolders(options) {
+  return fetchCached('documents/folders', async () => (await api.get('/documents/folders')).data, options);
 }
+
+export const peekFolders = () => peek('documents/folders');
 
 /**
  * POST /api/documents/folders
@@ -247,10 +252,11 @@ export async function getStorage() {
  * (for the sidebar), loaded when a folder is expanded.
  * @returns {Promise<{ path: string, folders: Array<{ name: string, path: string, hasChildren: boolean }> }>}
  */
-export async function listFolderChildren(path = '') {
-  const { data } = await api.get('/documents/folders/children', { params: { path } });
-  return data;
+export function listFolderChildren(path = '', options) {
+  return fetchCached(`documents/folders/children:${path}`, async () => (await api.get('/documents/folders/children', { params: { path } })).data, options);
 }
+
+export const peekFolderChildren = (path = '') => peek(`documents/folders/children:${path}`);
 
 /**
  * DELETE /api/documents/:id - moves the file to Trash (kept encrypted for 30

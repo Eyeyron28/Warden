@@ -1,0 +1,111 @@
+/* Placeholders shown while a page's code or data is on its way: the header and sidebar stay on screen, only this area
+   shows them. A slow pulse, switched off for people who ask for less motion. */
+.bar {
+  display: block;
+  height: 14px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-border, #ddd);
+  /* An opacity pulse runs on the compositor: it costs the main thread nothing, so it can never slow down the page it is
+     standing in for (an animated gradient repaints every frame, on the same thread that is building the real page). */
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.title {
+  width: min(260px, 50%);
+  height: 24px;
+}
+
+.rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: var(--radius-md, 8px);
+}
+
+.icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+/* The whole signed-in frame, while the stored session is being checked. */
+.frame {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.top {
+  height: var(--header-height, 64px);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border, #ddd);
+}
+
+.side {
+  display: none;
+  flex: none;
+  width: 240px;
+  padding: var(--space-4);
+  border-right: 1px solid var(--color-border, #ddd);
+  gap: var(--space-3);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .side {
+    display: grid;
+    align-content: start;
+  }
+}

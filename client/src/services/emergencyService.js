@@ -1,4 +1,5 @@
 import api from './api.js';
+import { fetchCached, peek } from './dataCache.js';
 
 // A 401 here usually means "wrong code" or "wrong kit", not "your session ended": it must not sign anyone out
 // (the api interceptor still ends a session when the server says the SESSION is the problem).
@@ -7,10 +8,11 @@ const KEEP_SESSION = { skipSessionClear: true };
 // ---------------- the owner (signed in) ----------------
 
 /** GET /api/emergency/status - configuration (no secrets), any open request, demo flag and wait options. */
-export async function getEmergencyStatus() {
-  const { data } = await api.get('/emergency/status', KEEP_SESSION);
-  return data;
+export function getEmergencyStatus({ maxAgeMs = 0 } = {}) {
+  return fetchCached('emergency/status', async () => (await api.get('/emergency/status', KEEP_SESSION)).data, { maxAgeMs });
 }
+
+export const peekEmergencyStatus = () => peek('emergency/status');
 
 /** GET /api/emergency/folders - the folder tree with ids, for the "selected folders" picker. */
 export async function listFolderChoices() {

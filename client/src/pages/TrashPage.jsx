@@ -7,7 +7,7 @@ import Modal from '../components/Modal.jsx';
 import SelectionBar from '../components/SelectionBar.jsx';
 import { useShell } from '../components/ShellContext.js';
 import dropdownStyles from '../components/DropdownMenu.module.css';
-import { deleteTrashItem, emptyTrash, listTrash, restoreTrashItem } from '../services/trashService.js';
+import { deleteTrashItem, emptyTrash, listTrash, peekTrash, restoreTrashItem } from '../services/trashService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDate } from '../utils/formatDate.js';
 import { SORT_OPTIONS, formatBytes, sortItems } from '../utils/listing.js';
@@ -38,7 +38,7 @@ const daysLabel = (days) => `${days} day${days === 1 ? '' : 's'}`;
 function TrashPage() {
   usePageMeta('Trash', 'Deleted files, kept for 30 days.');
   const { showToast, refreshSidebar } = useShell();
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => peekTrash() ?? null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);

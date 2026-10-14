@@ -18,6 +18,8 @@ import {
 
 import FileBrowser, { SelectAllCheckbox, focusBrowserItem } from '../components/FileBrowser.jsx';
 import ContextMenu from '../components/ContextMenu.jsx';
+import { ListSkeleton } from '../components/Skeletons.jsx';
+import { JUST_ASKED_MS } from '../services/dataCache.js';
 import FilePreview from '../components/FilePreview.jsx';
 import SelectionBar from '../components/SelectionBar.jsx';
 import { useShell } from '../components/ShellContext.js';
@@ -39,6 +41,8 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import dropdownStyles from '../components/DropdownMenu.module.css';
 import {
   listDocuments,
+  peekDocuments,
+  peekFolders,
   uploadDocument,
   putThumbnail,
   deleteDocument,
@@ -97,10 +101,11 @@ function FilesPage() {
 
   const currentPath = normalizeFolderPath(params.get('path') || '');
 
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Coming back to this page starts from the last answer (services/dataCache.js) and refreshes it in the background.
+  const [documents, setDocuments] = useState(() => peekDocuments() ?? []);
+  const [loading, setLoading] = useState(() => peekDocuments() === undefined);
   const [listError, setListError] = useState('');
-  const [folders, setFolders] = useState([]);
+  const [folders, setFolders] = useState(() => peekFolders() ?? []);
 
   const [view, setView] = useState(() => getViewPrefs().view);
   const [sort, setSort] = useState(() => getViewPrefs().sort);
@@ -124,11 +129,11 @@ function FilesPage() {
   const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
   const folderInputRef = useRef(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async ({ quiet = false, reuse = false } = {}) => {
+    if (!quiet) setLoading(true);
     setListError('');
     try {
-      setDocuments(await listDocuments());
+      setDocuments(await listDocuments(reuse ? { maxAgeMs: JUST_ASKED_MS } : undefined));
     } catch (err) {
       if (!isSessionExpired(err)) setListError(extractErrorMessage(err, 'Could not load your documents.'));
     } finally {
@@ -136,18 +141,20 @@ function FilesPage() {
     }
   }, []);
 
-  const refreshFolders = useCallback(async () => {
+  const refreshFolders = useCallback(async ({ sidebar = true, reuse = false } = {}) => {
     try {
-      setFolders(await listFolders());
+      setFolders(await listFolders(reuse ? { maxAgeMs: JUST_ASKED_MS } : undefined));
     } catch {
       // The folder list is a convenience; a failed fetch leaves the tree as it was.
     }
-    refreshSidebar();
+    if (sidebar) refreshSidebar();
   }, [refreshSidebar]);
 
+  // On arriving: both lists ask at once. With a remembered answer the page is already showing it, so the refresh is
+  // quiet, and the sidebar (which loaded its own tree) is not asked to reload for nothing.
   useEffect(() => {
-    refresh();
-    refreshFolders();
+    refresh({ quiet: peekDocuments() !== undefined, reuse: true });
+    refreshFolders({ sidebar: false, reuse: true });
   }, [refresh, refreshFolders]);
 
   const setCurrentPath = useCallback(
@@ -763,6 +770,7 @@ function FilesPage() {
       )}
 
       <div className={styles.area}>
+      {loading && items.length === 0 && !listError && <ListSkeleton />}
       {items.length > 0 && (
         <FileBrowser
           items={items}

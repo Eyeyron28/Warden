@@ -26,6 +26,8 @@ const auditEventSchema = new mongoose.Schema({
 
 auditEventSchema.index({ userId: 1, seq: 1 }, { unique: true });
 auditEventSchema.index({ userId: 1, at: -1 });
+// "Frequently used" counts one account's `view` events of the last 30 days.
+auditEventSchema.index({ userId: 1, type: 1, at: -1 });
 auditEventSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('AuditEvent', auditEventSchema);

@@ -1,4 +1,5 @@
 import api from './api.js';
+import { fetchCached, peek } from './dataCache.js';
 
 /**
  * Owner-side share calls. None of these can ever return a share key or a link:
@@ -37,10 +38,11 @@ export async function listShares(documentId) {
  * GET /api/shares - the share manager's list.
  * @returns {Promise<{ shares: Array<{ id: string, name: string, fileNames: string[], fileCount: number, totalBytes: number, createdAt: string, expiresAt: string, maxExpiresAt: string, downloadCount: number, maxDownloads: number|null, passwordProtected: boolean, recipientEmail: string|null, emailRestricted: boolean }>, usage: object }>}
  */
-export async function listAllShares() {
-  const { data } = await api.get('/shares');
-  return data;
+export function listAllShares() {
+  return fetchCached('shares', async () => (await api.get('/shares')).data);
 }
+
+export const peekShares = () => peek('shares');
 
 /** GET /api/shares/usage - shared storage used and the limits. */
 export async function fetchShareUsage() {

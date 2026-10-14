@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import Modal from '../components/Modal.jsx';
 import VaultHealthCard from '../components/VaultHealthCard.jsx';
-import { getOverview, getStaleFiles } from '../services/insightsService.js';
+import { getOverview, getStaleFiles, peekOverview } from '../services/insightsService.js';
 import { deleteDocument, listExpiringDocuments } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
@@ -38,7 +38,7 @@ function FileList({ items, count, empty, extra }) {
  */
 function OverviewPage() {
   usePageMeta('Overview', 'Which files you use most, which you have not touched in months, and how your share links are doing.');
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => peekOverview() ?? null);
   const [error, setError] = useState('');
   const [cleanup, setCleanup] = useState(null); // { items, selected:Set, busy, message }
   const [expiring, setExpiring] = useState(null);

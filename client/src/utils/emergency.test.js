@@ -271,8 +271,8 @@ test('emergency mode: the contact’s screens are built from only read-only part
   assert.match(preview, /if \(!bytes \|\| readOnly\)/);
   // the app picks the shell from the server's answer
   const app = read('App.jsx');
-  assert.match(app, /mode\.emergency \? <EmergencyShell \/> : <AppLayout/);
-  assert.match(app, /verify: async \(\) => setModeFromMe\(await getMe\(\)\)/);
+  assert.match(app, /mode\.emergency \? \(\s*<Suspense fallback=\{<AppFrameSkeleton \/>\}>\s*<EmergencyShell \/>\s*<\/Suspense>\s*\) : \(\s*<AppLayout/);
+  assert.match(app, /verify: async \(\) => setModeFromMe\(await getMe\(\{ maxAgeMs: JUST_ASKED_MS \}\)\)/);
   assert.match(app, /wasEmergencyTab\(\)[\s\S]*\/emergency\?ended=1/);
 });
 
@@ -318,9 +318,9 @@ test('the owner’s banner comes from the server status, so a reload shows it; d
   assert.equal(dismissKey('r1'), 'warden.emergencyBanner.r1');
 
   const component = read('components/EmergencyBanner.jsx');
-  assert.match(component, /getEmergencyStatus\(\)/, 'read from the server on every load');
+  assert.match(component, /getEmergencyStatus\(\{ maxAgeMs/, 'read from the server on every load (a young answer is reused on a page change)');
   assert.match(component, /useEffect\(\(\) => \{\s*load\(\);\s*\}, \[load, location\.pathname\]\)/, 'and on every page change');
-  assert.match(component, /setInterval\(load, POLL_MS\)/);
+  assert.match(component, /setInterval\(\(\) => load\(\{ fresh: true \}\), POLL_MS\)/);
   const stored = [...stripComments(component).matchAll(/sessionStorage\.(getItem|setItem)\(([^)]*)\)/g)].map((m) => m[2]);
   assert.ok(stored.every((arg) => /dismissKey\(/.test(arg)), 'the only thing kept is which request was dismissed');
   const layout = read('components/AppLayout.jsx');

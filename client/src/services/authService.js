@@ -1,4 +1,5 @@
 import api from './api.js';
+import { fetchCached } from './dataCache.js';
 
 /**
  * POST /api/auth/signup/start - step 1 of sign-up. Nothing is created: a 6-digit code is emailed (or, for an address that
@@ -107,9 +108,9 @@ export async function resendOtp(challengeToken) {
  * GET /api/auth/me - who, if anyone, the current bearer token belongs to.
  * @returns {Promise<{ email: string, emailVerified: boolean }>}
  */
-export async function getMe() {
-  const { data } = await api.get('/auth/me');
-  return data;
+export function getMe(options) {
+  // Shared with the start-up prefetch (services/prefetch.js), so the session check does not wait for the page to render.
+  return fetchCached('auth/me', async () => (await api.get('/auth/me')).data, options);
 }
 
 // ---- Forgot password: emailed code -> single-use ticket -> recovery key or start over ----

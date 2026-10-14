@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { getFrequentFiles } from '../services/insightsService.js';
+import { getFrequentFiles, peekFrequentFiles } from '../services/insightsService.js';
+import { JUST_ASKED_MS } from '../services/dataCache.js';
 import FileTypeIcon from './FileTypeIcon.jsx';
 import styles from './FrequentFiles.module.css';
 
@@ -10,11 +11,11 @@ import styles from './FrequentFiles.module.css';
  * empty (or while loading, or if the list could not be loaded): it must never get in the way of the files.
  */
 function FrequentFiles() {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => peekFrequentFiles() ?? []);
 
   useEffect(() => {
     let cancelled = false;
-    getFrequentFiles()
+    getFrequentFiles({ maxAgeMs: JUST_ASKED_MS })
       .then((list) => !cancelled && setItems(list))
       .catch(() => {});
     return () => {

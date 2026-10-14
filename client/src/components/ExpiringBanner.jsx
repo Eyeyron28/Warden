@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarX, X } from '@phosphor-icons/react';
 
-import { listExpiringDocuments } from '../services/documentsService.js';
+import { listExpiringDocuments, peekExpiringDocuments } from '../services/documentsService.js';
+import { JUST_ASKED_MS } from '../services/dataCache.js';
 import styles from './ExpiringBanner.module.css';
 
 const DISMISS_KEY = 'warden.expiryBannerDismissed';
@@ -20,12 +21,12 @@ const readDismissed = () => {
  * error, or when there is nothing to report.
  */
 function ExpiringBanner() {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => peekExpiringDocuments() ?? []);
   const [dismissed, setDismissed] = useState(readDismissed);
 
   useEffect(() => {
     let cancelled = false;
-    listExpiringDocuments()
+    listExpiringDocuments({ maxAgeMs: JUST_ASKED_MS })
       .then((list) => !cancelled && setItems(Array.isArray(list) ? list : []))
       .catch(() => {});
     return () => {

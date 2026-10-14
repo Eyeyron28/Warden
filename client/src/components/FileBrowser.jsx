@@ -7,6 +7,7 @@ import FileTypeIcon from './FileTypeIcon.jsx';
 import dropdownStyles from './DropdownMenu.module.css';
 import { rowClickAction } from '../utils/clickAction.js';
 import { DRAG_MIME, canDragDocuments } from '../utils/dragAndDrop.js';
+import { useProgressiveList } from '../utils/useProgressiveList.js';
 import styles from './FileBrowser.module.css';
 
 const LONG_PRESS_MS = 550;
@@ -119,6 +120,8 @@ function FileBrowser({
   selectable = true,
   label,
 }) {
+  // The first rows now, the rest in steps while the browser is idle (utils/useProgressiveList.js).
+  const shownItems = useProgressiveList(items);
   const [draggable] = useState(canDragDocuments);
   const [dropKey, setDropKey] = useState(null);
   const press = useRef(null);
@@ -257,7 +260,7 @@ function FileBrowser({
   if (view === 'grid') {
     return (
       <ul className={styles.grid} data-any-selected={anySelected || undefined} aria-label={label}>
-        {items.map((item) => (
+        {shownItems.map((item) => (
           <li key={item.key} className={styles.card} {...common(item)}>
             <div className={styles.cardThumb}>
               {isFolder(item) ? (
@@ -309,7 +312,7 @@ function FileBrowser({
           <span />
         </li>
       )}
-      {items.map((item) => (
+      {shownItems.map((item) => (
         <li key={item.key} className={styles.row} {...common(item)}>
           {checkbox(item)}
           <span className={styles.leadIcon}>

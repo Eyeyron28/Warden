@@ -210,3 +210,8 @@ Tested locally against a stand-in for Vercel (static files, headers and rewrites
 ## Where the sign-in token lives
 
 The session token is kept in the browser tab's sessionStorage so a reload keeps you signed in; closing the tab ends it, and on the server it expires after 30 idle minutes and after 12 hours at most (`SESSION_ABSOLUTE_HOURS`). The trade-off is that script running inside the page could read it, which is why there is no third-party script and why the Content-Security-Policy in `vercel.json` is strict (scripts only from this origin plus one hashed theme snippet, no frames, no plugins, `upgrade-insecure-requests`). `style-src 'unsafe-inline'` is still needed for React inline styles and was not removed.
+
+
+## Database indexes (performance)
+
+Mongoose `autoIndex` is off, so the server no longer builds indexes on every cold start. At startup `server/utils/migrateIndexes.js` builds the models' indexes once, recorded by a hash marker (`indexes-<hash>`) in the database; a cold start with an unchanged schema skips it. Changing an index in a model changes the hash and triggers one rebuild. The old `userId_1_deletedAt_1` index on documents is left in existing databases (harmless; drop it manually if wanted).

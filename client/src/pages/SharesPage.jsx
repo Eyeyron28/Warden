@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import Icon from '../components/site/Icon.jsx';
 import ShareEditModal from '../components/ShareEditModal.jsx';
-import { listAllShares, revokeShareById, stopAllShares } from '../services/sharesService.js';
+import { listAllShares, peekShares, revokeShareById, stopAllShares } from '../services/sharesService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
@@ -32,8 +32,8 @@ function describeExpiry(iso) {
  */
 function SharesPage() {
   usePageMeta('Shared', 'The links you have shared.');
-  const [shares, setShares] = useState(null);
-  const [usage, setUsage] = useState(null);
+  const [shares, setShares] = useState(() => peekShares()?.shares ?? null);
+  const [usage, setUsage] = useState(() => peekShares()?.usage ?? null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
   const [confirming, setConfirming] = useState(null); // share id, or 'all'

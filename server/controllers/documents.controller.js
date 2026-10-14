@@ -222,14 +222,19 @@ const LIST_PROJECTION = {
 };
 
 const listDocuments = asyncHandler(async (req, res) => {
-  // Anything past its Trash retention is removed on the account's own requests.
-  await purgeExpired(req.userId);
-  // The blobs are never part of a list response (the size is computed inside
-  // MongoDB), and trashed documents are not part of the vault.
-  const documents = await Document.aggregate([
-    { $match: { userId: req.userId, deletedAt: null, ...documentScope(req.emergency) } },
-    { $sort: { createdAt: -1 } },
-    { $project: LIST_PROJECTION },
+  // The three reads do not depend on each other, so they go out together instead of one after the other:
+  //  - anything past its Trash retention is removed on the account's own requests (trashed documents are not part of
+  //    the live list below, so the order does not matter);
+  //  - the list itself (the blobs are never part of it: the size is computed inside MongoDB);
+  //  - which documents are shared (an emergency contact sees no sharing information, so it is not asked for).
+  const [, documents, sharedIds] = await Promise.all([
+    purgeExpired(req.userId),
+    Document.aggregate([
+      { $match: { userId: req.userId, deletedAt: null, ...documentScope(req.emergency) } },
+      { $sort: { createdAt: -1 } },
+      { $project: LIST_PROJECTION },
+    ]),
+    req.emergency ? null : activeSharedIds(req.userId),
   ]);
   if (req.emergency) {
     // A contact sees paths that start at the scope folder (never the names above it) and no sharing information.
@@ -240,7 +245,6 @@ const listDocuments = asyncHandler(async (req, res) => {
       })
     );
   }
-  const sharedIds = await activeSharedIds(req.userId);
   res.status(200).json(documents.map((doc) => toListSummary(doc, sharedIds)));
 });
 

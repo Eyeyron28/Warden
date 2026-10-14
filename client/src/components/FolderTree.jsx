@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CaretRight, Folder } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 
-import { listFolderChildren } from '../services/documentsService.js';
+import { listFolderChildren, peekFolderChildren } from '../services/documentsService.js';
+import { JUST_ASKED_MS } from '../services/dataCache.js';
 import styles from './Sidebar.module.css';
 
 const ancestorsOf = (path) => {
@@ -18,15 +19,19 @@ const ancestorsOf = (path) => {
  */
 function FolderTree({ current, active, version, onNavigate }) {
   const navigate = useNavigate();
-  const [nodes, setNodes] = useState({}); // path -> { folders, loading, error }
+  // path -> { folders, loading, error }. The top level starts from the last answer when there is one.
+  const [nodes, setNodes] = useState(() => {
+    const top = peekFolderChildren('');
+    return top ? { '': { folders: top.folders, loading: false, error: false } } : {};
+  });
   const [expanded, setExpanded] = useState(() => new Set());
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
-  const load = useCallback(async (path) => {
+  const load = useCallback(async (path, { reuse = false } = {}) => {
     setNodes((state) => ({ ...state, [path]: { ...state[path], loading: true, error: false } }));
     try {
-      const data = await listFolderChildren(path);
+      const data = await listFolderChildren(path, reuse ? { maxAgeMs: JUST_ASKED_MS } : undefined);
       setNodes((state) => ({ ...state, [path]: { folders: data.folders, loading: false, error: false } }));
     } catch (err) {
       if (err?.response?.status === 404 && path !== '') {
@@ -49,7 +54,8 @@ function FolderTree({ current, active, version, onNavigate }) {
 
   // The top level, and every opened folder again when something changed.
   useEffect(() => {
-    load('');
+    // The first time (version 0) the answer may have been asked for a moment ago by the start-up prefetch.
+    load('', { reuse: version === 0 });
     for (const path of expanded) load(path);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, load]);

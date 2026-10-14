@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import Header from './Header.jsx';
 import Sidebar from './Sidebar.jsx';
 import EmergencyBanner from './EmergencyBanner.jsx';
 import ToastRegion from './Toast.jsx';
+import { PageSkeleton } from './Skeletons.jsx';
+import RouteErrorBoundary from './RouteErrorBoundary.jsx';
 import { ShellContext } from './ShellContext.js';
 import { useMediaQuery } from '../utils/useMediaQuery.js';
 import styles from './AppLayout.module.css';
@@ -74,7 +76,13 @@ function AppLayout({ onLocked }) {
             onToggleCollapsed={() => setCollapsed((value) => !value)}
           />
           <main className={styles.content}>
-            <Outlet />
+            {/* A page's code is fetched on first visit. The boundary is HERE, inside the frame: without it the whole app
+                (header and sidebar included) was hidden until that code arrived. */}
+            <RouteErrorBoundary resetKey={location.pathname}>
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </RouteErrorBoundary>
           </main>
         </div>
         <ToastRegion toast={toast} onDismiss={() => setToast(null)} />

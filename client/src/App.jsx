@@ -2,11 +2,13 @@ import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore 
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import AppLayout from './components/AppLayout.jsx';
+import { AppFrameSkeleton } from './components/Skeletons.jsx';
 import PublicLayout from './components/site/PublicLayout.jsx';
 import HomePage from './pages/public/HomePage.jsx';
 import { logoutVault } from './services/authService.js';
 import { adoptTokenFromOtherTabs, clearToken, expireSession, getToken } from './services/session.js';
 import { getMe } from './services/authService.js';
+import { JUST_ASKED_MS } from './services/dataCache.js';
 import { checkStoredSession } from './services/sessionCheck.js';
 import { useSessionToken } from './utils/useSessionToken.js';
 import { getEmergencyMode, setModeFromMe, subscribeEmergencyMode, wasEmergencyTab } from './services/emergencyMode.js';
@@ -49,7 +51,7 @@ function RequireSession({ children }) {
   const ready = useSessionCheck();
   // A token kept from before a reload (or handed over by another tab) is proved with the server first, so a
   // dead one sends you to the login page with a message instead of a screen full of failed requests.
-  if (!ready) return null;
+  if (!ready) return <AppFrameSkeleton />;
   // An emergency session that ended (4 hours, turned off by the owner, signed out) says so on the contact's own page.
   if (!token && wasEmergencyTab()) return <Navigate to="/emergency?ended=1" replace />;
   if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
@@ -62,14 +64,20 @@ function RequireSession({ children }) {
  */
 function SignedInShell({ onLocked }) {
   const mode = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
-  return mode.emergency ? <EmergencyShell /> : <AppLayout onLocked={onLocked} />;
+  return mode.emergency ? (
+    <Suspense fallback={<AppFrameSkeleton />}>
+      <EmergencyShell />
+    </Suspense>
+  ) : (
+    <AppLayout onLocked={onLocked} />
+  );
 }
 
 // Checked once per page load, shared by every route that needs the session (services/sessionCheck.js).
 let sessionCheck = null;
 function checkSessionOnce() {
   if (!sessionCheck) {
-    sessionCheck = checkStoredSession({ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: async () => setModeFromMe(await getMe()), expire: expireSession });
+    sessionCheck = checkStoredSession({ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: async () => setModeFromMe(await getMe({ maxAgeMs: JUST_ASKED_MS })), expire: expireSession });
   }
   return sessionCheck;
 }

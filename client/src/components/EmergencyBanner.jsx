@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Lifebuoy, X } from '@phosphor-icons/react';
 
-import { getEmergencyStatus } from '../services/emergencyService.js';
+import { getEmergencyStatus, peekEmergencyStatus } from '../services/emergencyService.js';
 import { formatManila } from '../utils/activityText.js';
 import { bannerFor, dismissKey } from '../utils/emergencyBanner.js';
 import styles from './EmergencyBanner.module.css';
@@ -25,12 +25,14 @@ const readDismissed = (requestId) => {
  */
 function EmergencyBanner() {
   const location = useLocation();
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(() => peekEmergencyStatus() ?? null);
   const [dismissedId, setDismissedId] = useState(null);
 
-  const load = useCallback(async () => {
+  // A page change reuses an answer younger than 30 seconds (it used to ask again on EVERY page change); the minute timer
+  // below always asks.
+  const load = useCallback(async ({ fresh = false } = {}) => {
     try {
-      const next = await getEmergencyStatus();
+      const next = await getEmergencyStatus({ maxAgeMs: fresh ? 0 : 30 * 1000 });
       setStatus(next);
       setDismissedId(next?.request && readDismissed(next.request.id) ? next.request.id : null);
     } catch {
@@ -43,7 +45,7 @@ function EmergencyBanner() {
     load();
   }, [load, location.pathname]);
   useEffect(() => {
-    const timer = setInterval(load, POLL_MS);
+    const timer = setInterval(() => load({ fresh: true }), POLL_MS);
     return () => clearInterval(timer);
   }, [load]);
 

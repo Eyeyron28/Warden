@@ -45,7 +45,14 @@ const requireSession = asyncHandler(async (req, res, next) => {
   // any handler runs (middleware/emergencyGuard.js).
   if (session.emergency) assertEmergencyAllowed(req);
 
-  await refreshSession(token, { absoluteExpiresAt: session.absoluteExpiresAt || null });
+  // Sliding the expiry and noting the device are independent writes: one round trip, not two in a row.
+  await Promise.all([
+    refreshSession(token, { absoluteExpiresAt: session.absoluteExpiresAt || null }),
+    // "Last active" for the Devices page; written at most once a minute and never allowed to fail a request.
+    Promise.resolve()
+      .then(() => touchDevice(req, session.deviceId || null))
+      .catch(() => {}),
+  ]);
 
   req.userId = session.userId;
   req.dek = session.dek;
@@ -58,13 +65,6 @@ const requireSession = asyncHandler(async (req, res, next) => {
     idHash: session.sessionIdHash,
     encryptionKey: session.dek,
   };
-  // "Last active" for the Devices page; written at most once a minute and never allowed to fail a request.
-  try {
-    await touchDevice(req, req.deviceId);
-  } catch {
-    // best effort
-  }
-
   next();
 });
 

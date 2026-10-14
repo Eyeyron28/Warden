@@ -9,6 +9,10 @@ const mongoose = require('mongoose');
 // their own separate connection attempt before the first one resolves.
 let connectionPromise = null;
 
+// Indexes are built by utils/migrateIndexes.js, once per set of declared indexes - not by Mongoose on every cold start.
+// Set before any model is compiled (this file is required first, by server.js).
+mongoose.set('autoIndex', false);
+
 // A small pool per function instance: Atlas M0 allows 500 connections in
 // total, and Vercel may run many instances side by side, so each one keeps
 // only a handful (and none idle for long). maxIdleTimeMS lets a quiet warm
@@ -47,27 +51,19 @@ function connectDB() {
       console.log('MongoDB connected.');
       // Required lazily - utils/migrateFolders pulls in models, which
       // shouldn't load before mongoose is configured here.
-      // eslint-disable-next-line global-require
-      const migrateFolders = require('../utils/migrateFolders');
-      try {
-        await migrateFolders();
-      } catch (err) {
-        // A failed migration must not take the whole API down; it'll be
-        // retried on the next connection since its marker isn't written.
-        console.error(`Folder migration failed: ${err.message}`);
-      }
-      try {
-        // eslint-disable-next-line global-require
-        await require('../utils/migrateRemovePhone')();
-      } catch (err) {
-        console.error(`Phone-vault removal migration failed: ${err.message}`);
-      }
-      try {
-        // eslint-disable-next-line global-require
-        await require('../utils/migrateExpiry')();
-      } catch (err) {
-        console.error(`Expiry-date migration failed: ${err.message}`);
-      }
+      // Each of these is a marker check that is a no-op once done, and they do not depend on each other, so they ask
+      // together (one round trip to the database instead of four in a row on every cold start). A failed migration
+      // must not take the whole API down; it is retried on the next connection since its marker isn't written.
+      const steps = [
+        ['Index build', () => require('../utils/migrateIndexes').migrateIndexes()], // eslint-disable-line global-require
+        ['Folder migration', () => require('../utils/migrateFolders')()], // eslint-disable-line global-require
+        ['Phone-vault removal migration', () => require('../utils/migrateRemovePhone')()], // eslint-disable-line global-require
+        ['Expiry-date migration', () => require('../utils/migrateExpiry')()], // eslint-disable-line global-require
+      ];
+      const results = await Promise.allSettled(steps.map(([, run]) => run()));
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') console.error(`${steps[index][0]} failed: ${result.reason?.message}`);
+      });
       return conn;
     })
     .catch((err) => {

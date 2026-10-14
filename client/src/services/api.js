@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { getToken, clearToken, expireSession } from './session.js';
+import { invalidateAll } from './dataCache.js';
 
 // Relative, not an absolute host - resolves against whatever origin this
 // page itself was loaded from (localhost, a home Wi-Fi IP, a phone
@@ -25,9 +26,17 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Any write - successful or not (a failed one may still have changed something) - forgets every remembered list
+// (services/dataCache.js), so a page never starts from data the write has just made wrong.
+const isWrite = (config) => Boolean(config?.method) && String(config.method).toLowerCase() !== 'get';
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (isWrite(response.config)) invalidateAll();
+    return response;
+  },
   (error) => {
+    if (isWrite(error.config)) invalidateAll();
     if (error.response?.status === 401) {
       // Session expired, was invalidated, or never existed. Clearing it
       // here (rather than in every caller) is what lets the app fall

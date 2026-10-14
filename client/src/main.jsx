@@ -14,6 +14,10 @@ import '@fontsource/ibm-plex-mono/500.css';
 import './styles/global.css';
 import App from './App.jsx';
 import UpdatePrompt from './components/UpdatePrompt.jsx';
+import { prefetchFirstScreen } from './services/prefetch.js';
+
+// A stored session on a signed-in page: the first screen's requests start now, beside the session check.
+prefetchFirstScreen(window.location.pathname);
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

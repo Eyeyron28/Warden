@@ -205,7 +205,19 @@ function fakeModel(world, table, extras = {}) {
           if (stage.$match) out = out.filter((r) => matches(r, stage.$match));
           else if (stage.$sort) {
             const [[field, dir]] = Object.entries(stage.$sort);
-            out = [...out].sort((a, b) => (String(a[field]) < String(b[field]) ? -dir : String(a[field]) > String(b[field]) ? dir : 0));
+            const key = (row) => (typeof row[field] === 'number' ? row[field] : String(row[field]));
+            out = [...out].sort((a, b) => (key(a) < key(b) ? -dir : key(a) > key(b) ? dir : 0));
+          } else if (stage.$group) {
+            // { _id: '$field', name: { $sum: 1 } } only
+            const idField = String(stage.$group._id).replace(/^\$/, '');
+            const groups = new Map();
+            for (const row of out) {
+              const id = row[idField];
+              const group = groups.get(String(id)) || { _id: id };
+              for (const [name, spec] of Object.entries(stage.$group)) if (name !== '_id' && spec.$sum !== undefined) group[name] = (group[name] || 0) + spec.$sum;
+              groups.set(String(id), group);
+            }
+            out = [...groups.values()];
           } else if (stage.$limit) out = out.slice(0, stage.$limit);
           else if (stage.$project) {
             out = out.map((r) => {
