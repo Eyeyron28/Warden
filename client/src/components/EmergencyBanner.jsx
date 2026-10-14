@@ -45,7 +45,8 @@ function EmergencyBanner() {
     load();
   }, [load, location.pathname]);
   useEffect(() => {
-    const timer = setInterval(() => load({ fresh: true }), POLL_MS);
+    // A hidden tab does not poll: every poll counts against the account's request budget.
+    const timer = setInterval(() => { if (!document.hidden) load({ fresh: true }); }, POLL_MS);
     return () => clearInterval(timer);
   }, [load]);
 

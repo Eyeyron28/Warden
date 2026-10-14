@@ -30,12 +30,13 @@ const byAccount = createRateLimiter({
 router.get('/health', requireSession, getHealth);
 router.get('/preferences', requireSession, getPreferences);
 router.patch('/preferences', requireSession, updatePreferences);
+// The list of trusted browsers is read on every visit to Settings; only removing them is meant for the strict limits below.
+router.get('/trusted-devices', requireSession, listTrustedDevices);
 
 router.use(byIp, requireSession, byAccount);
 router.post('/delete-challenge', deleteChallenge);
 router.post('/resend-delete-code', resendDeleteCode);
 router.delete('/', deleteAccount);
-router.get('/trusted-devices', listTrustedDevices);
 router.delete('/trusted-devices', removeAllTrustedDevices);
 router.delete('/trusted-devices/:id', removeTrustedDevice);
 

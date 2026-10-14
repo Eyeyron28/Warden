@@ -320,7 +320,7 @@ test('the owner’s banner comes from the server status, so a reload shows it; d
   const component = read('components/EmergencyBanner.jsx');
   assert.match(component, /getEmergencyStatus\(\{ maxAgeMs/, 'read from the server on every load (a young answer is reused on a page change)');
   assert.match(component, /useEffect\(\(\) => \{\s*load\(\);\s*\}, \[load, location\.pathname\]\)/, 'and on every page change');
-  assert.match(component, /setInterval\(\(\) => load\(\{ fresh: true \}\), POLL_MS\)/);
+  assert.match(component, /setInterval\(\(\) => \{ if \(!document\.hidden\) load\(\{ fresh: true \}\); \}, POLL_MS\)/);
   const stored = [...stripComments(component).matchAll(/sessionStorage\.(getItem|setItem)\(([^)]*)\)/g)].map((m) => m[2]);
   assert.ok(stored.every((arg) => /dismissKey\(/.test(arg)), 'the only thing kept is which request was dismissed');
   const layout = read('components/AppLayout.jsx');

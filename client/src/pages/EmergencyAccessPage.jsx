@@ -7,6 +7,7 @@ import FreshCodeDialog from '../components/emergency/FreshCodeDialog.jsx';
 import KitScreen from '../components/emergency/KitScreen.jsx';
 import RequestCard from '../components/emergency/RequestCard.jsx';
 import { getMe } from '../services/authService.js';
+import { JUST_ASKED_MS } from '../services/dataCache.js';
 import { extractErrorMessage } from '../services/api.js';
 import { approveNow, denyRequest, getEmergencyStatus, regenerateKit, revokeEmergency } from '../services/emergencyService.js';
 import { formatManila } from '../utils/activityText.js';
@@ -40,9 +41,11 @@ function EmergencyAccessPage() {
   const holder = useRef(createKitHolder()).current;
   const [, redraw] = useState(0);
 
-  const load = useCallback(async () => {
+  // `reuse`: the banner above this page has just asked, so opening the page does not ask a second time. After any write
+  // the cache is empty (services/api.js), so the reload that follows an action is always a real request.
+  const load = useCallback(async ({ reuse = false } = {}) => {
     try {
-      setStatus(await getEmergencyStatus());
+      setStatus(await getEmergencyStatus({ maxAgeMs: reuse ? JUST_ASKED_MS : 0 }));
       setError('');
     } catch (err) {
       setError(extractErrorMessage(err, 'Could not load Emergency Access.'));
@@ -50,9 +53,10 @@ function EmergencyAccessPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    load({ reuse: true });
     getMe().then((me) => setOwnEmail(me.email || '')).catch(() => {});
-    const timer = setInterval(load, POLL_MS);
+    // A hidden tab does not poll (each poll counts against the account's request budget).
+    const timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
     // The kit is gone the moment this page is left.
     return () => {
       clearInterval(timer);

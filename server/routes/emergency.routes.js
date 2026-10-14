@@ -27,10 +27,20 @@ const byAccount = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   keyFn: (req) => (req.userId ? String(req.userId) : null),
 });
+// The reads (the status the banner polls every minute and the Emergency page every 30 seconds, the session info and the
+// folder picker) have their OWN, larger budget. On the strict one an open tab alone used the whole hour (60 polls) and
+// a 429 then also blocked the owner's real actions - denying a request. They only ever read the caller's own data.
+const readsByAccount = createRateLimiter({
+  name: 'emergency-owner-read',
+  max: 600,
+  windowMs: 60 * 60 * 1000,
+  keyFn: (req) => (req.userId ? String(req.userId) : null),
+});
+ownerRouter.get('/status', requireSession, readsByAccount, c.status);
+ownerRouter.get('/session-info', requireSession, readsByAccount, c.sessionInfo);
+ownerRouter.get('/folders', requireSession, readsByAccount, c.folderChoices);
+
 ownerRouter.use(requireSession, byAccount);
-ownerRouter.get('/status', c.status);
-ownerRouter.get('/session-info', c.sessionInfo);
-ownerRouter.get('/folders', c.folderChoices);
 ownerRouter.post('/challenge', c.startCode);
 ownerRouter.post('/challenge/resend', c.resendCode);
 ownerRouter.post('/setup', c.setup);

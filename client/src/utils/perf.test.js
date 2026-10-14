@@ -212,7 +212,7 @@ test('the app starts the prefetch before it renders', () => {
 test('Emergency banner reuses an answer for 30 seconds on a page change; its minute timer always asks', () => {
   const banner = code(path.join(src, 'components', 'EmergencyBanner.jsx'));
   assert.match(banner, /maxAgeMs: fresh \? 0 : 30 \* 1000/);
-  assert.match(banner, /setInterval\(\(\) => load\(\{ fresh: true \}\), POLL_MS\)/);
+  assert.match(banner, /setInterval\(\(\) => \{ if \(!document\.hidden\) load\(\{ fresh: true \}\); \}, POLL_MS\)/);
 });
 
 import { isChunkFailure } from './chunkFailure.js';
