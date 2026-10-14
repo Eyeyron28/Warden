@@ -38,6 +38,7 @@ export function formatRetry(seconds) {
  *   { kind: 'invite',   message }                       -> under the invite field, focus it
  *   { kind: 'rate',     message, retryAfterSeconds }    -> form-level, with the retry time
  *   { kind: 'password', message }                       -> under the password field
+ *   { kind: 'email',    message }                       -> under the email field (its domain cannot receive mail)
  *   { kind: 'other',    message }                       -> form-level
  */
 export function describeSignupFailure(error, fallback = 'We couldn’t create your vault. Please try again.') {
@@ -53,6 +54,9 @@ export function describeSignupFailure(error, fallback = 'We couldn’t create yo
       retryAfterSeconds,
       message: `Too many attempts. Please try again in ${formatRetry(retryAfterSeconds)}.`,
     };
+  }
+  if (body?.code === 'EMAIL_DOMAIN_NO_MAIL') {
+    return { kind: 'email', message: body.message };
   }
   if (status === 400 && Array.isArray(body?.errors)) {
     return { kind: 'password', message: body.errors.join(' ') };

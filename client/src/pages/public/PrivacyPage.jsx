@@ -18,8 +18,10 @@ export const SECTIONS = [
         <p>Only what the service needs to work:</p>
         <ul>
           <li>
-            <strong>Your email address</strong>, to identify your account and send verification and
-            verification links and one-time codes (login, password reset and account deletion), and to tell you when your password was changed.
+            <strong>Your email address</strong>, to identify your account and send one-time codes (sign-up, login, password reset and
+            account deletion), and to tell you when your password was changed. No account is made until you enter the sign-up code: until
+            then we keep only a salted hash of that code, tied to a keyed hash of the address (not the address, and never your password), for
+            a few minutes, and then it is deleted.
           </li>
           <li>
             <strong>A password hash</strong> (scrypt, salted). We never store your password itself.
@@ -182,7 +184,7 @@ export const SECTIONS = [
         preview image. You can restore it, delete it permanently sooner, or empty the Trash at any time. Share links
         that include a file stop working the moment it is moved to Trash and are not brought back by restoring it.
         Sign-in sessions,
-        verification links and rate-limit records expire on their own, within minutes to a day, and are removed
+        sign-up codes, verification links and rate-limit records expire on their own, within minutes to a day, and are removed
         immediately if you delete your account.
       </p>
     ),

@@ -39,7 +39,23 @@ stub('../utils/email', {
   },
 });
 
-const { signup, resendVerification } = require('../controllers/auth.controller');
+// Sign-up stores only a pending code: the "create" below is that code's upsert. The per-address budget and the domain lookup are stood in for.
+stub('../models/OtpChallenge', {
+  findOneAndUpdate: async (filter) => {
+    calls.create.push({ filter });
+    return {};
+  },
+  deleteOne: async () => ({ deletedCount: 1 }),
+});
+stub('../middleware/rateLimit', {
+  consumeBudget: async () => true,
+  budgetRetryAfterSeconds: async () => 0,
+  isBudgetExhausted: async () => false,
+});
+require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.com', priority: 10 }];
+
+const { resendVerification } = require('../controllers/auth.controller');
+const { signupStart: signup } = require('../controllers/signup.controller');
 
 const PASSWORD = 'Tk9$Lantern-Orbit%57';
 
@@ -123,24 +139,26 @@ test('signup rejects non-string and missing emails before anything else', async 
   }
 });
 
-test('signup still creates an account and mails exactly one clean address for a valid email', async () => {
+test('signup still mails a code to exactly one clean address for a valid email', async () => {
   reset();
-  const result = await run(signup, { email: '  Some.One+tag@Example.COM \r\n', password: PASSWORD });
+  const result = await run(signup, { email: '  Some.One+tag@Example.COM \r\n', password: PASSWORD, termsAccepted: true });
   assert.equal(result.error, null);
   assert.equal(result.status, 200);
-  assert.equal(typeof result.json.recoveryKey, 'string');
-  assert.equal(calls.create.length, 1);
-  assert.equal(calls.create[0].email, 'some.one+tag@example.com', 'trimmed and lowercased, trailing CRLF gone');
+  assert.equal(result.json.otpRequired, true);
+  assert.equal(result.json.recoveryKey, undefined, 'no key material before the address is proven');
+  assert.equal(calls.create.length, 1, 'one pending code');
   assert.equal(calls.mails.length, 1);
   assert.equal(calls.mails[0].to, 'some.one+tag@example.com');
 });
 
 test('signup for an already-registered address keeps the same response shape and creates nothing', async () => {
   reset({ email: 'taken@example.com' });
-  const result = await run(signup, { email: 'taken@example.com', password: PASSWORD });
+  const result = await run(signup, { email: 'taken@example.com', password: PASSWORD, termsAccepted: true });
   assert.equal(result.status, 200);
-  assert.equal(typeof result.json.recoveryKey, 'string', 'decoy key keeps the shape identical');
-  assert.equal(calls.create.length, 0);
+  assert.equal(result.json.otpRequired, true, 'the same answer as for a new address');
+  assert.equal(calls.create.length, 0, 'no code is made');
+  assert.equal(calls.mails.length, 1, 'only the heads-up to the owner');
+  assert.match(calls.mails[0].subject, /Someone tried to sign up/);
 });
 
 for (const [label, handler, generic] of [

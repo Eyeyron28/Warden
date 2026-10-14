@@ -5,6 +5,7 @@ const { purgeExpired } = require('../utils/trash');
 const { runReminders } = require('../utils/reminders');
 const { runMaintenance: runEmergencyMaintenance } = require('../utils/emergency/service');
 const createRateLimiter = require('../middleware/rateLimit');
+const { purgeLegacyUnverified } = require('../utils/legacyCleanup');
 
 const router = express.Router();
 
@@ -53,7 +54,14 @@ router.get('/reminders', cronLimit, requireCronSecret, async (req, res, next) =>
     } catch (err) {
       console.error('Emergency Access upkeep failed.');
     }
-    res.status(200).json({ success: true, ...result, emergency });
+    // Old-style sign-ups that never verified and hold nothing (rides on this job: Hobby has few cron slots).
+    let legacy = null;
+    try {
+      legacy = await purgeLegacyUnverified();
+    } catch (err) {
+      console.error('Legacy sign-up clean-up failed.');
+    }
+    res.status(200).json({ success: true, ...result, emergency, legacy });
   } catch (err) {
     next(err);
   }

@@ -23,9 +23,9 @@ const CODE_EMAILS = {
   deleteAccountCode: templates.deleteAccountCode({ code: CODE, ttlMinutes: 5 }),
   passwordResetCode: templates.passwordResetCode({ code: CODE, ttlMinutes: 5 }),
   shareCode: templates.shareCode({ code: CODE, ttlMinutes: 5 }),
+  signupCode: templates.signupCode({ code: CODE, ttlMinutes: 5 }),
 };
 const OTHER_EMAILS = {
-  verifyEmail: templates.verifyEmail({ verifyUrl: VERIFY_URL }),
   verifyEmailResend: templates.verifyEmailResend({ verifyUrl: VERIFY_URL }),
   signupAttempt: templates.signupAttempt({ when: WHEN }),
   passwordChangedKey: templates.passwordChanged({ method: 'recovery-key', when: WHEN, browser: 'Chrome on Windows' }),
@@ -102,6 +102,7 @@ test('every code email says what the code is for, never to share it, and what to
     deleteAccountCode: /Confirm deleting your account/,
     passwordResetCode: /Reset your password/,
     shareCode: /Open a shared document/,
+    signupCode: /This code is for creating a Warden account/,
   };
   for (const [name, mail] of Object.entries(CODE_EMAILS)) {
     assert.match(mail.text, purposes[name], `${name}: purpose in plain words`);
@@ -209,8 +210,8 @@ test('links: only to the app\'s public address, with no token or key; none at al
   } finally {
     delete process.env.PUBLIC_APP_URL;
   }
-  // the verification emails are the one place a link carries a single-use token, because that is how they work
-  for (const mail of [OTHER_EMAILS.verifyEmail, OTHER_EMAILS.verifyEmailResend]) {
+  // the legacy verification-link email is the one place a link carries a single-use token, because that is how they work
+  for (const mail of [OTHER_EMAILS.verifyEmailResend]) {
     assert.ok(mail.text.includes(VERIFY_URL));
     assert.ok(mail.html.includes(esc(VERIFY_URL)));
   }

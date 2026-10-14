@@ -13,17 +13,21 @@ const mongoose = require('mongoose');
 // Verifying the code consumes the challenge and only then creates the real
 // session.
 // Codes for people without an account (a share's recipient, an emergency contact) carry no wrapped key.
-const NO_WRAPPED_KEY = new Set(['share-email', 'emergency-request', 'emergency-session']);
+// 'signup' codes belong to an address that has no account yet: no user, no key, and (see utils/signupCodes.js) no password.
+const NO_WRAPPED_KEY = new Set(['share-email', 'emergency-request', 'emergency-session', 'signup']);
 
 const otpChallengeSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  // Absent only for a 'signup' code: nobody exists yet. Every other purpose belongs to an account.
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required() { return this.purpose !== 'signup'; } },
   // What this code is FOR. Every lookup includes it, so a login code can never
   // authorise deleting an account, nor a delete code log anyone in.
-  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset', 'emergency-setup', 'emergency-request', 'emergency-session'], default: 'login', required: true },
+  purpose: { type: String, enum: ['login', 'delete-account', 'share-email', 'password-reset', 'emergency-setup', 'emergency-request', 'emergency-session', 'signup'], default: 'login', required: true },
   // 'share-email' codes belong to one visitor's access session on one share
   // (userId is the share's OWNER, so deleting the account removes them too).
   shareId: { type: String, default: null, index: true },
   accessId: { type: String, default: null },
+  // A 'signup' code is found by an HMAC of the address (never the address itself): at most one live code per address.
+  subjectKey: { type: String, default: null },
   // A look-alike made for an address that has no (verified) account, so the
   // password-reset screen behaves the same for every address. Never emailed and
   // never able to succeed (see utils/otpChallenge.js).
@@ -44,5 +48,6 @@ const otpChallengeSchema = new mongoose.Schema({
 });
 
 otpChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+otpChallengeSchema.index({ subjectKey: 1 }, { unique: true, partialFilterExpression: { subjectKey: { $type: 'string' } } });
 
 module.exports = mongoose.model('OtpChallenge', otpChallengeSchema);

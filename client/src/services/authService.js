@@ -1,19 +1,30 @@
 import api from './api.js';
 
 /**
- * POST /api/auth/signup
- * Response is intentionally identical whether or not `email` already has
- * an account, down to a `recoveryKey` field that's either the real,
- * one-time key (new account) or a decoy of the same shape (existing
- * account) - see the server's own comment on this for why. The caller
- * cannot and should not try to tell which case it got.
- * @param {string} email
- * @param {string} password
- * @param {string} [inviteCode]
- * @returns {Promise<{ message: string, recoveryKey: string }>}
+ * POST /api/auth/signup/start - step 1 of sign-up. Nothing is created: a 6-digit code is emailed (or, for an address that
+ * already has an account, a notice and no code), and the answer is the same either way. The password is sent now only to
+ * be checked; the server does not keep it.
+ * @param {{ email: string, password: string, inviteCode?: string }} form
+ * @returns {Promise<{ message: string, otpRequired: true, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
  */
-export async function signupVault(email, password, inviteCode) {
-  const { data } = await api.post('/auth/signup', { email, password, inviteCode });
+export async function signupStart({ email, password, inviteCode }) {
+  const { data } = await api.post('/auth/signup/start', { email, password, termsAccepted: true, ...(inviteCode ? { inviteCode } : {}) });
+  return data;
+}
+
+/**
+ * POST /api/auth/signup/verify - step 2: the emailed code. Only now does the account exist. The answer carries the
+ * recovery key (shown once) and a session token (the person is signed in).
+ * @returns {Promise<{ sessionToken: string, recoveryKey: string }>}
+ */
+export async function signupVerify({ email, password, code }) {
+  const { data } = await api.post('/auth/signup/verify', { email, password, code });
+  return data;
+}
+
+/** POST /api/auth/signup/resend - a new code for an address with a pending sign-up; the same answer as step 1 whatever happens. */
+export async function signupResend(email) {
+  const { data } = await api.post('/auth/signup/resend', { email });
   return data;
 }
 

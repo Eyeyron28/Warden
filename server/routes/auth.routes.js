@@ -11,8 +11,8 @@ const {
 } = require('../controllers/passwordReset.controller');
 const router = express.Router();
 
+const { signupStart, signupVerify, signupResend, goneSignup } = require('../controllers/signup.controller');
 const {
-  signup,
   verifyEmail,
   resendVerification,
   getPublicConfig,
@@ -34,15 +34,26 @@ const byEmail = (req) => {
   return typeof email === 'string' ? email.trim().toLowerCase() : null;
 };
 
+// Sign-up: a code is mailed first and the account only exists once it is entered (controllers/signup.controller.js).
 router.post(
-  '/signup',
+  '/signup/start',
   createRateLimiter({ name: 'signup-ip', max: 10, windowMs: 60 * 60 * 1000 }),
   // Before the per-email limiter, so a request with no valid code can never
   // use up someone else's per-email allowance.
   inviteGate,
   createRateLimiter({ name: 'signup-email', max: 5, windowMs: 60 * 60 * 1000, keyFn: byEmail }),
-  signup
+  signupStart
 );
+router.post('/signup/verify', createRateLimiter({ name: 'signup-verify-ip', max: 30, windowMs: 15 * 60 * 1000 }), signupVerify);
+router.post(
+  '/signup/resend',
+  createRateLimiter({ name: 'signup-resend-ip', max: 10, windowMs: 60 * 60 * 1000 }),
+  // One per address per 60 seconds, counted whether or not anything is pending, so a 429 says nothing about the address.
+  createRateLimiter({ name: 'signup-resend-email', max: 1, windowMs: 60 * 1000, keyFn: byEmail }),
+  signupResend
+);
+// The old one-step sign-up made the account first. It is gone.
+router.post('/signup', goneSignup);
 router.post(
   '/verify-email',
   createRateLimiter({ name: 'verify-email', max: 20, windowMs: 60 * 60 * 1000 }),

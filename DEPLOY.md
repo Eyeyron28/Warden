@@ -118,8 +118,8 @@ Both refuse every request unless `Authorization: Bearer <CRON_SECRET>` matches (
 Run this on the real URL, with a throwaway email address you control.
 
 1. [ ] `https://<your-url>/api/health` returns `ok` and `reachable`.
-2. [ ] **Sign up**: the "Invite code" field is first and marked Required. A wrong code is refused under the field; the right code (spaces around it are fine) and a strong password create the account. Save the recovery key.
-3. [ ] The verification **email arrives** (check spam). Its link starts with your `PUBLIC_APP_URL`. Open it: "Email verified".
+2. [ ] **Sign up**: the "Invite code" field is first and marked Required. A wrong code is refused under the field; the right code (spaces around it are fine), a strong password and the Terms box start the sign-up. **No account exists yet.**
+3. [ ] The **code email arrives** (check spam; it has no links). Enter the 6 digits: only now is the account created and you are signed in. The **recovery key** screen follows (four chips; Copy gives `XXXX-XXXX-XXXX-XXXX` on one line; Download and Print work). Save the key, tick the box, continue. A made-up address never gets an account: the code simply expires.
 4. [ ] **Log in**: the 6-digit code email arrives and the code works. "Trust this browser for 30 days" is ticked by default (with the note about shared computers); leave it ticked.
 5. [ ] Open a new tab and log in again: no code is asked on this browser. In a private window the code **is** asked.
 6. [ ] **Upload** a small PDF and a file of about 3.9 MB (both work). A file over 4 MB is refused with "File exceeds the 4MB size limit."
@@ -171,7 +171,21 @@ Every email goes through `server/utils/emailTemplates.js` (HTML plus a plain-tex
 3. [ ] They land in **Inbox**, not Spam. If they land in Spam, mark one "Not spam" and check the sender (SPF and DKIM are Gmail's own when you send through Gmail SMTP; a different `MAIL_FROM` address than the account you log in with is the usual cause).
 4. [ ] Trigger the real flows once (log in, "Forgot password", delete-account step 2, a share restricted to an email) and check each uses the same layout.
 
-What Warden sends: sign-in code, account-deletion code, password-reset code, share code (to the recipient), verify account, new verification link, "someone tried to sign up with your email", "your password was changed", "your account was deleted", "a new device was paired", "new trusted browser". Subjects are fixed text: never a code, a file name or an address. These are transactional messages, so there is no unsubscribe link.
+What Warden sends: sign-up code, sign-in code, account-deletion code, password-reset code, share code (to the recipient), emergency-access codes, new verification link (only for accounts made before the code sign-up existed), "someone tried to sign up with your email", "your password was changed", "your account was deleted", "a new device was paired", "new trusted browser". Subjects are fixed text: never a code, a file name or an address. These are transactional messages, so there is no unsubscribe link.
+
+## 9d. Deliverability: getting Warden's email into the Inbox
+
+Mail from a brand-new sender often lands in Spam at first, and link-heavy mail makes it worse. What Warden does about it:
+
+- **Code emails carry no links and no images**: only the code and plain text (sign-up, sign-in, delete-account, password reset, share code, emergency codes). A notification may carry one link, to `PUBLIC_APP_URL`.
+- **From is exactly the SMTP user.** Gmail rewrites any other From address, so Warden always sends from the `SMTP_USER` address with the display name "Warden". If `MAIL_FROM` names a different mailbox, the server prints a start-up warning (without printing either address). Set `MAIL_FROM` to the same address.
+- **Short, plain subjects**, unique per purpose, with no "!", no capitals-only words and no spam words. Transactional mail carries `Auto-Submitted: auto-generated` and `X-Auto-Response-Suppress: All`, so auto-replies leave it alone.
+
+**Reading "Show original" in Gmail** (three dots on the message, "Show original"): the summary at the top lists `SPF`, `DKIM` and `DMARC`, each PASS, FAIL or NEUTRAL. Sending through Gmail's own SMTP gives PASS for SPF and DKIM for `gmail.com`, but **DMARC cannot be aligned for a different From domain**, which is one more reason the From must be the Gmail address itself.
+
+**For the demo inboxes** (the people who will receive the codes): open the first Warden message in Spam, press **Not spam**, and add the sender to Contacts. Gmail then delivers the following codes to the Inbox.
+
+**A known limit of free SMTP.** Reliably landing in the Inbox for strangers needs a sending domain you own, with **SPF, DKIM and DMARC** records published for it (and a real SMTP service for that domain). Free Gmail SMTP cannot do that, so on a free setup some first messages will keep going to Spam. Nothing in the code can change that.
 
 **Share-link previews.** A chat app that fetches a share link to draw a preview card gets `shared-preview.html` (written by `npm run build`, served for `/shared/*` by the rewrite in `vercel.json`): a generic title and description, `noindex`, and only the fixed Warden icon. It never contains a file name, purpose or owner. The key after `#` is never sent to Warden: browsers do not transmit fragments.
 

@@ -37,7 +37,7 @@ const REMOVED = ['/api/backup', '/api/backup/*', '/api/auth/recover-via-usb', '/
 const PUBLIC_ROUTES = new Set([
   ...REMOVED,
   'GET /api/health',
-  'POST /api/auth/signup', 'POST /api/auth/verify-email', 'POST /api/auth/resend-verification', 'GET /api/auth/config', 'POST /api/auth/unlock',
+  'POST /api/auth/signup', 'POST /api/auth/signup/start', 'POST /api/auth/signup/verify', 'POST /api/auth/signup/resend', 'POST /api/auth/verify-email', 'POST /api/auth/resend-verification', 'GET /api/auth/config', 'POST /api/auth/unlock',
   'POST /api/auth/verify-otp', 'POST /api/auth/resend-otp',
   'POST /api/auth/password-reset/start', 'POST /api/auth/password-reset/resend', 'POST /api/auth/password-reset/verify',
   'POST /api/auth/password-reset/with-recovery-key', 'POST /api/auth/password-reset/start-over', 'POST /api/auth/password-reset/recovery-key-only',
@@ -99,13 +99,14 @@ const lastMailTo = (address) => live.mails.filter((mail) => mail.to === address)
 
 async function signUpAndIn(email) {
   const { api, mongoose } = live;
-  const signup = await api('POST', '/api/auth/signup', { json: { email, password: PASSWORD } });
-  assert.equal(signup.status, 200, signup.text);
-  await mongoose.models.User.updateOne({ email }, { $set: { emailVerified: true } });
-  const login = await api('POST', '/api/auth/unlock', { json: { email, password: PASSWORD } });
-  assert.equal(login.status, 200, login.text);
+  // The real two-step sign-up: a code to the address first, the account only once it is entered.
+  const started = await api('POST', '/api/auth/signup/start', { json: { email, password: PASSWORD, termsAccepted: true } });
+  assert.equal(started.status, 200, started.text);
+  assert.equal(await mongoose.models.User.countDocuments({ email }), 0, 'no account before the code');
+  const verified = await api('POST', '/api/auth/signup/verify', { json: { email, password: PASSWORD, code: codeFromMail(lastMailTo(email)) } });
+  assert.equal(verified.status, 200, verified.text);
   const user = await mongoose.models.User.findOne({ email }).lean();
-  return { token: login.body.sessionToken, userId: String(user._id), email };
+  return { token: verified.body.sessionToken, userId: String(user._id), email };
 }
 
 function textFile(name, content, folder) {

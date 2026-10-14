@@ -30,6 +30,17 @@ stub('../models/User', {
   },
 });
 
+// Sign-up now stores only a pending code (no account until the address is proven): "created" below counts those.
+stub('../models/OtpChallenge', {
+  findOneAndUpdate: async (filter, update) => {
+    calls.create.push({ filter, update });
+    return {};
+  },
+  deleteOne: async () => ({ deletedCount: 1 }),
+});
+// The mail domain check asks DNS; the tests answer for it.
+require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.com', priority: 10 }];
+
 const realEmail = require('../utils/email');
 stub('../utils/email', {
   ...realEmail,
@@ -51,7 +62,22 @@ stub('../middleware/rateLimit', {
   isBudgetExhausted: async () => false,
 });
 
-const { signup, getPublicConfig } = require('../controllers/auth.controller');
+const { getPublicConfig } = require('../controllers/auth.controller');
+const { signupStart } = require('../controllers/signup.controller');
+const { inviteGate } = require('../utils/inviteGate');
+
+// The route runs the invite gate first, then the handler (routes/auth.routes.js).
+const signup = (req, res, next) =>
+  new Promise((resolve) => {
+    inviteGate(req, res, (err) => {
+      if (err) {
+        next(err);
+        resolve();
+      } else {
+        Promise.resolve(signupStart(req, res, (e) => next(e))).then(resolve);
+      }
+    });
+  });
 
 const PASSWORD = 'Tk9$Lantern-Orbit%57';
 let ipCounter = 0;
@@ -88,7 +114,9 @@ const nothingHappened = () => {
   assert.deepEqual(calls.mails, [], 'no email sent');
 };
 
-const signupBody = (inviteCode, extra = {}) => ({ email: 'new@example.com', password: PASSWORD, ...(inviteCode === undefined ? {} : { inviteCode }), ...extra });
+let addressCounter = 0;
+// A different address each time: the per-address code budget (5 an hour) is not what these tests are about.
+const signupBody = (inviteCode, extra = {}) => ({ email: `new${++addressCounter}@example.com`, password: PASSWORD, termsAccepted: true, ...(inviteCode === undefined ? {} : { inviteCode }), ...extra });
 
 test('a missing, empty, whitespace, wrong, oversized or wrong-typed code is refused the same way, doing no work', async () => {
   const bad = [
@@ -126,15 +154,15 @@ test('the check comes before the email is even validated: a bad code and a bad e
   nothingHappened();
 });
 
-test('the right code creates the account and sends the verification email; surrounding spaces are fine', async () => {
+test('the right code starts the sign-up and sends the code email; surrounding spaces are fine', async () => {
   for (const code of [CODE, `  ${CODE}  `, `\t${CODE}\n`]) {
     reset();
     const out = await run(signup, signupBody(code));
     assert.equal(out.error, null);
     assert.equal(out.status, 200);
-    assert.equal(calls.create.length, 1);
+    assert.equal(calls.create.length, 1, 'a pending code was made (and no account)');
     assert.equal(calls.mails.length, 1);
-    assert.match(calls.mails[0].subject, /Verify your Warden account/);
+    assert.match(calls.mails[0].subject, /sign-up code/i);
   }
 });
 
@@ -145,11 +173,12 @@ test('wrong code + an existing email: nobody is emailed (the owner is not contac
   nothingHappened();
 });
 
-test('right code + existing email keeps the anti-enumeration behaviour (same shape, decoy key, heads-up email)', async () => {
+test('right code + existing email keeps the anti-enumeration behaviour (same shape, no code, heads-up email)', async () => {
   reset({ email: 'owner@example.com' });
-  const out = await run(signup, { email: 'owner@example.com', password: PASSWORD, inviteCode: CODE });
+  const out = await run(signup, { email: 'owner@example.com', password: PASSWORD, inviteCode: CODE, termsAccepted: true });
   assert.equal(out.status, 200);
-  assert.ok(out.json.recoveryKey);
+  assert.equal(out.json.otpRequired, true);
+  assert.equal(out.json.recoveryKey, undefined, 'no key material before the address is proven');
   assert.equal(calls.create.length, 0);
   assert.equal(calls.mails.length, 1);
 });

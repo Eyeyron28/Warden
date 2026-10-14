@@ -281,14 +281,16 @@ const templates = {
       warning: `${NEVER_SHARE} If you didn't request this, ignore this email; nothing was opened and no account is involved.`,
     }),
 
-  verifyEmail: ({ verifyUrl }) =>
-    renderEmail({
-      subject: 'Verify your Warden account',
-      preheader: 'One step left: confirm your email address.',
-      title: 'Welcome to Warden',
-      intro: 'Confirm your email address to finish setting up your account. You will not be able to log in until you do.',
-      cta: verifyUrl ? { label: 'Verify my email', href: verifyUrl } : null,
-      warning: `The link expires in 24 hours. If you didn't sign up for Warden, ignore this email; no account will be used.`,
+  // Sign-up: the code that proves the address BEFORE any account exists. Plain: no link, no button, no image.
+  signupCode: ({ code, ttlMinutes }) =>
+    codeEmail({
+      subject: 'Your Warden sign-up code',
+      preheader: 'A code to create your Warden account.',
+      title: 'Verify your email',
+      purposeLine: 'This code is for creating a Warden account with this email address.',
+      code,
+      ttlMinutes,
+      warning: `${NEVER_SHARE} If you didn't request this, ignore this email; no account will be created.`,
     }),
 
   verifyEmailResend: ({ verifyUrl }) =>
@@ -307,8 +309,8 @@ const templates = {
       preheader: 'Nothing changed on your account.',
       title: 'Someone tried to sign up with your email',
       intro:
-        'Someone tried to register for Warden with this email address, which already has an account. Nothing was changed: your account, your documents and your password are exactly as they were.',
-      details: [['When', formatManilaTime(when)], ['What happened', 'A sign-up attempt was refused']],
+        'Someone tried to start creating a Warden account with this email address, which already has one. No code was sent and nothing was changed: your account, your documents and your password are exactly as they were.',
+      details: [['When', formatManilaTime(when)], ['What happened', 'A sign-up attempt was stopped']],
       warning: 'If it was you, just log in, or use "Forgot password" on the login page. If it was not you, you do not need to do anything.',
       cta: appLink('/login') ? { label: 'Open Warden', href: appLink('/login') } : null,
     }),

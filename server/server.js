@@ -28,6 +28,7 @@ const trashRoutes = require('./routes/trash.routes');
 const cronRoutes = require('./routes/cron.routes');
 const { publicRouter: emergencyPublicRoutes, ownerRouter: emergencyOwnerRoutes } = require('./routes/emergency.routes');
 const { assertEmergencyConfig } = require('./utils/emergency/config');
+const { mailFromWarning } = require('./utils/email');
 
 const app = express();
 
@@ -43,6 +44,11 @@ assertPublicAppUrlConfig();
 assertOtpConfig();
 // EMERGENCY_CLAIM_DAYS must be sane; EMERGENCY_DEMO_MODE on a production deployment is warned about.
 assertEmergencyConfig();
+// Mail is sent from the SMTP user; say so at start-up if MAIL_FROM disagrees (the address itself is never printed).
+{
+  const warning = mailFromWarning();
+  if (warning) console.warn(warning);
+}
 
 // Fired at module load (not inside the require.main guard below) so a
 // Vercel serverless instance starts warming up its connection the moment

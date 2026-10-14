@@ -218,6 +218,16 @@ button.inlineLink:disabled {
   gap: var(--space-3);
 }
 
+/* ---- The emailed sign-up code: one field ---- */
+.codeField {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl, 1.5rem);
+  letter-spacing: 0.45em;
+  text-align: center;
+  padding-left: 0.45em; /* the last letter-space would otherwise push the digits off centre */
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Recovery key ---- */
 
 .keyBox {
@@ -235,15 +245,48 @@ button.inlineLink:disabled {
   color: var(--color-text-muted);
 }
 
-.key {
+/* The key as equal-width chips: four across (a 2x2 block on a phone). A separator is drawn BETWEEN groups only, as a
+   pseudo-element, so it is never part of the text: selecting or copying never picks up a stray hyphen. */
+.keyChips {
+  --chip-gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--chip-gap);
   margin-top: var(--space-3);
-  font-family: var(--font-mono);
-  font-size: clamp(1.15rem, 0.95rem + 1.2vw, 1.5rem);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  color: var(--color-text);
-  overflow-wrap: anywhere;
   user-select: all;
+}
+
+.keyChip {
+  position: relative;
+  padding: var(--space-4) var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 0.8rem + 1vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow-wrap: normal;
+}
+
+.keyChip + .keyChip::before {
+  content: '-';
+  position: absolute;
+  top: 50%;
+  left: calc(var(--chip-gap) / -2);
+  transform: translate(-50%, -52%);
+  color: var(--color-text-muted);
+  font-weight: 400;
+  pointer-events: none;
+}
+
+/* Only what is printed: nothing on screen, the only thing visible in the print preview. */
+.printSheet {
+  display: none;
 }
 
 .keyActions {
@@ -491,13 +534,14 @@ button.inlineLink:disabled {
     padding: var(--space-4);
   }
 
-  .split .key {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .split .keyChips {
     margin-top: var(--space-2);
+    --chip-gap: var(--space-2);
+  }
+
+  .split .keyChip {
+    padding: var(--space-3) var(--space-1);
     font-size: var(--fs-lg);
-    letter-spacing: 0.04em;
-    text-align: center;
   }
 
   .split .keyActions {
@@ -512,5 +556,91 @@ button.inlineLink:disabled {
 
   .split .copyStatus:empty {
     display: none;
+  }
+}
+
+/* A phone: the groups sit as a 2x2 block, and the separator is drawn only between the two chips of a row. */
+@media (max-width: 560px) {
+  .keyChips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .keyChip:nth-child(odd)::before {
+    display: none;
+  }
+
+  /* Compact, so the key, the warning and Continue fit in the first screen of a small phone. */
+  .keyBox {
+    padding: var(--space-3);
+  }
+
+  .keyChip {
+    padding: var(--space-3) var(--space-1);
+  }
+
+  .keyActions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin: var(--space-3) 0 0;
+  }
+
+  .keyActions > button {
+    justify-content: center;
+    padding-inline: var(--space-2);
+    font-size: var(--fs-sm);
+    min-width: 0;
+  }
+
+  .copyStatus {
+    min-height: 0;
+    margin: var(--space-1) 0 0;
+  }
+
+  .copyStatus:empty {
+    display: none;
+  }
+}
+
+@media print {
+  :global(body *) {
+    visibility: hidden !important;
+  }
+
+  .printSheet,
+  .printSheet * {
+    visibility: visible !important;
+  }
+
+  .printSheet {
+    display: block;
+    position: fixed;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 2.5cm 2cm;
+    background: #fff;
+    color: #000;
+    font-family: system-ui, sans-serif;
+  }
+
+  .printSheet h2 {
+    margin: 0 0 1cm;
+    font-size: 20pt;
+  }
+
+  .printSheet p {
+    margin: 0 0 0.5cm;
+    font-size: 12pt;
+  }
+
+  .printSheet .printKey {
+    margin: 0.5cm 0 1cm;
+    padding: 0.6cm 0.8cm;
+    border: 2px solid #000;
+    font-family: 'Courier New', monospace;
+    font-size: 26pt;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    text-align: center;
   }
 }

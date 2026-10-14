@@ -300,7 +300,7 @@ test('1b: signing in sends only the sign-in code (never a verification link), an
   assert.equal(ana.emailVerified, true, 'still verified after every kind of sign-in');
 });
 
-test('1b: only signup (for an unverified account) and an explicit resend send a verification email', async () => {
+test('1b: only an explicit resend (for a legacy unverified account) sends a verification link', async () => {
   reset();
   const verified = addUser('verified@example.com');
   const pending = addUser('pending@example.com', { verified: false });
@@ -322,7 +322,7 @@ test('1b: only signup (for an unverified account) and an explicit resend send a 
   assert.deepEqual(subjects(), ['Your new Warden verification link']);
   assert.deepEqual(forVerified.json, forPending.json, 'the same answer either way');
 
-  // structural: the two verification templates are used in exactly these two places
+  // structural: the verification-link template is used in exactly one place (sign-up now mails a CODE instead, see signup-flow.test.js)
   const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const users = [];
   const walk = (dir) => {
@@ -336,9 +336,7 @@ test('1b: only signup (for an unverified account) and an explicit resend send a 
   for (const dir of ['controllers', 'utils', 'routes', 'middleware']) walk(dir);
   assert.deepEqual(users, ['controllers/auth.controller.js']);
   const text = src('controllers/auth.controller.js');
-  const signup = text.slice(text.indexOf('const signup ='), text.indexOf('const verifyEmail ='));
   const resend = text.slice(text.indexOf('const resendVerification ='), text.indexOf('const getPublicConfig'));
-  assert.match(signup, /templates\.verifyEmail\(/);
   assert.match(resend, /!user\.emailVerified[\s\S]*templates\.verifyEmailResend\(/);
   // the unlock, verify-otp and issue-session code never mention verification templates or clear the flag
   const login = text.slice(text.indexOf('async function issueLoginSession'), text.indexOf('const getMe ='));

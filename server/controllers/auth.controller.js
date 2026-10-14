@@ -1,20 +1,9 @@
 const crypto = require('crypto');
 
 const User = require('../models/User');
-const {
-  generateSalt,
-  hashPassword,
-  verifyPassword,
-  deriveEncryptionKey,
-  generateDEK,
-  fingerprintDEK,
-  wrapKey,
-  unwrapKey,
-  generateRecoveryKey,
-  hashRecoveryKey,
-} = require('../utils/crypto');
+const { generateSalt, hashPassword, verifyPassword, deriveEncryptionKey, unwrapKey } = require('../utils/crypto');
 const { validatePassword } = require('../utils/passwordPolicy');
-const { assertInviteCode, signupMode, requestAccessText } = require('../utils/inviteGate');
+const { signupMode, requestAccessText } = require('../utils/inviteGate');
 const { trustThisBrowser, isTrustedFor, labelFromUserAgent, parseUserAgent } = require('../utils/trustedDevice');
 const { resolveDevice, deviceFromCookie } = require('../utils/deviceIdentity');
 const { recordEvent, countryFrom, cityFrom } = require('../utils/audit');
@@ -24,7 +13,6 @@ const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
 const { otpEnabled } = require('../utils/otpConfig');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
-const { finalizeReset, extractRecoverySalt } = require('../utils/accountReset');
 const { reserveLoginAttempt, clearLoginFailures } = require('../utils/loginLimiter');
 const { recordDuration, padLikeReal } = require('../utils/sendTiming');
 
@@ -59,9 +47,6 @@ const DUMMY_HASH = hashPassword('warden-timing-parity-dummy-password', DUMMY_SAL
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
 // every handler below can just `throw` instead of repeating try/catch.
-// MongoDB's unique-index violation (also what the in-memory test fakes throw).
-const isDuplicateKey = (error) => Boolean(error && (error.code === 11000 || /E11000/.test(String(error.message))));
-
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function badRequest(message) {
@@ -117,124 +102,6 @@ function invalidVerificationTokenError() {
   error.status = 404;
   return error;
 }
-
-/**
- * POST /api/auth/signup
- * Body: { email, password, inviteCode } (inviteCode only matters unless SIGNUP_MODE is "open")
- *
- * Creates the account using the exact same vault-creation logic the old
- * single-vault setup used (generate the DEK, wrap it under the password
- * and the recovery key, store dekFingerprint) - just per-account instead
- * of global. The account cannot log in until its email is verified (see
- * login below).
- *
- * Anti-enumeration: the response is BYTE-IDENTICAL whether or not the
- * email already has an account - including a `recoveryKey` field of the
- * same shape either way. For a genuinely new account that's the real,
- * one-time recovery key (generateRecoveryKey() output wrapped to the
- * DEK). For an email that already has an account, it's a second,
- * unrelated generateRecoveryKey() call whose output is never used or
- * stored anywhere - its only purpose is making the two responses
- * indistinguishable by shape, not just by message text. All the key work is
- * done BEFORE the existing-account check, for every address, so the time to
- * answer is the same too (see the comments in the handler).
- */
-const signup = asyncHandler(async (req, res) => {
-  // First of all, before the email is looked at (see utils/inviteGate.js). The
-  // route already ran it as middleware; this covers a direct call.
-  if (!req.inviteChecked) await assertInviteCode(req);
-
-  const { email, password } = req.body;
-
-  if (typeof email !== 'string' || typeof password !== 'string') {
-    throw badRequest('email and password are required.');
-  }
-
-  // Must be exactly one plain address (see utils/email.js isSafeRecipient):
-  // an address like "a,b@evil.com" would otherwise create an account and have
-  // its verification link mailed to BOTH recipients. Checked first, before
-  // anything is looked up, created or generated. The answer depends only on
-  // the text typed, never on whether an account exists, so it reveals nothing
-  // about who is registered.
-  const normalizedEmail = normalizeRecipient(email);
-  if (!normalizedEmail) {
-    throw badRequest('A valid email is required.');
-  }
-
-  const { valid, errors } = validatePassword(password);
-  if (!valid) {
-    throw passwordPolicyError(errors);
-  }
-
-  const responseBody = {
-    message: 'If this email can be registered, a verification link has been sent.',
-  };
-
-  // ALL of the work a new account needs is done up front, for every address, before anyone looks at whether it is
-  // taken: the password hash, the recovery key and both key wraps (the expensive part, three scrypt runs). An address
-  // that already has an account pays exactly the same, so the time to answer cannot tell the two apart. What is not
-  // needed is simply thrown away.
-  const salt = generateSalt();
-  const passwordHash = hashPassword(password, salt);
-
-  const recoveryKey = generateRecoveryKey();
-  const recoveryKeyHash = hashRecoveryKey(recoveryKey);
-  const recoverySalt = extractRecoverySalt(recoveryKeyHash);
-
-  const dek = generateDEK();
-
-  const passwordKek = deriveEncryptionKey(password, salt);
-  const wrappedPassword = wrapKey(dek, passwordKek);
-
-  const recoveryKek = deriveEncryptionKey(recoveryKey, recoverySalt);
-  const wrappedRecovery = wrapKey(dek, recoveryKek);
-
-  const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_BYTES).toString('hex');
-
-  let created = false;
-  const existingUser = await User.findOne({ email: normalizedEmail });
-  if (!existingUser) {
-    try {
-      await User.create({
-        email: normalizedEmail,
-        emailVerified: false,
-        verificationTokenHash: hashToken(verificationToken),
-        verificationTokenExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
-        passwordHash,
-        salt,
-        recoveryKeyHash,
-        wrappedDEKPassword: wrappedPassword.wrappedKey,
-        wrappedDEKPasswordIv: wrappedPassword.iv,
-        wrappedDEKPasswordAuthTag: wrappedPassword.authTag,
-        wrappedDEKRecovery: wrappedRecovery.wrappedKey,
-        wrappedDEKRecoveryIv: wrappedRecovery.iv,
-        wrappedDEKRecoveryAuthTag: wrappedRecovery.authTag,
-        dekFingerprint: fingerprintDEK(dek),
-      });
-      created = true;
-    } catch (error) {
-      // Two sign-ups for the same new address at once: the database lets one in, and the other one is simply "an
-      // address that already has an account" - it must get that same answer, never the driver's duplicate-key error.
-      if (!isDuplicateKey(error)) throw error;
-    }
-  }
-
-  if (created) {
-    const appUrl = resolvePublicAppUrl(req);
-    const verifyUrl = appUrl ? `${appUrl}/verify-email?token=${verificationToken}` : null;
-    await sendEmail({ to: normalizedEmail, ...templates.verifyEmail({ verifyUrl }) });
-  } else {
-    // Nothing created, nothing changed - just an optional heads-up to the
-    // real owner, in case this was them forgetting they already have an
-    // account rather than someone else probing their email.
-    await sendEmail({ to: normalizedEmail, ...templates.signupAttempt({ when: new Date() }) });
-  }
-
-  // The same body either way, including a `recoveryKey` of the same shape: for a new account the real, one-time key;
-  // otherwise one that was never stored anywhere and works for nothing (generating it only after the existing-account
-  // check, and only for a real signup, would itself be the oracle).
-  res.status(200).json({ ...responseBody, recoveryKey });
-});
 
 /**
  * POST /api/auth/verify-email
@@ -558,7 +425,7 @@ const logout = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  signup,
+  issueLoginSession,
   verifyEmail,
   resendVerification,
   getPublicConfig,

@@ -19,12 +19,38 @@ const { scrubForLog, shortHash } = require('./logSafe');
 
 const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM'];
 
-/** The From header with the display name "Warden", whatever name (if any) MAIL_FROM carried. */
-function fromHeader(configured) {
-  const match = /<([^<>]+)>\s*$/.exec(String(configured || ''));
-  const address = (match ? match[1] : String(configured || '')).trim();
-  return /^[^\s@<>"]+@[^\s@<>"]+$/.test(address) ? { name: 'Warden', address } : configured;
+const PLAIN_ADDRESS = /^[^\s@<>"]+@[^\s@<>"]+$/;
+const addressOf = (value) => {
+  const match = /<([^<>]+)>\s*$/.exec(String(value || ''));
+  return (match ? match[1] : String(value || '')).trim();
+};
+
+/**
+ * The From header: the display name "Warden" on EXACTLY the address that signs in to the SMTP server. Gmail (and most
+ * providers) rewrite any other From to the authenticated account, which both looks wrong and hurts delivery, so SMTP_USER
+ * wins when it is an address; MAIL_FROM only supplies the address when SMTP_USER is not one (a provider that signs in with
+ * an API key, say).
+ */
+function fromHeader(configured, smtpUser) {
+  const user = String(smtpUser || '').trim();
+  if (PLAIN_ADDRESS.test(user)) return { name: 'Warden', address: user };
+  const address = addressOf(configured);
+  return PLAIN_ADDRESS.test(address) ? { name: 'Warden', address } : configured;
 }
+
+/**
+ * A warning to print at start-up (never the address itself) when MAIL_FROM names a different mailbox than SMTP_USER, since
+ * the mail is sent from SMTP_USER regardless. Null when all is well or the settings are not both addresses.
+ */
+function mailFromWarning(env = process.env) {
+  const user = String(env.SMTP_USER || '').trim().toLowerCase();
+  const from = addressOf(env.MAIL_FROM).toLowerCase();
+  if (!PLAIN_ADDRESS.test(user) || !PLAIN_ADDRESS.test(from) || user === from) return null;
+  return 'MAIL_FROM names a different mailbox than SMTP_USER. Mail is sent from the SMTP_USER address (providers such as Gmail rewrite any other), so set MAIL_FROM to the same address.';
+}
+
+// Marks transactional mail as machine-generated, so auto-responders (out-of-office and the like) leave it alone.
+const TRANSACTIONAL_HEADERS = Object.freeze({ 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' });
 
 function smtpConfigured() {
   return SMTP_VARS.every((name) => Boolean(process.env[name]));
@@ -164,11 +190,12 @@ async function sendEmail({ to, subject, text, html }) {
 
   try {
     await getTransporter().sendMail({
-      from: fromHeader(process.env.MAIL_FROM),
+      from: fromHeader(process.env.MAIL_FROM, process.env.SMTP_USER),
       to,
       subject,
       text,
       html,
+      headers: TRANSACTIONAL_HEADERS,
     });
     return true;
   } catch (err) {
@@ -195,4 +222,4 @@ async function verifySmtp() {
   return getTransporter().verify();
 }
 
-module.exports = { sendEmail, isSafeRecipient, normalizeRecipient, verifySmtp, fromHeader };
+module.exports = { sendEmail, isSafeRecipient, normalizeRecipient, verifySmtp, fromHeader, mailFromWarning, TRANSACTIONAL_HEADERS };

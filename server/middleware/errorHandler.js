@@ -13,7 +13,7 @@ const notFound = (req, res, next) => {
 // SESSION_INVALID: the bearer token itself is missing, expired or unknown (as
 // opposed to some other 401, such as a wrong password or code on a signed-in
 // route), so the client knows to end its session.
-const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INVALID', 'STORAGE_QUOTA', 'INVITE_CODE_INVALID', 'RESET_TICKET_INVALID',
+const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INVALID', 'STORAGE_QUOTA', 'INVITE_CODE_INVALID', 'RESET_TICKET_INVALID', 'EMAIL_DOMAIN_NO_MAIL',
   // Emergency Access: answers the screens act on (the first three are only ever given to someone who has already passed
   // the kit and code checks).
   'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY']);

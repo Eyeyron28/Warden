@@ -13,6 +13,7 @@ process.env.SIGNUP_MODE = 'open';
 
 const { connectThrowaway, disconnectThrowaway, mongoose } = require('./helpers/realMongo');
 const { call } = require('./helpers/fakeDb');
+const { makeUser } = require('./helpers/makeUser');
 
 const emailPath = require.resolve('../utils/email');
 const realEmail = require('../utils/email');
@@ -46,8 +47,7 @@ async function freshAccount() {
   await mongoose.connection.dropDatabase();
   await User.init();
   await LoginFailure.init();
-  await call(auth.signup, { body: { email: REAL, password: PASSWORD }, inviteChecked: true });
-  await User.updateOne({ email: REAL }, { $set: { emailVerified: true } });
+  await makeUser(User, REAL, PASSWORD);
 }
 
 // What a caller can see of an answer: status, body fields, headers. Nothing about the account.

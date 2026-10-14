@@ -156,7 +156,7 @@ function fakeModel(world, table, extras = {}) {
     findById: (id) => query(() => rows().find((r) => String(r._id) === String(id)) || null),
     findOneAndUpdate: async (filter, update, options) => {
       let doc = rows().find((r) => matches(r, filter));
-      if (!doc && Array.isArray(update) && options?.upsert) {
+      if (!doc && options?.upsert) {
         const seed = Object.fromEntries(Object.entries(filter).filter(([, v]) => v === null || typeof v !== 'object' || isDate(v) || isId(v)));
         doc = { _id: oid(), ...seed };
         rows().push(doc);

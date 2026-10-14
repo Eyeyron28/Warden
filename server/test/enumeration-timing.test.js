@@ -24,6 +24,8 @@ db.installRateLimit();
 world.sendDelayMs = 40;
 
 const auth = require('../controllers/auth.controller');
+const { signupStart } = require('../controllers/signup.controller');
+require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.com', priority: 10 }];
 const reset = require('../controllers/passwordReset.controller');
 const { call } = db;
 
@@ -50,23 +52,28 @@ const addUser = (email, extra = {}) => {
   return user;
 };
 
-test('signup: an existing address and a new one answer alike and take alike', async () => {
+test('signup start: an existing address and a new one answer alike and take alike', async () => {
   addUser('taken@example.com');
+  const start = (email) => call(signupStart, { body: { email, password: PASSWORD, termsAccepted: true } });
+  // Some real starts first, so the look-alike's learned time has settled (as on any server that has been sending codes).
+  for (let i = 0; i < 8; i += 1) await start(`warm-up-${i}@example.com`);
   const fresh = [];
   const taken = [];
   let freshAnswer;
   let takenAnswer;
   for (let i = 0; i < 5; i += 1) {
-    const a = await timed(() => call(auth.signup, { body: { email: `new-${i}@example.com`, password: PASSWORD }, inviteChecked: true }));
-    const b = await timed(() => call(auth.signup, { body: { email: 'taken@example.com', password: PASSWORD }, inviteChecked: true }));
+    const a = await timed(() => start(`new-${i}@example.com`));
+    const b = await timed(() => start('taken@example.com'));
     fresh.push(a.ms);
     taken.push(b.ms);
-    freshAnswer = answerOf(a.out);
-    takenAnswer = answerOf(b.out);
+    freshAnswer = a.out;
+    takenAnswer = b.out;
   }
-  assert.deepEqual(freshAnswer, takenAnswer, 'same status, message and body fields (recoveryKey included)');
   assert.equal(freshAnswer.status, 200);
-  assertSimilar('signup', fresh, taken);
+  assert.deepEqual(Object.keys(freshAnswer.json).sort(), Object.keys(takenAnswer.json).sort(), 'the same body fields');
+  assert.equal(freshAnswer.json.message, takenAnswer.json.message);
+  assert.equal(freshAnswer.json.recoveryKey, undefined);
+  assertSimilar('signup start', fresh, taken);
 });
 
 test('resend-verification: an unverified account, a verified one and an unknown address answer alike and take alike', async () => {

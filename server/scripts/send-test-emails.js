@@ -43,7 +43,7 @@ const samples = [
   ['delete-account-code', templates.deleteAccountCode({ code: '482916', ttlMinutes })],
   ['password-reset-code', templates.passwordResetCode({ code: '482916', ttlMinutes })],
   ['share-code', templates.shareCode({ code: '482916', ttlMinutes })],
-  ['verify-email', templates.verifyEmail({ verifyUrl })],
+  ['sign-up-code', templates.signupCode({ code: '482916', ttlMinutes })],
   ['verify-email-resend', templates.verifyEmailResend({ verifyUrl })],
   ['signup-attempt', templates.signupAttempt({ when })],
   ['password-changed-recovery-key', templates.passwordChanged({ method: 'recovery-key', when, browser: 'Chrome on Windows' })],

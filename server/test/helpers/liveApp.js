@@ -30,6 +30,9 @@ async function startLiveApp(name) {
     EMERGENCY_DEMO_MODE: 'false',
   });
 
+  // Sign-up checks that an address's domain can receive mail; the test domains are answered for, not looked up.
+  require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.test', priority: 10 }];
+
   const mails = [];
   const emailPath = require.resolve('../../utils/email');
   const realEmail = require('../../utils/email');

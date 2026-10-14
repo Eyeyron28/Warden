@@ -1,11 +1,14 @@
-import { lazy, Suspense, useCallback, useRef, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 
 import InviteCodeField from '../../components/InviteCodeField.jsx';
 import SensitiveInput from '../../components/SensitiveInput.jsx';
 import Icon from '../../components/site/Icon.jsx';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter.jsx';
-import { signupVault } from '../../services/authService.js';
+import { signupResend, signupStart, signupVerify } from '../../services/authService.js';
+import { setToken } from '../../services/session.js';
+import { suggestEmailFix } from '../../utils/emailTypos.js';
+import { clearSignupEmail, initialSignupState, nextStep, saveSignupEmail } from '../../utils/signupDraft.js';
 import { cleanInviteCode, describeSignupFailure, inviteFieldError } from '../../utils/inviteCode.js';
 import { useSignupConfig } from '../../utils/publicConfig.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
@@ -14,7 +17,7 @@ import { usePageMeta } from '../../utils/usePageMeta.js';
 import AuthLayout from './AuthLayout.jsx';
 import PasswordInput from './PasswordInput.jsx';
 import RecoveryKeyStep from './RecoveryKeyStep.jsx';
-import ResendButton from './ResendButton.jsx';
+import SignupCodeStep from './SignupCodeStep.jsx';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import inviteStyles from '../../components/InviteCodeField.module.css';
@@ -43,28 +46,37 @@ function fieldErrors(values, { inviteRequired }) {
 }
 
 /**
- * Three steps, all on this page:
- *   1. the form;
- *   2. the recovery key - the server returns it once, in the signup
- *      response, and never again, so it has to be shown here, before the
- *      email is verified (the verify link may well open on another device);
- *   3. "Check your email", with a resend button.
+ * Three steps, all on this page - and NO account exists until step 2 succeeds:
+ *   1. the form: the server checks it and emails a 6-digit code (it creates nothing);
+ *   2. "Enter the code we emailed": only the right code creates the account and signs the person in;
+ *   3. the recovery key - returned once, in the answer to step 2, and never again - then into the app.
  *
- * The signup response is deliberately identical whether or not the email
- * already had an account (the server returns a key-shaped value either
- * way), so this page never claims an account "was created".
+ * Step 1 answers the same whether or not the address already has an account (that owner gets a notice instead of a code),
+ * so this page never says whether one exists. A reload in the middle returns to step 1 with the email filled in again;
+ * the password is never kept anywhere.
  */
 function SignupPage() {
   usePageMeta('Create your vault', 'Create a Warden account: an encrypted vault for your important documents.');
   const token = useSessionToken();
 
-  const [step, setStep] = useState('form'); // form | key | email
-  const [values, setValues] = useState({ email: '', password: '', confirm: '', invite: '' });
+  const navigate = useNavigate();
+  const [step, setStep] = useState(() => initialSignupState().step); // form | code | key
+  const [values, setValues] = useState(() => initialSignupState().values);
+  const [challenge, setChallenge] = useState(null); // the neutral answer to step 1 (timestamps for the countdowns)
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [serverFieldErrors, setServerFieldErrors] = useState({});
   const [recoveryKey, setRecoveryKey] = useState(null);
+  // The session token is handed to the app only AFTER the recovery key screen is on screen: setting it in the same tick
+  // would re-render this page as "signed in" before the step change lands, and skip the key.
+  const [pendingToken, setPendingToken] = useState(null);
+  useEffect(() => {
+    if (step === 'key' && pendingToken) {
+      setToken(pendingToken);
+      setPendingToken(null);
+    }
+  }, [step, pendingToken]);
   // 'loading' | 'ready' | 'error': never guessed. If the settings cannot be loaded
   // the page offers a retry instead of a form that may be missing the invite field.
   const { status: configStatus, config, retry: retryConfig } = useSignupConfig();
@@ -93,13 +105,16 @@ function SignupPage() {
     setLegalTab(key);
   };
 
-  if (token) return <Navigate to="/files" replace />;
+  // Signed in is a reason to leave - except while the recovery key is on screen: the session is made at the moment the account is.
+  if (token && step !== 'key') return <Navigate to="/files" replace />;
 
   const inviteRequired = signupMode === 'invite';
   const errors = { ...fieldErrors(values, { inviteRequired }), ...serverFieldErrors };
   const visibleError = (field) => (touched[field] || serverFieldErrors[field] ? errors[field] : '');
   const isValid = Object.keys(fieldErrors(values, { inviteRequired })).length === 0;
   const legalAllRead = legalRead.terms && legalRead.privacy;
+  // Only ever a suggestion: a typo in a well-known domain is offered a one-click fix, and nothing is blocked.
+  const emailSuggestion = suggestEmailFix(values.email);
   const canSubmit = isValid && agreed && legalAllRead;
 
   const update = (field) => (event) => {
@@ -135,14 +150,14 @@ function SignupPage() {
     setSubmitting(true);
     setFormError('');
     try {
-      const response = await signupVault(
-        values.email.trim(),
-        values.password,
-        inviteRequired ? cleanInviteCode(values.invite) : undefined
-      );
-      setRecoveryKey(response.recoveryKey);
-      setValues((prev) => ({ ...prev, password: '', confirm: '', invite: '' }));
-      setStep('key');
+      const response = await signupStart({
+        email: values.email.trim(),
+        password: values.password,
+        inviteCode: inviteRequired ? cleanInviteCode(values.invite) : undefined,
+      });
+      saveSignupEmail(values.email.trim());
+      setChallenge(response);
+      setStep(nextStep('form', 'codeSent'));
       window.scrollTo(0, 0);
     } catch (err) {
       const failure = describeSignupFailure(err);
@@ -152,6 +167,9 @@ function SignupPage() {
         requestAnimationFrame(() => inviteRef.current?.focus());
       } else if (failure.kind === 'password') {
         setServerFieldErrors({ password: failure.message });
+      } else if (failure.kind === 'email') {
+        setServerFieldErrors({ email: failure.message });
+        requestAnimationFrame(() => document.getElementById('signup-email')?.focus());
       } else {
         setFormError(failure.message);
       }
@@ -172,40 +190,41 @@ function SignupPage() {
           email={values.email.trim()}
           continueLabel="I've saved it - continue"
           onContinue={() => {
+            // The key is dropped from memory the moment this screen is left.
             setRecoveryKey(null);
-            setStep('email');
-            window.scrollTo(0, 0);
+            clearSignupEmail();
+            navigate('/files', { replace: true });
           }}
         />
       </AuthLayout>
     );
   }
 
-  if (step === 'email') {
+  if (step === 'code') {
     return (
-      <AuthLayout
-        title="Check your email to continue"
-        footer={
-          <span>
-            Verified already?{' '}
-            <Link to="/login" className={site.textLink}>
-              Log in
-            </Link>
-          </span>
-        }
-      >
-        <div className={styles.stack}>
-          <p className={styles.subtitle} style={{ marginTop: 0 }}>
-            We&apos;ve sent a message to <span className={styles.emailEcho}>{values.email.trim()}</span>. Open it and
-            follow the instructions to continue. If you already have a Warden account with this address, the message
-            will say so and tell you how to log in or reset your password.
-          </p>
-          <div className={forms.notice}>
-            <Icon name="mail" />
-            <p>Check your spam folder. The link expires in 24 hours.</p>
-          </div>
-          <ResendButton email={values.email.trim()} startCoolingDown />
-        </div>
+      <AuthLayout title="Enter the code we emailed" wide>
+        <SignupCodeStep
+          email={values.email.trim()}
+          challenge={challenge}
+          onSubmitCode={async (code) => {
+            const result = await signupVerify({ email: values.email.trim(), password: values.password, code });
+            // The account exists now. The key goes on screen first; the session (and so the app) follows it.
+            setRecoveryKey(result.recoveryKey);
+            setValues((prev) => ({ ...prev, password: '', confirm: '', invite: '' }));
+            setStep(nextStep('code', 'verified'));
+            setPendingToken(result.sessionToken);
+            window.scrollTo(0, 0);
+          }}
+          onResend={() => signupResend(values.email.trim())}
+          onBack={() => {
+            setStep(nextStep('code', 'back'));
+            window.scrollTo(0, 0);
+          }}
+          onExpired={() => {
+            setFormError('That code expired. Press Create vault to get a new one.');
+            setStep(nextStep('code', 'expired'));
+          }}
+        />
       </AuthLayout>
     );
   }
@@ -303,6 +322,22 @@ function SignupPage() {
             <p id="signup-email-error" className={forms.error} aria-live="polite">
               {visibleError('email')}
             </p>
+            {emailSuggestion && touched.email && (
+              <p className={forms.hint} role="status" data-testid="email-suggestion">
+                Did you mean{' '}
+                <button
+                  type="button"
+                  className={site.textLink}
+                  onClick={() => {
+                    setValues((prev) => ({ ...prev, email: emailSuggestion }));
+                    setServerFieldErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                >
+                  {emailSuggestion}
+                </button>
+                ?
+              </p>
+            )}
           </div>
         </div>
 
