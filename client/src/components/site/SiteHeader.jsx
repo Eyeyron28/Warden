@@ -59,6 +59,17 @@ function SiteHeader() {
   // URL hash on "/" rather than a route.
   const isActiveLink = (link) => location.pathname === '/' && location.hash === link.hash;
 
+  // The layout scrolls to a section when the address changes to it. Clicking a link whose address is already the current one
+  // changes nothing, so scroll from here (smoothly, or at once for people who asked for less motion) and close the menu.
+  const onSectionClick = (link) => (event) => {
+    if (location.pathname !== '/' || location.hash !== link.hash) return;
+    event.preventDefault();
+    setDrawerOpen(false);
+    const target = document.getElementById(link.hash.slice(1));
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  };
+
   const closeDrawer = useCallback(({ restoreFocus = true } = {}) => {
     setDrawerOpen(false);
     if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
@@ -131,6 +142,7 @@ function SiteHeader() {
             <Link
               key={link.to}
               to={link.to}
+              onClick={onSectionClick(link)}
               className={`${styles.navLink} ${isActiveLink(link) ? styles.navLinkActive : ''}`}
               aria-current={isActiveLink(link) ? 'location' : undefined}
             >
@@ -187,7 +199,7 @@ function SiteHeader() {
                 Home
               </Link>
               {NAV_LINKS.map((link) => (
-                <Link key={link.to} to={link.to} className={styles.drawerLink}>
+                <Link key={link.to} to={link.to} onClick={onSectionClick(link)} className={styles.drawerLink}>
                   {link.label}
                 </Link>
               ))}

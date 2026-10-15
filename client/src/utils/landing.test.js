@@ -87,7 +87,6 @@ const LANDING = [
   'components/site/EncryptionDemo.jsx',
   'components/site/HowItWorks.jsx',
   'components/site/ProtectionCompare.jsx',
-  'components/site/PageIndex.jsx',
   'components/site/Faq.jsx',
 ];
 const LANDING_CSS = [
@@ -98,7 +97,6 @@ const LANDING_CSS = [
   'components/site/EncryptionDemo.module.css',
   'components/site/HowItWorks.module.css',
   'components/site/ProtectionCompare.module.css',
-  'components/site/PageIndex.module.css',
   'components/site/Faq.module.css',
 ];
 
@@ -132,7 +130,7 @@ test('no inline script, inline handler, eval or raw HTML on the landing page (th
 
 test('the copy rules: no em dashes, emoji or marketing words on the page', () => {
   const banned = /\b(revolutioni[sz]e|supercharge|seamless(ly)?|effortless(ly)?|cutting-edge|game-changing|unlock the power|next-generation|trusted by)\b/i;
-  for (const file of LANDING.filter((f) => !/ContactSection|Faq\.jsx|PageIndex/.test(f))) {
+  for (const file of LANDING.filter((f) => !/ContactSection|Faq\.jsx/.test(f))) {
     const text = strip(read(file));
     assert.doesNotMatch(text, /—/, `${file}: em dash`);
     assert.doesNotMatch(text, /\p{Extended_Pictographic}/u, `${file}: emoji`);
@@ -189,4 +187,28 @@ test('the update banner leaves room at the bottom of the page and stays reachabl
 test('motion is optional: the scroll reveal and smooth scrolling are off under reduced motion', () => {
   assert.match(read('components/site/Reveal.module.css'), /prefers-reduced-motion: no-preference/);
   assert.match(fs.readFileSync(path.join(src, 'styles', 'global.css'), 'utf8'), /prefers-reduced-motion: no-preference[\s\S]*scroll-behavior: smooth/);
+});
+
+test('there is one navigation bar on the landing page: the header (no second section bar, no leftovers)', () => {
+  assert.ok(!fs.existsSync(path.join(src, 'components', 'site', 'PageIndex.jsx')));
+  assert.ok(!fs.existsSync(path.join(src, 'components', 'site', 'PageIndex.module.css')));
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  for (const file of walk(src).filter((f) => /\.(jsx?|css)$/.test(f) && !f.endsWith('landing.test.js'))) {
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /PageIndex|useActiveSection/, file);
+  }
+  // The legal pages keep their own "On this page" list; the landing page does not have one.
+  assert.doesNotMatch(strip(read('pages/public/HomePage.jsx')) + strip(read('pages/public/HomeBelow.jsx')), /On this page/);
+  // The offset for a section title under the sticky header is ONE rule (global.css [id]), not two added together.
+  const css = fs.readFileSync(path.join(src, 'styles', 'global.css'), 'utf8');
+  assert.equal((css.match(/scroll-margin-top/g) || []).length, 1);
+  assert.doesNotMatch(css, /scroll-padding-top/);
+  for (const file of ['pages/public/HomeBelow.module.css', 'pages/public/AboutSection.module.css', 'pages/public/ContactSection.module.css']) assert.doesNotMatch(read(file), /scroll-margin-top|scroll-padding-top/, file);
+});
+
+test('the header About and Contact links scroll smoothly, also when the address is already theirs, and close the menu', () => {
+  const header = strip(read('components/site/SiteHeader.jsx'));
+  assert.match(header, /const onSectionClick = \(link\) => \(event\) =>/);
+  assert.match(header, /behavior: reduceMotion \? 'auto' : 'smooth'/);
+  assert.equal((header.match(/onClick=\{onSectionClick\(link\)\}/g) || []).length, 2, 'the bar and the menu');
+  assert.match(strip(read('components/site/PublicLayout.jsx')), /behavior: reduceMotion \? 'auto' : 'smooth'/);
 });

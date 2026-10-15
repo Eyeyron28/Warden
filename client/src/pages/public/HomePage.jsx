@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 
 import EncryptionDemo from '../../components/site/EncryptionDemo.jsx';
 import Icon from '../../components/site/Icon.jsx';
-import PageIndex from '../../components/site/PageIndex.jsx';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import { useSignupConfig } from '../../utils/publicConfig.js';
@@ -21,16 +20,6 @@ import styles from './HomePage.module.css';
 // stays small: the hero, the encryption demo and the facts strip are all that ships with the main bundle.
 
 const HomeBelow = lazy(() => import('./HomeBelow.jsx'));
-
-const INDEX = [
-  { id: 'how-it-works', label: 'How it works' },
-  { id: 'protected', label: 'Protected, and not' },
-  { id: 'features', label: 'Features' },
-  { id: 'sharing', label: 'Sharing' },
-  { id: 'faq', label: 'Questions' },
-  { id: 'about', label: 'About' },
-  { id: 'contact', label: 'Contact' },
-];
 
 // Each one matches the code: crypto.js, auth.controller.js, sessionStore.js, utils/trash.js, accountCreate.js.
 const FACTS = [
@@ -135,8 +124,6 @@ function HomePage() {
           ))}
         </ul>
       </section>
-
-      <PageIndex items={INDEX} />
 
       <Suspense fallback={<div className={styles.placeholder} aria-hidden="true" />}>
         <HomeBelow cta={bottomCta} />
