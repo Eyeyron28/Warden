@@ -92,10 +92,18 @@ function quotaError(usage, addBytes) {
   return error;
 }
 
-/** Throws a 413 STORAGE_QUOTA error if adding `addBytes` would pass the account's quota. */
+/**
+ * Throws a 413 STORAGE_QUOTA error if adding `addBytes` would pass the account's quota.
+ *
+ * It reads only what the check needs - the bytes of the vault, of Trash and of earlier versions, three small aggregates sent
+ * together - and not the item counts the storage meter also shows (getUsage), which cost two more round trips on every upload.
+ */
 async function assertCanStore(userId, addBytes) {
-  const usage = await getUsage(userId);
-  if (usage.usedBytes + addBytes > usage.quotaBytes) throw quotaError(usage, addBytes);
+  const [files, trashed, versions] = await Promise.all([sumFor(userId, LIVE), sumFor(userId, TRASHED), versionsFor(userId)]);
+  const quota = quotaBytes();
+  const usedBytes = files.bytes + trashed.bytes + versions.bytes;
+  const usage = { usedBytes, quotaBytes: quota, availableBytes: Math.max(0, quota - usedBytes) };
+  if (usedBytes + addBytes > quota) throw quotaError(usage, addBytes);
   return usage;
 }
 

@@ -7,6 +7,7 @@ import { extractErrorMessage } from '../services/api.js';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import { keepExtension, splitName } from '../utils/fileNames.js';
 import { EXPIRY_STORAGE_NOTE } from '../utils/expiry.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './EditDocumentModal.module.css';
 
 // document.expiryDate arrives as an ISO string (e.g.
@@ -45,6 +46,7 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
   const [expiryDate, setExpiryDate] = useState(toDateInputValue(document.expiryDate));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const run = useSingleFlight();
   const location = !document.folder || document.folder === 'root' ? 'My Vault' : document.folder;
 
   const handleSubmit = async (event) => {
@@ -87,7 +89,10 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
 
   return (
     <Modal title={`Edit "${document.filename}"`} onClose={onClose}>
-      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+      <form className={styles.form} onSubmit={(event) => {
+          event.preventDefault();
+          run(() => handleSubmit(event));
+        }} noValidate>
         <div className={styles.field}>
           <label htmlFor="edit-filename" className={styles.label}>
             Filename

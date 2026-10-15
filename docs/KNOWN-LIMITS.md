@@ -45,6 +45,22 @@ deadline. Both advisories cover every 6.x release, so no patch or minor update i
 **When to remove this entry:** upgrade to react-router-dom 7.18 or later, run `npm audit --omit=dev`, and delete the two rows. The
 upgrade is a major version, so the routing code (`App.jsx`, `main.jsx`) and the tests that read it need to be re-checked.
 
+## Same-name files and double uploads
+
+- A file whose name is already used in the folder is saved with a counter ("report (1).pdf", "report (2).pdf"; `server/utils/uniqueName.js`).
+  The same helper names renames and files restored from Trash. Move and batch Move keep their older rule (a taken name is a reported
+  conflict, nothing moves).
+- **The remaining race:** the counter is chosen by reading the folder's names and then saving; nothing locks between the two, and there
+  is deliberately no unique index on file names (older data may already contain duplicates, and the index migration must never fail
+  on it). Two *different* uploads of the same name that reach the database at the same instant can therefore both be given the same
+  number. It is harmless: each is its own document, nothing is overwritten, and either can be renamed.
+- An upload sent twice (a double click, a retry after a slow answer) is a different matter and is handled exactly: the browser puts a
+  random UUID on every upload attempt (`uploadKey`), a partial unique index on `{ userId, uploadKey }` lets only one document have it,
+  and the second request answers with the first document without storing or charging anything. Uploads from older clients or scripts
+  that send no key are not protected against being sent twice.
+- Previews are drawn after an upload has been saved (the upload no longer waits for pdf.js). If the browser is closed in that moment the
+  file has no preview until "Background previews" or opening the file makes one.
+
 ## Private notes and version history
 
 Both are encrypted **by the server with the vault key**, the same way a file or a share's purpose label is. They are **not end-to-end

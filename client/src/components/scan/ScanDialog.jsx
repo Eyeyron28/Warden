@@ -3,7 +3,7 @@ import { ArrowClockwise, ArrowCounterClockwise, Camera, Plus, Trash } from '@pho
 
 import Modal from '../Modal.jsx';
 import CropOverlay from './CropOverlay.jsx';
-import { getStorage, uploadDocument } from '../../services/documentsService.js';
+import { getStorage, renamedNotice, uploadDocument } from '../../services/documentsService.js';
 import { extractErrorMessage } from '../../services/api.js';
 import { uploadFitsMessage } from '../../utils/storageUsage.js';
 import { FULL_CROP, cleanScanName, defaultScanName, rotateCrop } from '../../utils/scan/imageOps.js';
@@ -68,6 +68,7 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose, onSaved }) {
   const input = useRef(null);
   const pagesRef = useRef(pages);
   const alive = useRef(true);
+  const saving = useRef(false);
   pagesRef.current = pages;
 
   // Closing (or leaving) discards everything: the canvases are emptied so the browser can take the memory back at once.
@@ -118,9 +119,13 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose, onSaved }) {
   const turn = (direction) => update(page.id, { rotation: page.rotation + (direction === 'right' ? 90 : -90), crop: rotateCrop(page.crop, direction) });
 
   const save = async (chosenFormat = format) => {
+    // One save at a time: set before any await, so Enter twice or a double tap sends one upload.
+    if (saving.current) return;
+    saving.current = true;
     const cleaned = cleanScanName(name);
     if (!cleaned) {
       setError('Give the scan a name.');
+      saving.current = false;
       return;
     }
     setError('');
@@ -153,25 +158,28 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose, onSaved }) {
         return;
       }
       let saved = 0;
+      const notices = [];
       try {
         for (let index = 0; index < files.length; index += 1) {
           setWork({ busy: true, label: files.length > 1 ? `Saving file ${index + 1} of ${files.length}…` : 'Saving…', percent: 0 });
           // The existing upload, unchanged: the 4 MB cap, the preview, the type sniffing and the quota are all its own.
           // eslint-disable-next-line no-await-in-loop
-          await uploadDocument({ file: files[index], folder: folder || undefined }, (percent) => alive.current && setWork((value) => ({ ...value, percent })));
+          const stored = await uploadDocument({ file: files[index], folder: folder || undefined }, (percent) => alive.current && setWork((value) => ({ ...value, percent })));
           saved += 1;
+          if (stored?.nameChanged) notices.push(renamedNotice(stored));
         }
       } catch (err) {
         const message = extractErrorMessage(err, 'Upload failed.');
         setError(saved > 0 ? `Saved ${saved} of ${files.length} files, then it stopped: ${message}` : message);
-        if (saved > 0) await onSaved?.(saved);
+        if (saved > 0) await onSaved?.(saved, notices);
         return;
       }
-      await onSaved?.(saved);
+      await onSaved?.(saved, notices);
       onClose();
     } catch (err) {
       if (alive.current) setError(extractErrorMessage(err, 'Could not prepare the scan.'));
     } finally {
+      saving.current = false;
       for (const canvas of canvases) releaseCanvas(canvas);
       if (alive.current) setWork({ busy: false, label: '', percent: 0 });
     }

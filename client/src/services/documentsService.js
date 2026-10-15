@@ -2,6 +2,7 @@ import api from './api.js';
 import { fetchCached, peek } from './dataCache.js';
 import { setFolderStyles } from './folderStyles.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
+import { newUploadKey } from '../utils/uuid.js';
 import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileNames.js';
 
 /**
@@ -118,29 +119,66 @@ export async function updateDocument(id, updates) {
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE = 'File exceeds the 4MB size limit.';
 
-export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
+/** Told when a preview that was drawn AFTER an upload has been stored, so a list can show it without asking again. */
+export const THUMBNAIL_READY = 'warden:thumbnail-ready';
+
+// Previews are drawn one at a time after the uploads, never before one is sent: drawing the first page of a PDF means loading
+// pdf.js, which used to be waited for before the file even started to go. At most a few wait; the rest are made by the
+// "Background previews" setting or when the file is opened.
+const MAX_QUEUED_PREVIEWS = 3;
+let previewQueue = Promise.resolve();
+let queuedPreviews = 0;
+
+function drawPreviewLater(file, id) {
+  if (queuedPreviews >= MAX_QUEUED_PREVIEWS) return;
+  queuedPreviews += 1;
+  previewQueue = previewQueue
+    .then(async () => {
+      const thumb = await generateThumbnail(file); // never throws
+      if (!thumb) return;
+      await putThumbnail(id, thumb);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(THUMBNAIL_READY, { detail: { id } }));
+    })
+    .catch(() => {
+      // A preview is a nicety; the file is saved either way.
+    })
+    .finally(() => {
+      queuedPreviews -= 1;
+    });
+}
+
+/**
+ * Uploads one file through POST /api/documents.
+ *
+ * Each call makes a fresh `uploadKey` (a UUID) and sends it with the file: if the same request reaches the server twice (a retry
+ * after a slow answer) the server stores ONE file and answers with it. `signal` (an AbortSignal) cancels the request. The preview
+ * is drawn after the file is saved, not before it is sent. The answer carries the final name: `nameChanged` is true when a
+ * same-named file made the server add a counter ("report (1).pdf").
+ *
+ * @param {{ file: File, folder?: string, expiryDate?: string, signal?: AbortSignal, preview?: boolean }} params
+ * @param {(percent: number) => void} [onProgress] real bytes sent, 0 to 100
+ */
+export async function uploadDocument({ file, folder, expiryDate, signal, preview = true }, onProgress) {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw Object.assign(new Error(TOO_LARGE_MESSAGE), { response: { status: 413, data: { error: { message: TOO_LARGE_MESSAGE } } } });
   }
   const formData = new FormData();
-  formData.append('file', file);
-  // Drawn here, in the browser, from the plaintext file; the server
-  // encrypts it. Optional by design: generateThumbnail never throws, and
-  // null (non-image/PDF, corrupt file, too large to fit) just means this
-  // document gets a type icon instead.
-  const thumb = await generateThumbnail(file);
-  if (thumb) formData.append('thumb', thumb, 'thumb');
+  formData.append('uploadKey', newUploadKey());
   if (folder) formData.append('folder', folder);
   if (expiryDate) formData.append('expiryDate', expiryDate);
+  // The file goes last: the small fields are read first.
+  formData.append('file', file);
 
   try {
     const { data } = await api.post('/documents', formData, {
+      signal,
       onUploadProgress: (event) => {
         if (onProgress && event.total) {
           onProgress(Math.round((event.loaded / event.total) * 100));
         }
       },
     });
+    if (preview && data?.id && !data.replayed) drawPreviewLater(file, data.id);
     return data;
   } catch (err) {
     // The platform's own "payload too large" has no JSON body to read a message from.
@@ -149,6 +187,12 @@ export async function uploadDocument({ file, folder, expiryDate }, onProgress) {
     }
     throw err;
   }
+}
+
+/** The sentence shown when the server gave an upload (or a rename) a counter. */
+export function renamedNotice(result) {
+  if (!result?.nameChanged) return '';
+  return `A file with this name already exists. Saved as "${result.filename ?? result.name}".`;
 }
 
 /**

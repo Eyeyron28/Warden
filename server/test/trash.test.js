@@ -326,7 +326,7 @@ test('deleting a folder that is not there is a success and changes nothing', asy
 });
 
 // ---------- restore rules ----------
-test('restore: original folder gone -> top level with a message; name taken -> top level; taken there too -> 409', async () => {
+test('restore: original folder gone -> top level with a message; name taken -> comes back with a counter, never refused', async () => {
   reset();
   // 1. original folder deleted while the file was in Trash
   await addFolder(ALICE, 'Projects');
@@ -345,25 +345,37 @@ test('restore: original folder gone -> top level with a message; name taken -> t
   await trash.trashDocument(ALICE, two._id);
   addDoc({ filename: 'a.pdf', folder: 'Docs' });
   const r2 = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(two._id) } });
-  assert.equal(r2.json.restoredTo, '');
-  assert.match(r2.json.message, /already exists in the original folder/);
-  assert.equal(two.folder, 'root');
+  assert.equal(r2.json.restoredTo, 'Docs', 'it goes back to its own folder');
+  assert.equal(r2.json.name, 'a (1).pdf');
+  assert.equal(r2.json.nameChanged, true);
+  assert.match(r2.json.message, /already there, so it was restored as "a \(1\)\.pdf"/);
+  assert.equal(two.filename, 'a (1).pdf');
+  assert.equal(two.folder, 'Docs');
+  assert.equal(two.deletedAt, null);
 
-  // 3. taken at the top level too: 409 and nothing changes
+  // 3. taken in the original folder AND at the top level: still not refused; the next free number
   const three = addDoc({ filename: 'b.pdf', folder: 'Docs' });
   await trash.trashDocument(ALICE, three._id);
   addDoc({ filename: 'b.pdf', folder: 'Docs' });
-  addDoc({ filename: 'b.pdf', folder: 'root' });
+  addDoc({ filename: 'b (1).pdf', folder: 'Docs' });
   const r3 = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(three._id) } });
-  assert.equal(r3.error.status, 409);
-  assert.equal(r3.error.code, 'NAME_EXISTS');
-  assert.ok(three.deletedAt, 'still in Trash');
+  assert.equal(r3.json.name, 'b (2).pdf');
+  assert.equal(three.deletedAt, null);
 
-  // 4. original at the top level and name taken there -> 409
+  // 4. original at the top level and the name taken there: a counter too
   const four = addDoc({ filename: 'c.pdf', folder: 'root' });
   await trash.trashDocument(ALICE, four._id);
   addDoc({ filename: 'c.pdf', folder: 'root' });
-  assert.equal((await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(four._id) } })).error.status, 409);
+  const r4 = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(four._id) } });
+  assert.equal(r4.json.name, 'c (1).pdf');
+  assert.equal(four.folder, 'root');
+
+  // 5. nothing is taken: the name is kept and no flag is raised
+  const five = addDoc({ filename: 'd.pdf', folder: 'root' });
+  await trash.trashDocument(ALICE, five._id);
+  const r5 = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(five._id) } });
+  assert.equal(r5.json.name, 'd.pdf');
+  assert.equal(r5.json.nameChanged, false);
 });
 
 test('restoring a folder: parent gone -> top level; a folder with that name there -> 409 FOLDER_EXISTS', async () => {
@@ -515,6 +527,9 @@ test('every query that serves the vault is filtered to non-trashed documents', (
   // documents.controller: every Document.find/findOne/aggregate/exists on the vault names deletedAt.
   const docs = read('controllers', 'documents.controller.js');
   for (const [, call] of docs.matchAll(/Document\.(?:find|findOne|exists|countDocuments)\(\{([^}]*)\}/g)) {
+    // The one deliberate exception: the upload-key lookup finds an upload that was already stored, trashed or not, so that
+    // sending the same upload again can never make a second file.
+    if (/\buploadKey\b/.test(call)) continue;
     assert.match(call, /deletedAt/, `documents.controller query without deletedAt: ${call}`);
   }
   for (const file of [['controllers', 'insights.controller.js'], ['controllers', 'shares.controller.js']]) {

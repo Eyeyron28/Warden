@@ -5,6 +5,7 @@ import Modal from './Modal.jsx';
 import { renameFolder } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { getFolderStyles } from '../services/folderStyles.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './NewFolderModal.module.css';
 
 /**
@@ -22,6 +23,7 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
+  const run = useSingleFlight();
 
   useEffect(() => {
     inputRef.current?.select();
@@ -54,7 +56,10 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
 
   return (
     <Modal title={`Rename "${currentName}"`} onClose={onClose}>
-      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+      <form className={styles.form} onSubmit={(event) => {
+          event.preventDefault();
+          run(() => handleSubmit(event));
+        }} noValidate>
         <div className={styles.field}>
           <label htmlFor="rename-folder-name" className={styles.label}>
             Folder name

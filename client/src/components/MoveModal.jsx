@@ -5,6 +5,7 @@ import Modal from './Modal.jsx';
 import { batchMoveDocuments, createFolder, moveItems } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { getImmediateChildren, joinPath, splitPath } from '../utils/folderPath.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './MoveModal.module.css';
 
 const ROOT_LABEL = 'My Vault';
@@ -64,6 +65,8 @@ function MoveModal({
   const isCurrentLocation = currentLocation !== null && currentLocation !== undefined && browsePath === currentLocation;
   const destinationLabel = browsePath || ROOT_LABEL;
 
+  const runMove = useSingleFlight();
+  const runCreate = useSingleFlight();
   const handleMove = async () => {
     if (submitting || isCurrentLocation) return;
     setSubmitting(true);
@@ -210,7 +213,10 @@ function MoveModal({
         </ul>
 
         {creating ? (
-          <form className={styles.newFolderForm} onSubmit={handleCreate} noValidate>
+          <form className={styles.newFolderForm} onSubmit={(event) => {
+              event.preventDefault();
+              runCreate(() => handleCreate(event));
+            }} noValidate>
             <label htmlFor="move-new-folder" className={styles.srOnly}>
               New folder name
             </label>
@@ -274,7 +280,7 @@ function MoveModal({
             <button
               type="button"
               className={styles.primaryButton}
-              onClick={handleMove}
+              onClick={() => runMove(handleMove)}
               disabled={submitting || isCurrentLocation}
             >
               {submitting ? 'Moving...' : 'Move here'}

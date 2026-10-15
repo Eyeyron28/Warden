@@ -8,6 +8,7 @@ import { reportClientEvent } from '../services/securityService.js';
 import { buildExportZip, exportFileName } from '../utils/zipExport.js';
 import { IMPORT_LIMITS, inspectZip, runImport } from '../utils/zipImport.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './ExportPage.module.css';
 
 const formatBytes = (bytes) => {
@@ -62,6 +63,8 @@ function ExportPage() {
   const [exportState, setExportState] = useState({ phase: 'idle' }); // idle | running | done | cancelled | error
   const exportAbort = useRef(null);
 
+  const guardExport = useSingleFlight(); // Export and Import each start once per press, even for two clicks in the same tick
+  const guardImport = useSingleFlight();
   const startExport = async () => {
     const controller = new AbortController();
     exportAbort.current = controller;
@@ -167,7 +170,7 @@ function ExportPage() {
         </p>
 
         {e.phase !== 'running' && (
-          <button type="button" className={styles.primary} onClick={startExport}>
+          <button type="button" className={styles.primary} onClick={() => guardExport(startExport)}>
             Download all my files (.zip)
           </button>
         )}
@@ -226,7 +229,7 @@ function ExportPage() {
             </p>
             <FailureList items={i.plan.ignored} title="Ignored" />
             <FailureList items={i.plan.skipped} title="Will be skipped" />
-            <button type="button" className={styles.primary} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
+            <button type="button" className={styles.primary} onClick={() => guardImport(startImport)} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
               Import {plural(i.plan.files.length, 'file')}
             </button>
           </div>

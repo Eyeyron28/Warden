@@ -20,6 +20,7 @@ const {
   normalizeDocumentFolder,
   isSameOrDescendant,
   validateFolderName,
+  splitPath,
   resolveFolderPath,
   ensureFolderPath,
   createFolderExplicit,
@@ -29,6 +30,7 @@ const {
   deleteFolderTree,
 } = require('../utils/folders');
 const { sniffImageType, sniffPreviewKind, IMAGE_TYPES } = require('../utils/sniff');
+const { freeName } = require('../utils/uniqueName');
 const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
 const { parseFolderStyle, hasStyleFields } = require('../utils/folderStyle');
 const Folder = require('../models/Folder');
@@ -132,6 +134,40 @@ async function activeSharedIds(userId) {
  * ever exists for the duration of this request - only the ciphertext is
  * persisted.
  */
+// A UUID, as crypto.randomUUID() makes it in the browser.
+const UPLOAD_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isDuplicateKey = (error) => error && (error.code === 11000 || /E11000/.test(String(error.message)));
+
+/** What an upload answers: the stored name (which may have gained a counter) and whether it did. */
+const uploadAnswer = (document, extra = {}) => ({
+  id: document._id,
+  filename: document.filename,
+  folder: document.folder,
+  expiryDate: document.docExpiresAt,
+  docExpiresAt: document.docExpiresAt,
+  hasThumb: hasThumbnail(document),
+  createdAt: document.createdAt,
+  nameChanged: false,
+  ...extra,
+});
+
+const findByUploadKey = (userId, uploadKey) =>
+  Document.findOne({ userId, uploadKey }).select('filename folder docExpiresAt thumbMime createdAt');
+
+/**
+ * POST /api/documents
+ * multipart/form-data with a single file under the "file" field, plus
+ * optional `folder`, `expiryDate` and `uploadKey` fields. The plaintext buffer only
+ * ever exists for the duration of this request - only the ciphertext is
+ * persisted.
+ *
+ * `uploadKey` (a UUID the browser makes for one upload attempt) makes the upload idempotent: the same key from the same account
+ * is the same upload sent again (a double click, a retry after a slow answer), so it returns the document already stored and
+ * stores and charges nothing more. Two such requests at the very same instant end with one document too: the unique index on
+ * { userId, uploadKey } lets only one insert, and the other answers with that one.
+ *
+ * A name already used in the folder gets a counter ("report (1).pdf"; utils/uniqueName.js).
+ */
 const createDocument = asyncHandler(async (req, res) => {
   const uploadedFile = req.files?.file?.[0];
   if (!uploadedFile) {
@@ -139,7 +175,7 @@ const createDocument = asyncHandler(async (req, res) => {
   }
 
   const { buffer, originalname, mimetype } = uploadedFile;
-  const { folder, expiryDate } = req.body;
+  const { folder, expiryDate, uploadKey } = req.body;
 
   // Multipart fields are parsed by multer, which (via bracket syntax like
   // folder[$ne]=x) can hand back objects instead of strings.
@@ -149,19 +185,35 @@ const createDocument = asyncHandler(async (req, res) => {
   if (expiryDate !== undefined && typeof expiryDate !== 'string') {
     throw badRequest('expiryDate must be a string.');
   }
+  if (uploadKey !== undefined && (typeof uploadKey !== 'string' || !UPLOAD_KEY.test(uploadKey))) {
+    throw badRequest('uploadKey must be a UUID.');
+  }
   const docExpiresAt = expiryDate ? parseExpiryInput(expiryDate.slice(0, 10)) : null;
   if (expiryDate && !docExpiresAt) {
     throw badRequest('Expires on must be a date like 2027-03-05.');
   }
+
+  // The independent database reads are all sent at once, and the CPU work below (hashing, encrypting) runs while they are in
+  // flight. Nothing is stored until every check has passed:
+  //  - the quota check (refused before anything is stored if it would pass the account's quota);
+  //  - whether this upload key has been used (the same upload again);
+  //  - for a file at the top level, the free name (inside a folder it waits for the folder to be resolved, below).
+  const wantedName = cleanStoredName(originalname);
+  const quotaOutcome = assertCanStore(req.userId, buffer.length + (req.files?.thumb?.[0]?.buffer?.length ?? 0)).then(() => null, (error) => error);
+  const earlierLookup = uploadKey ? findByUploadKey(req.userId, uploadKey) : null;
+  const topLevelName = !folder || !splitPath(folder).length ? freeName({ userId: req.userId, folder: toDocumentFolder(''), wanted: wantedName }) : null;
+  topLevelName?.catch(() => {}); // awaited below if it is used; this keeps an unused early failure from being reported twice
+
+  // The same upload again: answer with the first one, before anything is encrypted, stored or counted (and even over the quota:
+  // nothing is stored, so nothing is refused).
+  const earlier = await earlierLookup;
+  if (earlier) return res.status(200).json(uploadAnswer(earlier, { replayed: true }));
 
   // SHA-256 of the ORIGINAL plaintext. Distinct from the AES-GCM authTag
   // produced below: the authTag proves the ciphertext wasn't tampered
   // with in storage, this checksum proves the decrypted content still
   // matches what was originally uploaded - useful once sync/backup starts
   // copying files around.
-  // Refused before anything is encrypted or stored if it would pass the account's quota.
-  await assertCanStore(req.userId, buffer.length + (req.files?.thumb?.[0]?.buffer?.length ?? 0));
-
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
 
   const { ciphertext, iv, authTag } = encryptFile(buffer, req.dek);
@@ -171,39 +223,48 @@ const createDocument = asyncHandler(async (req, res) => {
   const thumbUpload = req.files?.thumb?.[0];
   const thumbnail = thumbUpload ? encryptThumbnail(thumbUpload.buffer, thumbUpload.mimetype, req.dek) : null;
 
+  const quotaError = await quotaOutcome;
+  if (quotaError) throw quotaError;
+
   // Implicit folder creation: "josh/2024" files into an existing
   // "Josh/2024" rather than creating a second, differently-cased folder
   // (see utils/folders.js ensureFolderPath). Never errors on a collision.
   const canonicalFolder = await ensureFolderPath(req.userId, folder || '');
+  const documentFolder = toDocumentFolder(canonicalFolder);
+  const wanted = wantedName;
+  const { name: filename, changed } = canonicalFolder === '' && topLevelName ? await topLevelName : await freeName({ userId: req.userId, folder: documentFolder, wanted });
 
-  const document = await Document.create({
-    userId: req.userId,
-    filename: cleanStoredName(originalname),
-    folder: toDocumentFolder(canonicalFolder),
-    encryptedBlob: Buffer.from(ciphertext, 'base64'),
-    iv,
-    authTag,
-    checksum,
-    mimeType: mimetype,
-    // Classified from the bytes, not the name or the claimed type.
-    sniffedType: sniffImageType(buffer),
-    previewKind: sniffPreviewKind(buffer),
-    originDevice: 'pc', // phone client is future work
-    docExpiresAt,
-    syncStatus: 'pending',
-    ...(thumbnail || {}),
-  });
+  let document;
+  try {
+    document = await Document.create({
+      userId: req.userId,
+      filename,
+      folder: documentFolder,
+      encryptedBlob: Buffer.from(ciphertext, 'base64'),
+      iv,
+      authTag,
+      checksum,
+      mimeType: mimetype,
+      // Classified from the bytes, not the name or the claimed type.
+      sniffedType: sniffImageType(buffer),
+      previewKind: sniffPreviewKind(buffer),
+      originDevice: 'pc', // phone client is future work
+      docExpiresAt,
+      syncStatus: 'pending',
+      ...(uploadKey ? { uploadKey } : {}),
+      ...(thumbnail || {}),
+    });
+  } catch (error) {
+    // Lost the race with the same upload sent at the same instant: that one is the document.
+    if (uploadKey && isDuplicateKey(error)) {
+      const winner = await findByUploadKey(req.userId, uploadKey);
+      if (winner) return res.status(200).json(uploadAnswer(winner, { replayed: true }));
+    }
+    throw error;
+  }
 
   await recordEvent(req, 'upload', { targetId: document._id });
-  res.status(201).json({
-    id: document._id,
-    filename: document.filename,
-    folder: document.folder,
-    expiryDate: document.docExpiresAt,
-    docExpiresAt: document.docExpiresAt,
-    hasThumb: hasThumbnail(document),
-    createdAt: document.createdAt,
-  });
+  res.status(201).json(uploadAnswer(document, changed ? { nameChanged: true, requestedName: wanted } : {}));
 });
 
 /**
@@ -686,13 +747,18 @@ const updateDocument = asyncHandler(async (req, res) => {
 
   const { filename, folder, expiryDate, docExpiresAt } = req.body;
   let renamed = false;
+  let nameChanged = null;
   let expiryEvent = null;
 
   if (filename !== undefined) {
     if (typeof filename !== 'string' || !filename.trim()) {
       throw badRequest('filename cannot be empty.');
     }
-    document.filename = cleanStoredName(filename);
+    // A name already used in this folder gets a counter, exactly as an upload's does (the file itself does not clash with itself).
+    const wanted = cleanStoredName(filename);
+    const free = await freeName({ userId: req.userId, folder: document.folder, wanted, excludeId: document._id });
+    document.filename = free.name;
+    nameChanged = free.changed ? wanted : null;
     renamed = true;
   }
 
@@ -733,7 +799,7 @@ const updateDocument = asyncHandler(async (req, res) => {
   // document.expiryDate every time it's called, so this reflects
   // whatever expiryDate ends up as above with no separate branch needed
   // for "did expiryDate change".
-  res.status(200).json(toListSummary(document));
+  res.status(200).json({ ...toListSummary(document), ...(nameChanged ? { nameChanged: true, requestedName: nameChanged } : {}) });
 });
 
 /**

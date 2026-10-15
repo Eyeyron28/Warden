@@ -13,12 +13,14 @@ import {
 import { extractErrorMessage } from '../services/api.js';
 import { formatManila } from '../utils/activityText.js';
 import { formatBytes } from '../utils/listing.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './DetailsPanel.module.css';
 
 /** "Upload new version": picks a file and replaces this file's contents, keeping the old ones as a previous version. */
 export function UploadVersion({ id, name, onChanged }) {
   const input = useRef(null);
   const [state, setState] = useState({ busy: false, message: '', error: '' });
+  const run = useSingleFlight();
 
   const choose = async (event) => {
     const file = event.target.files?.[0];
@@ -40,7 +42,7 @@ export function UploadVersion({ id, name, onChanged }) {
 
   return (
     <div className={styles.uploadRow}>
-      <input ref={input} type="file" hidden onChange={choose} aria-label={`Choose the new version of ${name}`} />
+      <input ref={input} type="file" hidden onChange={(event) => run(() => choose(event))} aria-label={`Choose the new version of ${name}`} />
       <button type="button" className={styles.wideButton} onClick={() => input.current?.click()} disabled={state.busy}>
         <UploadSimple size={18} />
         {state.busy ? 'Uploading…' : 'Upload new version'}

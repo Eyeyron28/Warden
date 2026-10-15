@@ -21,7 +21,7 @@ import { chromium } from 'playwright-core';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
-const dist = path.join(root, 'client', 'dist');
+const dist = process.env.DIST_DIR ? path.resolve(process.env.DIST_DIR) : path.join(root, 'client', 'dist');
 const requireServer = createRequire(path.join(root, 'server', 'package.json'));
 
 const DEFAULT_URI = 'mongodb://127.0.0.1:27099/?replicaSet=rs0&directConnection=true';
@@ -41,6 +41,16 @@ const WIDTHS = [
   { name: '768', width: 768, height: 1024 },
   { name: '1280', width: 1280, height: 800 },
 ];
+const LONG_ASCII = `${'Quarterly_financial_statements_and_supporting_schedules_'.repeat(5).slice(0, 251)}.pdf`;
+const LONG_UNICODE = `${'\u5c65\u6b74\u66f8_\u8077\u52d9\u7d4c\u6b74\u66f8_Ünïcödé_'.repeat(9)}final.pdf`;
+// The dialogs are tried at these sizes (the last is a small laptop).
+const DIALOG_SIZES = [
+  { name: '320', width: 320, height: 640 },
+  { name: '360', width: 360, height: 800 },
+  { name: '768', width: 768, height: 1024 },
+  { name: '1280', width: 1280, height: 800 },
+  { name: '1366x768', width: 1366, height: 768 },
+];
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/forgot-password', '/privacy', '/terms', '/emergency'];
 const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent'];
 
@@ -50,7 +60,7 @@ Module._load = function stubbed(request, ...rest) {
   return request === 'dotenv' ? { config: () => ({}), parse: () => ({}) } : load.call(this, request, ...rest);
 };
 for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'VERCEL', 'INVITE_CODE', 'CRON_SECRET']) delete process.env[name];
-Object.assign(process.env, { NODE_ENV: 'test', MONGO_URI: uri, SIGNUP_MODE: 'open', OTP_ENABLED: 'false', PUBLIC_APP_URL: 'https://warden.test', EMERGENCY_DEMO_MODE: 'false' });
+Object.assign(process.env, { NODE_ENV: 'test', MONGO_URI: uri, SIGNUP_MODE: 'open', OTP_ENABLED: 'false', PUBLIC_APP_URL: 'https://warden.test', EMERGENCY_DEMO_MODE: 'false', CORS_ORIGINS: 'http://127.0.0.1:5059' });
 requireServer('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.test', priority: 10 }];
 
 const mails = [];
@@ -72,7 +82,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', TYPES[path.extname(file)] || 'application/octet-stream');
   return res.end(fs.readFileSync(file));
 });
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+await new Promise((resolve) => server.listen(5059, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 async function api(method, route, { token, json, form } = {}) {
@@ -121,6 +131,12 @@ async function seed() {
       form.append('file', new Blob([`document number ${n} revised ${round} `.repeat(30)], { type: 'text/plain' }), 'ignored.txt');
       await api('POST', `/api/documents/${id}/versions`, { token, form });
     }
+  }
+  // Two files with very long names (255 characters with no space or hyphen to break at, which is the case that overflows; and a long Unicode name): the dialogs below must cope with both.
+  for (const name of [LONG_ASCII, LONG_UNICODE]) {
+    const form = new FormData();
+    form.append('file', new Blob(['long name document '.repeat(20)], { type: 'text/plain' }), name);
+    await api('POST', '/api/documents', { token, form });
   }
   await api('POST', `/api/documents/${ids[1]}/share`, { token, json: { durationHours: 24 } });
   await api('PATCH', `/api/documents/${ids[2]}`, { token, json: { docExpiresAt: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) } });
@@ -206,11 +222,13 @@ fs.writeFileSync(scanSample, samplePng(900, 1200));
 
 let browser;
 const rows = [];
+const dialogRows = [];
 let failures = 0;
 try {
   const token = await seed();
   browser = await launch();
-  for (const size of WIDTHS) {
+  // ONLY_DIALOGS=1 skips the page matrix and runs just the long-name dialogs and the Folders/Files blocks.
+  for (const size of process.env.ONLY_DIALOGS ? [] : WIDTHS) {
     for (const [signedIn, pages] of [[false, PUBLIC_PAGES], [true, APP_PAGES]]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       if (signedIn) await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
@@ -302,6 +320,202 @@ try {
       await context.close();
     }
   }
+
+  // ---------- long names in dialogs, and the Folders / Files blocks ----------
+  // For each dialog: it is inside the screen, nothing sideways-scrolls, no control sticks out of it or overlaps another. The
+  // Share dialog is two columns from 760 px and one below, and fits a 1366x768 screen without scrolling.
+  let currentKind = '';
+  const inspect = async (page, dialog, label, size, { expectColumns } = {}) => {
+    const out = [];
+    const found = await dialog.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      // What is really on screen: not in a closed <details>, and only the part a scrolling box (or the dialog) does not cut off.
+      const shown = (node) => {
+        if (node.closest('[hidden]')) return null;
+        const details = node.closest('details:not([open])');
+        if (details && !node.closest('summary')) return null;
+        const cs = getComputedStyle(node);
+        if (cs.visibility === 'hidden' || cs.display === 'none') return null;
+        const r = node.getBoundingClientRect();
+        let box = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        for (let up = node.parentElement; up && up !== el.parentElement; up = up.parentElement) {
+          const o = getComputedStyle(up);
+          if (o.overflowX !== 'visible' || o.overflowY !== 'visible') {
+            const c = up.getBoundingClientRect();
+            box = { left: Math.max(box.left, c.left), right: Math.min(box.right, c.right), top: Math.max(box.top, c.top), bottom: Math.min(box.bottom, c.bottom) };
+          }
+        }
+        return box.right - box.left > 0 && box.bottom - box.top > 0 ? { box, own: r } : null;
+      };
+      const visibleEl = (node) => shown(node) !== null;
+      const controls = [...el.querySelectorAll('button, input:not([type=hidden]):not([hidden]), select, textarea, a[href], summary')].filter(visibleEl);
+      const outside = controls.filter((node) => { const r = shown(node).own; return r.left < rect.left - 1 || r.right > rect.right + 1; }).map((node) => `${node.tagName.toLowerCase()} "${(node.getAttribute('aria-label') || node.textContent || node.value || '').trim().slice(0, 30)}"`);
+      const overlaps = [];
+      for (let i = 0; i < controls.length; i += 1) for (let j = i + 1; j < controls.length; j += 1) {
+        const a = shown(controls[i]).box; const b = shown(controls[j]).box;
+        if (controls[i].contains(controls[j]) || controls[j].contains(controls[i])) continue;
+        const w = Math.min(a.right, b.right) - Math.max(a.left, b.left); const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (w > 3 && h > 3) overlaps.push(`"${(controls[i].getAttribute('aria-label') || controls[i].textContent || '').trim().slice(0, 20)}" over "${(controls[j].getAttribute('aria-label') || controls[j].textContent || '').trim().slice(0, 20)}"`);
+      }
+      const scrollers = [el, ...el.querySelectorAll('*')].filter((node) => node.scrollWidth > node.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)).map((node) => String(node.className).slice(0, 40));
+      const clippedLeft = [...el.querySelectorAll('h2, h3, label, p, li, button, summary')].filter(visibleEl).filter((node) => node.getBoundingClientRect().left < rect.left - 1).map((node) => (node.textContent || '').trim().slice(0, 30));
+      const header = el.querySelector('h2');
+      const close = el.querySelector('button[aria-label="Close"], button[aria-label^="Close"]');
+      const closeRect = close ? close.getBoundingClientRect() : null;
+      const bodyScrollers = [...el.querySelectorAll('*')].filter((node) => shown(node) && node.scrollHeight > node.clientHeight + 2 && ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)).map((node) => `${String(node.className).slice(0, 24)} +${node.scrollHeight - node.clientHeight}px`);
+      const columns = [...el.querySelectorAll('section[aria-labelledby]')].map((node) => Math.round(node.getBoundingClientRect().left));
+      const short = controls.filter((node) => node.tagName === 'BUTTON' && node.getBoundingClientRect().height < 43 && node.getBoundingClientRect().width > 20 && !/^(Copy|Close)$/.test(node.getAttribute('aria-label') || '')).length;
+      return { rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height }, outside, overlaps, scrollers, clippedLeft, headerWide: header ? header.scrollWidth > header.clientWidth + 1 && getComputedStyle(header).textOverflow !== 'ellipsis' : false, closeVisible: closeRect ? closeRect.right <= window.innerWidth + 1 && closeRect.left >= 0 : null, bodyScrollers, columns, short };
+    });
+    const { rect } = found;
+    if (rect.x < -1 || rect.y < -1 || rect.x + rect.w > size.width + 1 || rect.y + rect.h > size.height + 1) out.push(`outside the screen ${JSON.stringify(rect)}`);
+    if (found.scrollers.length) out.push(`horizontal scrollbar in: ${found.scrollers.join(', ')}`);
+    if (found.outside.length) out.push(`controls stick out of the dialog: ${found.outside.slice(0, 3).join(', ')}`);
+    if (found.clippedLeft.length) out.push(`text clipped on the left: ${found.clippedLeft.slice(0, 2).join(' | ')}`);
+    if (found.overlaps.length) out.push(`overlapping controls: ${found.overlaps.slice(0, 3).join(', ')}`);
+    if (found.headerWide) out.push('the title is wider than its box and not cut with an ellipsis');
+    if (found.closeVisible === false) out.push('the close button is off the screen');
+    if (expectColumns === 2 && new Set(found.columns).size !== 2) out.push(`expected two columns, found left edges ${found.columns.join(',')}`);
+    if (expectColumns === 1 && new Set(found.columns).size > 1) out.push(`expected one column, found left edges ${found.columns.join(',')}`);
+    if (size.name === '1366x768' && label === 'Share' && found.bodyScrollers.length > 0) out.push(`the Share dialog scrolls at 1366x768 (${found.bodyScrollers.join(', ')})`);
+    if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `dialog-${label.toLowerCase().replace(/[^a-z]/g, '')}-${currentKind}-${process.env.THEME || 'light'}-${size.name}.png`) });
+    return out;
+  };
+  const openMenuItem = async (page, name, item) => {
+    const trigger = page.getByRole('button', { name: `More actions for ${name}`, exact: true });
+    // Scroll the row into view FIRST and let the scrolling stop: a menu closes when the page scrolls under it.
+    await trigger.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    await trigger.click();
+    const entry = page.getByRole('menuitem', { name: item });
+    try {
+      await entry.click({ timeout: 4000 });
+    } catch {
+      const items = await page.getByRole('menuitem').evaluateAll((nodes) => nodes.map((node) => `${node.textContent.trim().slice(0, 18)}@${Math.round(node.getBoundingClientRect().top)}-${Math.round(node.getBoundingClientRect().bottom)}`));
+      throw new Error(`menu item "${item}" could not be clicked; menu items: ${items.join(' | ')}; viewport height ${page.viewportSize().height}`);
+    }
+  };
+  for (const size of DIALOG_SIZES) {
+    for (const [kind, longName] of [['ascii', LONG_ASCII], ['unicode', LONG_UNICODE]]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      currentKind = kind;
+      await page.goto(base + '/files', { waitUntil: 'networkidle' });
+      const record = (label, problems) => { dialogRows.push({ label: `${label} (${kind})`, size: size.name, problems }); if (problems.length) failures += 1; };
+      const attempt = async (label, work) => {
+        await page.waitForTimeout(300); // the previous dialog has finished closing
+        try { record(label, await work()); } catch (error) {
+          record(label, [`could not be checked: ${String(error.message).split('\n')[0]}`]);
+          if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `failed-${label.toLowerCase().replace(/[^a-z]/g, '')}-${kind}-${size.name}.png`) }).catch(() => {});
+        }
+        await page.keyboard.press('Escape').catch(() => {});
+        // Escape must close the dialog: if one is still there a moment later, that is a problem of its own.
+        await page.waitForFunction(() => !document.querySelector('[aria-modal="true"]'), null, { timeout: 2500 }).catch(async () => {
+          dialogRows.push({ label: `${label} (${kind})`, size: size.name, problems: ['Escape did not close the dialog'] });
+          failures += 1;
+          await page.getByRole('button', { name: 'Close' }).last().click().catch(() => {});
+        });
+        await page.waitForTimeout(100);
+      };
+
+      await attempt('Upload', async () => {
+        await page.getByRole('button', { name: 'New' }).click();
+        await page.getByRole('menuitem', { name: /Upload file/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Upload file' });
+        await dialog.waitFor({ timeout: 8000 });
+        await dialog.locator('input[type=file]').setInputFiles({ name: longName, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% sample\n') });
+        await page.waitForTimeout(200);
+        const found = await inspect(page, dialog, 'Upload', size);
+        const titled = await dialog.locator('button[title]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('title')));
+        if (!titled.includes(longName)) found.push('the full name is not the tooltip of the file button');
+        if (!(await dialog.locator('button[aria-label*="Chosen file"]').count())) found.push('the file button has no accessible name with the file name');
+        return found;
+      });
+      await attempt('Rename', async () => {
+        await openMenuItem(page, longName, 'Rename');
+        const dialog = page.getByRole('dialog', { name: /^Edit "/ });
+        await dialog.waitFor({ timeout: 8000 });
+        return inspect(page, dialog, 'Rename', size);
+      });
+      await attempt('Move', async () => {
+        await openMenuItem(page, longName, 'Move to…');
+        const dialog = page.getByRole('dialog', { name: /^Move/ });
+        await dialog.waitFor({ timeout: 8000 });
+        return inspect(page, dialog, 'Move', size);
+      });
+      await attempt('Share', async () => {
+        await openMenuItem(page, longName, 'Share');
+        const dialog = page.getByRole('dialog', { name: /^Share/ });
+        await dialog.waitFor({ timeout: 8000 });
+        const found = await inspect(page, dialog, 'Share (before)', size, { expectColumns: size.width >= 760 ? 2 : 1 });
+        await dialog.getByLabel(/^Password/).fill('Correct-Horse-9!');
+        await dialog.getByLabel(/^Only this email/).fill('someone.with.a.long.address@example.com');
+        await dialog.getByLabel(/^Purpose/).fill('For a very long purpose text that goes on');
+        await dialog.getByRole('button', { name: /Generate share link/ }).click();
+        await dialog.getByRole('textbox', { name: 'Share link', exact: true }).waitFor({ timeout: 20000 });
+        if (size.width < 760) await dialog.getByRole('button', { name: /QR code/ }).click();
+        await dialog.getByAltText('QR code for the share link').waitFor({ timeout: 25000 });
+        await page.waitForTimeout(300);
+        found.push(...(await inspect(page, dialog, 'Share', size, { expectColumns: size.width >= 760 ? 2 : 1 })));
+        const buttons = await dialog.getByRole('group', { name: /Send the link with an app/ }).locator('a, button').count();
+        if (buttons < 5) found.push(`only ${buttons} share-to buttons are there`);
+        const qr = await dialog.getByAltText('QR code for the share link').boundingBox();
+        if (!qr || Math.abs(qr.width - qr.height) > 2) found.push('the QR code is not a square');
+        const header = await dialog.locator('h2').evaluate((node) => [node.getAttribute('title')?.length, getComputedStyle(node).whiteSpace]);
+        if (header[1] !== 'nowrap') found.push('the title can wrap onto several lines');
+        if (!(header[0] > 120)) found.push('the full name is not the title tooltip');
+        return found;
+      });
+      await attempt('Details', async () => {
+        await page.getByRole('button', { name: `Details for ${longName}`, exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: /^Details for/ });
+        await dialog.waitFor({ timeout: 8000 });
+        await page.waitForFunction(() => document.querySelector('[role=dialog] dl'), null, { timeout: 8000 }).catch(() => {});
+        return inspect(page, dialog, 'Details', size);
+      });
+      if (kind === 'ascii') {
+        await attempt('Scan', async () => {
+          await page.getByRole('button', { name: 'Scan', exact: true }).click();
+          const dialog = page.getByRole('dialog', { name: 'Scan documents' });
+          await dialog.waitFor({ timeout: 8000 });
+          await page.getByTestId('scan-input').setInputFiles(scanSample);
+          await dialog.getByRole('button', { name: 'Page 1' }).waitFor({ timeout: 8000 });
+          await dialog.getByRole('button', { name: 'Next: save' }).click();
+          await dialog.getByLabel('Name').fill(longName.slice(0, 100));
+          return inspect(page, dialog, 'Scan save', size);
+        });
+      }
+
+      // The Folders and Files blocks (the page itself, not a dialog)
+      if (kind === 'ascii' && ['360', '768', '1280'].includes(size.name)) {
+        const blocks = [];
+        const headings = await page.getByRole('heading', { level: 2 }).allInnerTexts();
+        const names = headings.map((text) => text.replace(/\s+/g, ' ').trim());
+        if (!names.some((text) => /^Folders \d+$/.test(text))) blocks.push(`no "Folders" block heading (${names.join(' | ')})`);
+        if (!names.some((text) => /^Files \d+$/.test(text))) blocks.push('no "Files" block heading');
+        const order = await page.evaluate(() => {
+          const folders = document.querySelector('#folders-heading'); const files = document.querySelector('#files-heading');
+          const tiles = [...document.querySelectorAll('ul[aria-label="Folders"] > li')];
+          const fileRows = [...document.querySelectorAll('ul[aria-label="Files"] > li')];
+          const divider = document.querySelector('hr');
+          const gap = folders && files && tiles.length ? files.getBoundingClientRect().top - tiles.at(-1).getBoundingClientRect().bottom : null;
+          const columns = new Set(tiles.map((tile) => Math.round(tile.getBoundingClientRect().left))).size;
+          return { foldersFirst: Boolean(folders && files && folders.getBoundingClientRect().top < files.getBoundingClientRect().top), tiles: tiles.length, rowsAreFolders: fileRows.filter((row) => row.querySelector('[aria-label^="Select "]') && /\bitem(s)?\b/.test(row.textContent || '') && !row.querySelector('button[aria-label^="Star"]')).length, hasDivider: Boolean(divider), gap, columns };
+        });
+        if (!order.foldersFirst) blocks.push('Folders is not above Files');
+        if (order.tiles < 2) blocks.push(`expected the seeded folders as tiles, found ${order.tiles}`);
+        if (order.rowsAreFolders > 0) blocks.push('a folder appears among the file rows');
+        if (!order.hasDivider) blocks.push('no divider between the blocks');
+        if (order.gap !== null && (order.gap < 20 || order.gap > 90)) blocks.push(`the gap between the blocks is ${Math.round(order.gap)} px`);
+        if (size.name === '360' && order.columns !== 2) blocks.push(`a phone should show 2 columns of folder tiles, found ${order.columns}`);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `blocks-${process.env.THEME || 'light'}-${size.name}.png`) });
+        record('Folders and Files blocks', blocks);
+      }
+      await context.close();
+    }
+  }
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
@@ -311,7 +525,7 @@ try {
 
 // ---------- the table ----------
 const pad = (text, n) => String(text).padEnd(n);
-const routes = [...PUBLIC_PAGES, ...APP_PAGES];
+const routes = process.env.ONLY_DIALOGS ? [] : [...PUBLIC_PAGES, ...APP_PAGES];
 console.log(`\n${pad('page', 20)}${WIDTHS.map((w) => pad(`${w.name}px`, 9)).join('')}`);
 for (const route of routes) {
   const cells = WIDTHS.map((size) => {
@@ -324,5 +538,13 @@ for (const row of rows.filter((r) => !r.ok)) console.log(`\nFAIL ${row.route} at
 for (const row of rows.filter((r) => r.redirected)) console.log(`note: ${row.route} at ${row.size}px${row.redirected}`);
 console.log('\nAPI requests on a cold load of each signed-in page (1280px):');
 for (const row of rows.filter((r) => r.size === '1280' && APP_PAGES.includes(r.route))) console.log(`  ${pad(row.route, 12)} ${row.apiCalls}${process.env.LIST_CALLS ? `  ${row.callList.join(', ')}` : ''}`);
-console.log(`\n${rows.length} page loads, ${failures} with problems.`);
+const dialogKinds = [...new Set(dialogRows.map((r) => r.label))];
+if (dialogKinds.length) {
+  console.log(`\n${pad('long names in dialogs', 34)}${DIALOG_SIZES.map((w) => pad(w.name, 10)).join('')}`);
+  for (const label of dialogKinds) {
+    console.log(`${pad(label, 34)}${DIALOG_SIZES.map((size) => { const row = dialogRows.find((r) => r.label === label && r.size === size.name); return pad(!row ? '-' : row.problems.length ? 'FAIL' : 'ok', 10); }).join('')}`);
+  }
+  for (const row of dialogRows.filter((r) => r.problems.length)) console.log(`\nFAIL ${row.label} at ${row.size}: ${row.problems.join('; ')}`);
+}
+console.log(`\n${rows.length} page loads and ${dialogRows.length} dialog checks, ${failures} with problems.`);
 process.exit(failures ? 1 : 0);

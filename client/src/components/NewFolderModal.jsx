@@ -4,6 +4,7 @@ import FolderStylePicker from './FolderStylePicker.jsx';
 import Modal from './Modal.jsx';
 import { createFolder } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './NewFolderModal.module.css';
 
 // A thrown Error from a local (non-HTTP) createFolderFn - the phone's own
@@ -32,6 +33,7 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
   const [error, setError] = useState('');
   const [style, setStyle] = useState({ color: null, icon: null });
   const inputRef = useRef(null);
+  const run = useSingleFlight(); // one create per press, even for two events in the same tick
 
   const showError = (message) => {
     setError(message);
@@ -66,7 +68,10 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
 
   return (
     <Modal title="New folder" onClose={onClose}>
-      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+      <form className={styles.form} onSubmit={(event) => {
+          event.preventDefault();
+          run(() => handleSubmit(event));
+        }} noValidate>
         <div className={styles.field}>
           <label htmlFor="new-folder-name" className={styles.label}>
             Folder name

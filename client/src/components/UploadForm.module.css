@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  min-width: 0;
+}
+
+.fileRow {
+  min-width: 0;
 }
 
 .hiddenInput {
@@ -18,6 +23,10 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  text-align: left;
   padding: var(--space-4);
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
@@ -32,7 +41,27 @@
   color: var(--color-text);
 }
 
+.fileIcon {
+  flex: none;
+}
+
+/* The name is the part that gives way: it is cut in the middle (FileNameLabel), the size stays. */
+.fileLabel {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.fileSize {
+  flex: none;
+  color: var(--color-text-faint);
+  font-size: var(--fs-xs);
+}
+
 .destination {
+  overflow-wrap: anywhere;
   font-size: var(--fs-xs);
   color: var(--color-text-faint);
   font-family: var(--font-mono);
@@ -66,6 +95,40 @@
   box-shadow: 0 0 0 3px var(--color-accent-wash);
 }
 
+.progress {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.progressText {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+/* Everything is sent but the server has not answered: no honest percentage, so the bar slides. */
+.indeterminate .progressFill {
+  width: 35%;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate .progressFill {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 .progressTrack {
   height: 6px;
   border-radius: var(--radius-pill);
@@ -80,6 +143,7 @@
 }
 
 .error {
+  overflow-wrap: anywhere;
   min-height: 1.1em;
   font-size: var(--fs-xs);
   color: var(--color-danger);
@@ -93,6 +157,7 @@
 }
 
 .cancelButton {
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -109,6 +174,7 @@
 }
 
 .submitButton {
+  min-height: 44px;
   padding: var(--space-2) var(--space-5);
   border-radius: var(--radius-pill);
   background: var(--color-accent);

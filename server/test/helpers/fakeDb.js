@@ -106,6 +106,7 @@ function fakeModel(world, table, extras = {}) {
   const query = (result) => {
     const q = {
       select: () => q,
+      lean: () => q,
       limit: (n) => {
         const original = result;
         result = () => original().slice(0, n);

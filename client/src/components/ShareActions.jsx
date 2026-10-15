@@ -32,10 +32,11 @@ const APP_WAIT_MS = 1600;
  * choose - never to Warden's server. Targets come from utils/shareLinks.js,
  * which encodes every value and allows only https, viber and fb-messenger.
  */
-function ShareActions({ link, passwordProtected = false, recipientEmail = '' }) {
+function ShareActions({ link, passwordProtected = false, recipientEmail = '', showQr = false }) {
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState('');
-  const [qrOpen, setQrOpen] = useState(false);
+  // On a wide screen the QR code is simply there (the right column has room); on a phone it opens with its button.
+  const [qrOpen, setQrOpen] = useState(showQr);
   const [qrUrl, setQrUrl] = useState(null);
   const timers = useRef([]);
 
@@ -118,7 +119,7 @@ function ShareActions({ link, passwordProtected = false, recipientEmail = '' }) 
   };
 
   return (
-    <div className={qrOpen ? `${styles.actions} ${styles.withQr}` : styles.actions}>
+    <div className={styles.actions}>
       <div className={styles.linkRow}>
         <input
           type="text"
@@ -134,14 +135,15 @@ function ShareActions({ link, passwordProtected = false, recipientEmail = '' }) 
         </button>
       </div>
 
-      {canNativeShare && (
-        <button type="button" className={styles.nativeShare} onClick={handleNativeShare}>
-          <ShareNetwork size={18} weight="bold" aria-hidden="true" />
-          <span>Share…</span>
-        </button>
-      )}
-
       <div className={styles.appGrid} role="group" aria-label="Send the link with an app">
+        {canNativeShare && (
+          <button type="button" className={`${styles.appButton} ${styles.nativeShare}`} onClick={handleNativeShare}>
+            <span className={styles.badge} style={{ background: 'var(--color-accent)' }} aria-hidden="true">
+              <ShareNetwork size={14} weight="bold" />
+            </span>
+            <span>Share…</span>
+          </button>
+        )}
         {targets.map((target) => {
           const badge = BADGES[target.id];
           const content = (
@@ -199,8 +201,7 @@ function ShareActions({ link, passwordProtected = false, recipientEmail = '' }) 
       )}
 
       <p className={styles.warning}>
-        Anyone you send this link to — and the app you send it through — can open it. Add a link password for sensitive files and send
-        the password separately.
+        Anyone with this link, or the app you send it through, can open it. Add a password for sensitive files.
       </p>
     </div>
   );

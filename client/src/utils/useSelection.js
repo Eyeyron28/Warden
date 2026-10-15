@@ -20,15 +20,19 @@ const dialogOpen = () => document.querySelector('[aria-modal="true"]') !== null;
 
 /**
  * Selection state for one file view. `orderedKeys` is every selectable item
- * in display order (it drives ranges and select-all, and anything that leaves
- * the list is dropped from the selection). Also wires Esc (clear) and
- * Ctrl/Cmd+A (select all) for as long as the view is mounted.
+ * in display order (it drives ranges, and anything that leaves the list is
+ * dropped from the selection). `allKeys` is what "select all" (the header checkbox and
+ * Ctrl/Cmd+A) selects: on the Files page that is the FILES, so selecting every file never selects a
+ * folder; it defaults to every item. Also wires Esc (clear) for as long as the view is mounted.
  */
-export function useSelection(orderedKeys) {
+export function useSelection(orderedKeys, allKeys = orderedKeys) {
   const [state, setState] = useState(emptySelection);
   const signature = orderedKeys.join('\u0000');
   const keysRef = useRef(orderedKeys);
   keysRef.current = orderedKeys;
+  const allRef = useRef(allKeys);
+  allRef.current = allKeys;
+  const allSignature = allKeys.join('\u0000');
 
   useEffect(() => {
     setState((current) => pruneSelection(current, keysRef.current));
@@ -38,7 +42,7 @@ export function useSelection(orderedKeys) {
     setState((current) => applyItemClick(current, keysRef.current, key, { shift }));
   }, []);
   const toggle = useCallback((key) => setState((current) => toggleItem(current, key)), []);
-  const selectAll = useCallback(() => setState(selectEvery(keysRef.current)), []);
+  const selectAll = useCallback(() => setState(selectEvery(allRef.current)), []);
   const clear = useCallback(() => setState(emptySelection()), []);
   const setOnly = useCallback((key) => setState(selectJust(key)), []);
 
@@ -52,9 +56,9 @@ export function useSelection(orderedKeys) {
       if (event.key === 'Escape' && countRef.current > 0) {
         setState(emptySelection());
       } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'a') {
-        if (isEditable(document.activeElement) || keysRef.current.length === 0) return;
+        if (isEditable(document.activeElement) || allRef.current.length === 0) return;
         event.preventDefault();
-        setState(selectEvery(keysRef.current));
+        setState(selectEvery(allRef.current));
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -66,7 +70,7 @@ export function useSelection(orderedKeys) {
       selected: state.selected,
       count,
       isSelected: (key) => state.selected.has(key),
-      header: headerState(count, orderedKeys.length),
+      header: headerState(allKeys.filter((key) => state.selected.has(key)).length, allKeys.length),
       click,
       toggle,
       selectAll,
@@ -74,6 +78,6 @@ export function useSelection(orderedKeys) {
       setOnly,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, signature, click, toggle, selectAll, clear, setOnly]
+    [state, signature, allSignature, click, toggle, selectAll, clear, setOnly]
   );
 }

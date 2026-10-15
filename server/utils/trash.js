@@ -21,6 +21,7 @@ const {
 const { removeShares } = require('./shareCleanup');
 const { dropReminders } = require('./reminderCleanup');
 const { dropVersions, pruneOrphanVersions } = require('./versions');
+const { freeName } = require('./uniqueName');
 
 /**
  * Trash: deleting a file or folder is a soft delete. The encrypted data stays
@@ -46,10 +47,6 @@ const NAME_EXISTS = 'NAME_EXISTS';
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const asObjectId = (id) => new mongoose.Types.ObjectId(String(id));
-
-function nameExistsError(name, where) {
-  return httpError(409, `A file named "${name}" already exists ${where}. Rename or move it, then restore.`, NAME_EXISTS);
-}
 
 /** Stops every share that includes any of these documents. */
 function revokeSharesForDocuments(userId, documentIds, session = null) {
@@ -203,10 +200,9 @@ async function listTrash(userId) {
 }
 
 /**
- * Puts a file back. Goes to its original folder; if that folder no longer
- * exists, or a file with that name is already there, it goes to the top level
- * instead (and says so). If the name is taken at the top level too it is a 409
- * NAME_EXISTS and nothing changes.
+ * Puts a file back. Goes to its original folder, or to the top level when that folder no longer exists (and says so). When a
+ * file with its name is there now, it comes back WITH A COUNTER ("report (1).pdf", utils/uniqueName.js) and says so: nothing is
+ * refused and nothing is overwritten.
  */
 async function restoreFile(userId, documentId) {
   if (!mongoose.Types.ObjectId.isValid(documentId)) throw httpError(404, 'Item not found.');
@@ -215,27 +211,23 @@ async function restoreFile(userId, documentId) {
   );
   if (!doc) throw httpError(404, 'Item not found.');
 
-  const clash = (folderPath) =>
-    Document.exists({ userId, deletedAt: null, folder: toDocumentFolder(folderPath), filename: doc.filename, _id: { $ne: doc._id } });
-
   let destination = await resolveFolderPath(userId, normalizeDocumentFolder(doc.folder));
   let message = null;
   if (destination === null) {
     destination = '';
     message = 'The original folder no longer exists, so it was restored to the top level.';
   }
-  if (await clash(destination)) {
-    if (destination === '') throw nameExistsError(doc.filename, 'at the top level');
-    destination = '';
-    message = 'A file with that name already exists in the original folder, so it was restored to the top level.';
-    if (await clash('')) throw nameExistsError(doc.filename, 'at the top level');
+  const free = await freeName({ userId, folder: toDocumentFolder(destination), wanted: doc.filename, excludeId: doc._id });
+  if (free.changed) {
+    const note = `A file named "${doc.filename}" is already there, so it was restored as "${free.name}".`;
+    message = message ? `${message} ${note}` : note;
   }
 
   await Document.updateOne(
     { _id: doc._id, userId },
-    { $set: { deletedAt: null, purgeAt: null, folder: toDocumentFolder(destination) } }
+    { $set: { deletedAt: null, purgeAt: null, folder: toDocumentFolder(destination), filename: free.name } }
   );
-  return { kind: 'file', id: String(doc._id), restoredTo: destination, message };
+  return { kind: 'file', id: String(doc._id), restoredTo: destination, message, name: free.name, nameChanged: free.changed };
 }
 
 /**

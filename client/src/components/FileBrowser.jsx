@@ -332,6 +332,29 @@ function FileBrowser({
     </span>
   );
 
+  // Folders on their own: a responsive grid of compact tiles (the folder's colour and icon, its name, how many items it holds).
+  if (view === 'tiles') {
+    return (
+      <ul className={styles.tiles} data-any-selected={anySelected || undefined} aria-label={label}>
+        {shownItems.map((item) => (
+          <li key={item.key} className={styles.tile} {...common(item)}>
+            {checkbox(item)}
+            <span className={styles.tileIcon}>
+              <ItemIcon item={item} size={28} look={looks[item.path]} />
+            </span>
+            <span className={styles.tileText}>
+              <button type="button" className={styles.tileName} title={item.name}>
+                {item.name}
+              </button>
+              {item.subtitle && <span className={styles.tileMeta}>{item.subtitle}</span>}
+            </span>
+            {actionsFor(item)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   if (view === 'grid') {
     return (
       <ul className={styles.grid} data-any-selected={anySelected || undefined} aria-label={label}>

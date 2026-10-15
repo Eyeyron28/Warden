@@ -9,6 +9,7 @@ import { formatDate } from '../utils/formatDate.js';
 import { formatBytes } from '../utils/listing.js';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
 import DetailsNotes from './DetailsNotes.jsx';
+import FileNameLabel from './FileNameLabel.jsx';
 import DetailsVersions, { UploadVersion } from './DetailsVersions.jsx';
 import styles from './DetailsPanel.module.css';
 
@@ -111,8 +112,8 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onCl
       <aside ref={ref} className={styles.panel} role="dialog" aria-modal="true" aria-label={`Details for ${name}`}>
         <header className={styles.head}>
           <Info size={20} aria-hidden="true" />
-          <h2 className={styles.title} title={name}>
-            {name}
+          <h2 className={styles.title}>
+            <FileNameLabel name={name} />
           </h2>
           <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Close details">
             <X size={18} />

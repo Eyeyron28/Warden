@@ -259,7 +259,7 @@ test('a long list is drawn in steps: a first screenful at once, every row in the
 test('both the list and the grid draw through the progressive list, and the data handed to the page is never cut', () => {
   const browser = code(path.join(src, 'components', 'FileBrowser.jsx'));
   assert.match(browser, /const shownItems = useProgressiveList\(items\);/);
-  assert.equal((browser.match(/shownItems\.map\(/g) || []).length, 2, 'grid and list');
+  assert.equal((browser.match(/shownItems\.map\(/g) || []).length, 3, 'folder tiles, grid and list');
   assert.doesNotMatch(browser, /items\.map\(/, 'no path renders every item at once');
   const files = code(path.join(src, 'pages', 'FilesPage.jsx'));
   assert.doesNotMatch(files, /useProgressiveList/, 'the page keeps working on the full data (search, select all)');

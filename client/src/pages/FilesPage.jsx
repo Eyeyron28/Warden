@@ -48,6 +48,8 @@ import {
   peekDocuments,
   peekFolders,
   uploadDocument,
+  renamedNotice,
+  THUMBNAIL_READY,
   putThumbnail,
   deleteDocument,
   deleteFolder,
@@ -63,6 +65,7 @@ import {
   batchTrashDocuments,
 } from '../services/documentsService.js';
 import { DOCUMENTS_CHANGED, describeMove } from '../utils/dragMove.js';
+import { splitIntoBlocks } from '../utils/fileBlocks.js';
 import { usePreviewGenerator } from '../utils/usePreviewGenerator.js';
 import { extractErrorMessage } from '../services/api.js';
 import { invalidateThumbnail } from '../services/thumbnailCache.js';
@@ -268,31 +271,48 @@ function FilesPage() {
   }, [subfolderNames, visibleDocuments, documents, currentPath, sort, isSearching]);
 
   const orderedKeys = useMemo(() => items.map((item) => item.key), [items]);
-  const selection = useSelection(orderedKeys);
-  const fileItems = useMemo(() => items.filter((item) => item.kind === 'file'), [items]);
+  const blocks = useMemo(() => splitIntoBlocks(items), [items]);
+  const fileItems = blocks.files;
+  const folderItems = blocks.folders;
+  // Select-all means the files; a folder is selected on its own tile.
+  const selection = useSelection(orderedKeys, blocks.selectAllKeys);
   const previewFiles = useMemo(() => fileItems.map((item) => item.document), [fileItems]);
 
   const vaultIsEmpty = documents.length === 0 && !folders.some((name) => normalizeFolderPath(name));
 
   // ---- uploads ----
+  const uploadAbort = useRef(null);
   const handleUpload = async ({ file, expiryDate }) => {
-    // Refused before anything is sent when it cannot fit (the server checks again regardless).
-    const tooBig = uploadFitsMessage(await getStorage().catch(() => null), file.size);
-    if (tooBig) {
-      setUploadError(tooBig);
-      return;
-    }
+    // The form has locked itself already (one request per press). This lock is the second line: one upload at a time.
+    if (uploadAbort.current) return;
+    const controller = new AbortController();
+    uploadAbort.current = controller;
     setUploading(true);
     setUploadProgress(0);
     setUploadError('');
     try {
-      await uploadDocument({ file, folder: currentPath || undefined, expiryDate }, setUploadProgress);
+      // Refused before anything is sent when it cannot fit (the server checks again regardless).
+      const tooBig = uploadFitsMessage(await getStorage().catch(() => null), file.size);
+      if (tooBig) {
+        setUploadError(tooBig);
+        return;
+      }
+      const saved = await uploadDocument({ file, folder: currentPath || undefined, expiryDate, signal: controller.signal }, setUploadProgress);
       setUploadOpen(false);
+      const notice = renamedNotice(saved);
+      if (notice) showToast(notice);
       await refresh();
       refreshFolders();
     } catch (err) {
-      setUploadError(extractErrorMessage(err, 'Upload failed.'));
+      if (controller.signal.aborted) {
+        // Say what happened: the request was stopped here, but a request that had already been fully sent may have been stored.
+        setUploadError('Upload cancelled. If the file had already reached the server it may still appear in your list.');
+        refresh({ quiet: true });
+      } else {
+        setUploadError(extractErrorMessage(err, 'Upload failed.'));
+      }
     } finally {
+      uploadAbort.current = null;
       setUploading(false);
     }
   };
@@ -312,15 +332,18 @@ function FilesPage() {
     setUploadProgress(0);
     setUploadError('');
     try {
+      let renamed = 0;
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         const relativeDir = relativeDirFromPath(file.webkitRelativePath || file.name);
         const folder = combineFolderPath(currentPath, relativeDir);
         // eslint-disable-next-line no-await-in-loop
-        await uploadDocument({ file, folder }, (filePercent) => {
+        const saved = await uploadDocument({ file, folder }, (filePercent) => {
           setUploadProgress(Math.round(((index + filePercent / 100) / files.length) * 100));
         });
+        if (saved?.nameChanged) renamed += 1;
       }
+      if (renamed > 0) showToast(`${renamed} file${renamed === 1 ? ' was' : 's were'} saved with a number added to its name, because a file with that name already existed.`);
       setFolderUploadCount(files.length);
       await refresh();
       refreshFolders();
@@ -336,6 +359,13 @@ function FilesPage() {
     invalidateThumbnail(id);
     setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasThumb: true, thumbFailed: false, thumbFailReason: null } : doc)));
   }, []);
+
+  // A preview drawn just after an upload (the upload no longer waits for it) shows as soon as it is stored.
+  useEffect(() => {
+    const onReady = (event) => event.detail?.id && markThumbnailAdded(event.detail.id);
+    window.addEventListener(THUMBNAIL_READY, onReady);
+    return () => window.removeEventListener(THUMBNAIL_READY, onReady);
+  }, [markThumbnailAdded]);
 
   // Background previews (opt-in): a made preview shows at once, a failed one is remembered so it is not retried.
   const previews = usePreviewGenerator({
@@ -876,20 +906,52 @@ function FilesPage() {
 
       <div className={styles.area}>
       {loading && items.length === 0 && !listError && <ListSkeleton />}
+      {folderItems.length > 0 && (
+        <section className={styles.block} aria-labelledby="folders-heading">
+          <h2 id="folders-heading" className={styles.blockHead}>
+            Folders <span className={styles.blockCount}>{folderItems.length}</span>
+          </h2>
+          <FileBrowser
+            items={folderItems}
+            view="tiles"
+            selection={selection}
+            onOpen={openItem}
+            menuFor={menuFor}
+            onItemContextMenu={handleItemContextMenu}
+            onDropOnFolder={handleDropDocument}
+            label="Folders"
+          />
+        </section>
+      )}
+      {folderItems.length > 0 && <hr className={styles.blockDivider} />}
       {items.length > 0 && (
-        <FileBrowser
-          items={items}
-          view={view}
-          selection={selection}
-          onOpen={openItem}
-          columns={FILE_COLUMNS}
-          menuFor={menuFor}
-          onItemContextMenu={handleItemContextMenu}
-          onDropOnFolder={handleDropDocument}
-          onToggleStar={toggleStarItem}
-          onShowDetails={(item, opener) => details.show(item.id, item.name, opener)}
-          label="Files and folders"
-        />
+        <section className={styles.block} aria-labelledby="files-heading">
+          <h2 id="files-heading" className={styles.blockHead}>
+            Files <span className={styles.blockCount}>{fileItems.length}</span>
+          </h2>
+          {fileItems.length > 0 ? (
+            <FileBrowser
+              items={fileItems}
+              view={view}
+              selection={selection}
+              onOpen={openItem}
+              columns={FILE_COLUMNS}
+              menuFor={menuFor}
+              onItemContextMenu={handleItemContextMenu}
+              onDropOnFolder={handleDropDocument}
+              onToggleStar={toggleStarItem}
+              onShowDetails={(item, opener) => details.show(item.id, item.name, opener)}
+              label="Files"
+            />
+          ) : (
+            <p className={styles.blockEmpty}>
+              No files in this folder yet.{' '}
+              <button type="button" className={styles.linkButton} onClick={() => setUploadOpen(true)}>
+                Upload here
+              </button>
+            </p>
+          )}
+        </section>
       )}
       </div>
 
@@ -942,6 +1004,7 @@ function FilesPage() {
         >
           <UploadForm
             onSubmit={handleUpload}
+            onAbort={() => uploadAbort.current?.abort()}
             onCancel={() => {
               setUploadOpen(false);
               setUploadError('');
@@ -1048,7 +1111,8 @@ function FilesPage() {
             currentPath={currentPath}
             onClose={() => setScanOpen(false)}
             // The upload has already emptied the page cache (every write does) and the server has logged it; read the list again.
-            onSaved={async () => {
+            onSaved={async (saved, notices = []) => {
+              if (notices.length > 0) showToast(notices[0]);
               await refresh();
               refreshFolders();
             }}

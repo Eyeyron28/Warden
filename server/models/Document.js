@@ -130,6 +130,10 @@ const documentSchema = new mongoose.Schema(
     noteAuthTag: { type: String },
     // How many versions of this file have ever been kept (the next one is this + 1); see models/DocumentVersion.js.
     versionCounter: { type: Number, default: 0 },
+    // The random key the browser made for ONE upload attempt (a UUID). A second request with the same key, from the same account,
+    // is the same upload sent twice (a double click, a retry): it gets the first document back and stores nothing. Unset on
+    // older documents; the unique index below covers only documents that have one.
+    uploadKey: { type: String },
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },
@@ -171,6 +175,9 @@ documentSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
 documentSchema.index({ userId: 1, deletedAt: 1, sniffedType: 1 });
 documentSchema.index({ userId: 1, deletedAt: 1, docExpiresAt: 1 });
 documentSchema.index({ trashBatchId: 1 }, { sparse: true });
+// One document per (account, upload key). PARTIAL: only documents that carry a key are in it, so older documents and uploads
+// without a key (which never had one) cannot collide, and the build cannot fail on existing data. NOT on file names.
+documentSchema.index({ userId: 1, uploadKey: 1 }, { unique: true, partialFilterExpression: { uploadKey: { $type: 'string' } } });
 // MongoDB removes the whole document (ciphertext and thumbnail included) when
 // purgeAt passes. Documents that are not in Trash have no purgeAt, so never expire.
 documentSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });

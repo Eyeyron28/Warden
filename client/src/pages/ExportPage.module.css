@@ -123,3 +123,11 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+.text,
+.small,
+.warning,
+.error {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

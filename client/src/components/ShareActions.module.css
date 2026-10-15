@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .linkRow {
@@ -20,6 +21,8 @@
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+  /* A long link is cut with an ellipsis inside the field (select it to see or copy all of it). */
+  text-overflow: ellipsis;
 }
 
 .linkInput:focus-visible {
@@ -62,24 +65,26 @@
 }
 
 .nativeShare {
-  border: 0;
-  background: var(--color-accent);
-  color: var(--color-bg);
   font-weight: 600;
-}
-
-.nativeShare:hover {
-  background: var(--color-accent-dim);
 }
 
 .appGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
   gap: var(--space-2);
 }
 
 .appButton {
   justify-content: flex-start;
+  min-width: 0;
+  padding-inline: var(--space-2);
+}
+
+.appButton > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badge {
@@ -106,30 +111,35 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3);
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-raised);
 }
 
 .qrFrame {
+  /* A square that scales down with its column (never wider than it), 176 px at most. */
+  width: min(100%, 100px);
+  aspect-ratio: 1 / 1;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   background: #fff;
   line-height: 0;
+  box-sizing: border-box;
 }
 
 .qrImage {
-  width: 176px;
-  height: 176px;
+  width: 100%;
+  height: 100%;
 }
 
 .qrWait {
   display: grid;
   place-items: center;
-  width: 176px;
-  height: 176px;
+  width: 100%;
+  height: 100%;
   color: #555;
   font-size: var(--fs-xs);
 }
@@ -150,6 +160,7 @@
 }
 
 .warning {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-strong);
@@ -169,37 +180,5 @@
   .qrSide {
     align-items: center;
     text-align: center;
-  }
-}
-
-/* Wide enough: the QR sits beside the buttons instead of under them, so the dialog stays short. */
-@media (min-width: 760px) {
-  .withQr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 216px;
-    column-gap: var(--space-4);
-    row-gap: var(--space-2);
-    align-items: start;
-  }
-  .withQr > * {
-    grid-column: 1;
-  }
-  .withQr .qrPanel {
-    grid-column: 2;
-    grid-row: 1 / span 5;
-    flex-direction: column;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .withQr .qrSide {
-    flex: none;
-    align-items: center;
-    text-align: center;
-  }
-  .withQr .qrImage,
-  .withQr .qrWait {
-    width: 168px;
-    height: 168px;
   }
 }
