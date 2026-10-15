@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CaretRight, Folder } from '@phosphor-icons/react';
+import { CaretRight } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 
+import FolderGlyph from './FolderGlyph.jsx';
 import { listFolderChildren, peekFolderChildren } from '../services/documentsService.js';
+import { dragCarriesDocuments, idsFromDrag, moveDroppedDocuments } from '../utils/dragMove.js';
 import { JUST_ASKED_MS } from '../services/dataCache.js';
 import styles from './Sidebar.module.css';
 
@@ -25,6 +27,7 @@ function FolderTree({ current, active, version, onNavigate }) {
     return top ? { '': { folders: top.folders, loading: false, error: false } } : {};
   });
   const [expanded, setExpanded] = useState(() => new Set());
+  const [dropPath, setDropPath] = useState(null); // the folder a drag is over
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
@@ -100,7 +103,26 @@ function FolderTree({ current, active, version, onNavigate }) {
           const child = nodes[folder.path];
           return (
             <li key={folder.path} role="treeitem" aria-expanded={folder.hasChildren ? isOpen : undefined} aria-selected={isCurrent}>
-              <div className={`${styles.treeRow} ${isCurrent ? styles.treeCurrent : ''}`} style={{ paddingLeft: `${depth * 12}px` }}>
+              <div
+                className={`${styles.treeRow} ${isCurrent ? styles.treeCurrent : ''} ${dropPath === folder.path ? styles.treeDrop : ''}`}
+                style={{ paddingLeft: `${depth * 12}px` }}
+                onDragOver={(event) => {
+                  if (!dragCarriesDocuments(event)) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  if (dropPath !== folder.path) setDropPath(folder.path);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setDropPath(null);
+                }}
+                onDrop={(event) => {
+                  if (!dragCarriesDocuments(event)) return;
+                  event.preventDefault();
+                  setDropPath(null);
+                  const ids = idsFromDrag(event);
+                  if (ids.length) moveDroppedDocuments(ids, folder.path).catch(() => {});
+                }}
+              >
                 {folder.hasChildren ? (
                   <button
                     type="button"
@@ -120,7 +142,7 @@ function FolderTree({ current, active, version, onNavigate }) {
                   aria-current={isCurrent ? 'page' : undefined}
                   title={folder.name}
                 >
-                  <Folder size={16} weight={isCurrent ? 'fill' : 'regular'} aria-hidden="true" />
+                  <FolderGlyph icon={folder.icon} color={folder.color} size={16} weight={isCurrent ? 'fill' : 'regular'} />
                   <span className={styles.treeName}>{folder.name}</span>
                 </button>
               </div>

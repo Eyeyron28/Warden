@@ -272,6 +272,24 @@ function plan() {
     [`PATCH ${D}/:id`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { filename: 'pwned.txt', folder: '', expiryDate: null } },
     [`POST ${D}/:id/share`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { durationHours: 24 } },
     [`GET ${D}/:id/shares`]: { kind: 'foreign', expect: GONE, params: { id: w.docId } },
+    // stars, Recent, the details panel and the batch actions
+    [`POST ${D}/star`]: {
+      kind: 'foreign', expect: [200], json: { ids: [w.docId], starred: true },
+      why: 'a star answers with how many of the CALLER own files it touched; for B that is none (and the file of A is unchanged: see the end-of-run comparison)',
+      after: (res) => assert.equal(res.body.updatedCount, 0, res.text),
+    },
+    [`GET ${D}/recent`]: { kind: 'own' },
+    [`GET ${D}/:id/details`]: { kind: 'foreign', expect: GONE, params: { id: w.docId } },
+    [`POST ${D}/batch/move`]: {
+      kind: 'foreign', expect: [200], json: { ids: [w.docId], destination: '' },
+      why: 'answers per id; every one is "not_found" for B',
+      after: (res) => assert.ok(res.body.results.every((item) => item.status === 'not_found'), res.text),
+    },
+    [`POST ${D}/batch/trash`]: {
+      kind: 'foreign', expect: [200], json: { ids: [w.docId] },
+      why: 'answers per id; every one is "not_found" for B',
+      after: (res) => assert.ok(res.body.trashedCount === 0 && res.body.results.every((item) => item.status === 'not_found'), res.text),
+    },
     // shares (owner side)
     'POST /api/shares': { kind: 'foreign', expect: GONE, json: { documentIds: [w.docId, w.docId2] } },
     'GET /api/shares': { kind: 'own' },

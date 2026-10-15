@@ -30,6 +30,16 @@
   --color-warn-wash: rgba(232, 170, 63, 0.14);
   --color-ok: #4fbf8a;
 
+  /* Folder colours: the 8 ids the server allows (server/utils/folderStyle.js). Each has a value for dark and one for light. */
+  --folder-rose: #f2708f;
+  --folder-orange: #f0954a;
+  --folder-amber: #e3bb3d;
+  --folder-green: #5cc48f;
+  --folder-teal: #4ec2c8;
+  --folder-blue: #6aa5f2;
+  --folder-violet: #a58bf0;
+  --folder-gray: #9aa0a8;
+
   /* ---- Type ---- */
   --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
@@ -116,4 +126,13 @@
   --color-warn: #8a5800;
   --color-warn-wash: rgba(190, 125, 0, 0.12);
   --color-ok: #1d7a52;
+
+  --folder-rose: #c2365a;
+  --folder-orange: #b85a12;
+  --folder-amber: #8f6a00;
+  --folder-green: #1d7a52;
+  --folder-teal: #0f7a80;
+  --folder-blue: #2563c7;
+  --folder-violet: #6a45c9;
+  --folder-gray: #5d6470;
 }

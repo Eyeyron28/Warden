@@ -140,7 +140,7 @@ test('the cache holds only the JSON lists of a fixed set of endpoints: never doc
   assert.doesNotMatch(held, /wrappedDEK|recoveryKey|sessionKey|encryptionKey|dataKey|base64/i);
 
   // Every use of the cache, anywhere in the client, names one of these list endpoints.
-  const allowed = ['auth/me', 'documents', 'documents/expiring', 'documents/folders', 'documents/folders/children', 'emergency/status', 'insights/overview', 'insights/frequent', 'shares', 'trash'];
+  const allowed = ['auth/me', 'documents', 'documents/expiring', 'documents/folders', 'documents/folders/children', 'documents/recent', 'documents/details', 'emergency/status', 'insights/overview', 'insights/frequent', 'shares', 'trash'];
   const root = path.join(here, '..');
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
   const uses = [];

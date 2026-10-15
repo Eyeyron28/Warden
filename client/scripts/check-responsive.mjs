@@ -39,7 +39,7 @@ const WIDTHS = [
   { name: '1280', width: 1280, height: 800 },
 ];
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/forgot-password', '/privacy', '/terms', '/emergency'];
-const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared'];
+const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent'];
 
 // ---------- the real app, locally ----------
 const load = Module._load;
@@ -97,7 +97,8 @@ async function seed() {
   const code = /(?<![\d-])(\d{6})(?![\d-])/.exec(mails.at(-1).text)[1];
   const verified = await api('POST', '/api/auth/signup/verify', { json: { email, password, code } });
   const token = verified.body.sessionToken;
-  await api('POST', '/api/documents/folders', { token, json: { name: 'Taxes', parentPath: '' } });
+  await api('POST', '/api/documents/folders', { token, json: { name: 'Taxes', parentPath: '', color: 'blue', icon: 'receipt' } });
+  await api('POST', '/api/documents/folders', { token, json: { name: 'Health records', parentPath: '', color: 'rose', icon: 'heart' } });
   const ids = [];
   for (let i = 0; i < 12; i += 1) {
     const form = new FormData();
@@ -106,6 +107,8 @@ async function seed() {
     ids.push((await api('POST', '/api/documents', { token, form })).body.id);
   }
   await api('DELETE', `/api/documents/${ids[11]}`, { token });
+  await api('POST', '/api/documents/star', { token, json: { ids: [ids[0], ids[3]], starred: true } });
+  for (const id of ids.slice(0, 4)) await api('GET', `/api/documents/${id}/view`, { token });
   await api('POST', `/api/documents/${ids[1]}/share`, { token, json: { durationHours: 24 } });
   await api('PATCH', `/api/documents/${ids[2]}`, { token, json: { docExpiresAt: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) } });
   return token;
@@ -182,22 +185,46 @@ try {
   browser = await launch();
   for (const size of WIDTHS) {
     for (const [signedIn, pages] of [[false, PUBLIC_PAGES], [true, APP_PAGES]]) {
-      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce' });
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       if (signedIn) await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
       const page = await context.newPage();
       for (const route of pages) {
+        let apiCalls = 0;
+        const callList = [];
+        const count = (request) => { const where = new URL(request.url()).pathname; if (where.startsWith('/api/')) { apiCalls += 1; callList.push(`${request.method()} ${where}`); } };
+        page.on('request', count);
         await page.goto(base + route, { waitUntil: 'networkidle' });
+        page.off('request', count);
         await page.addStyleTag({ content: '*{transition:none!important;animation:none!important}' });
         await page.waitForTimeout(250);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `${route.replace(/\//g, '_') || 'home'}-${process.env.THEME || 'light'}-${size.name}.png`) });
         const top = await page.evaluate(inPage);
         await page.evaluate(() => window.scrollTo(0, Math.min(700, document.documentElement.scrollHeight)));
         await page.waitForTimeout(150);
         const scrolled = await page.evaluate(inPage);
         const problems = [];
+        // The details panel (a drawer, or a sheet on a phone): opens from a file's info button, stays inside the screen, is closed by Escape.
+        if (route === '/files' || route === '/starred' || route === '/recent') {
+          await page.evaluate(() => window.scrollTo(0, 0));
+          const info = page.locator('button[aria-label^="Details for"]').first();
+          if (await info.count()) {
+            await info.click();
+            const panel = page.getByRole('dialog', { name: /^Details for/ });
+            await panel.waitFor({ timeout: 8000 });
+            await page.waitForFunction(() => document.querySelector('[role=dialog] dl'), null, { timeout: 8000 }).catch(() => {});
+            if (process.env.SHOTS && route === '/files') await page.screenshot({ path: path.join(process.env.SHOTS, `files-details-${process.env.THEME || 'light'}-${size.name}.png`) });
+            const box = await panel.boundingBox();
+            const wide = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+            if (!box || box.x < -1 || box.y < -1 || box.x + box.width > size.width + 1 || box.y + box.height > size.height + 1) problems.push(`details panel outside the screen (${JSON.stringify(box)})`);
+            if (wide) problems.push('details panel made the page scroll sideways');
+            await page.keyboard.press('Escape');
+            await page.getByRole('dialog', { name: /^Details for/ }).waitFor({ state: 'detached', timeout: 4000 }).catch(() => problems.push('Escape did not close the details panel'));
+          } else problems.push('no details button found');
+        }
         if (top.hScroll || scrolled.hScroll) problems.push(`horizontal scroll: ${top.hScroll || scrolled.hScroll}`);
         for (const text of new Set([...top.overlaps, ...scrolled.overlaps])) problems.push(`overlap: ${text}`);
         const redirected = new URL(page.url()).pathname !== route && !(route === '/signup' || route === '/login' || route === '/forgot-password') ? ` (went to ${new URL(page.url()).pathname})` : '';
-        rows.push({ route, size: size.name, ok: problems.length === 0, problems, bars: Math.max(top.bars, scrolled.bars), redirected });
+        rows.push({ route, size: size.name, ok: problems.length === 0, problems, bars: Math.max(top.bars, scrolled.bars), redirected, apiCalls, callList });
         if (problems.length) failures += 1;
       }
       await context.close();
@@ -223,5 +250,7 @@ for (const route of routes) {
 }
 for (const row of rows.filter((r) => !r.ok)) console.log(`\nFAIL ${row.route} at ${row.size}px: ${row.problems.join('; ')}`);
 for (const row of rows.filter((r) => r.redirected)) console.log(`note: ${row.route} at ${row.size}px${row.redirected}`);
+console.log('\nAPI requests on a cold load of each signed-in page (1280px):');
+for (const row of rows.filter((r) => r.size === '1280' && APP_PAGES.includes(r.route))) console.log(`  ${pad(row.route, 12)} ${row.apiCalls}${process.env.LIST_CALLS ? `  ${row.callList.join(', ')}` : ''}`);
 console.log(`\n${rows.length} page loads, ${failures} with problems.`);
 process.exit(failures ? 1 : 0);

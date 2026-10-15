@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { DotsThree, Folder } from '@phosphor-icons/react';
+import { DotsThree, Info, Star } from '@phosphor-icons/react';
 
 import DocumentThumb from './DocumentThumb.jsx';
 import DropdownMenu from './DropdownMenu.jsx';
+import FolderGlyph from './FolderGlyph.jsx';
 import FileTypeIcon from './FileTypeIcon.jsx';
 import dropdownStyles from './DropdownMenu.module.css';
 import { rowClickAction } from '../utils/clickAction.js';
 import { DRAG_MIME, canDragDocuments } from '../utils/dragAndDrop.js';
 import { useProgressiveList } from '../utils/useProgressiveList.js';
+import { idsFromDrag } from '../utils/dragMove.js';
+import { useFolderStyles } from '../services/folderStyles.js';
 import styles from './FileBrowser.module.css';
 
 const LONG_PRESS_MS = 550;
@@ -43,10 +46,48 @@ export function focusBrowserItem(key) {
 
 const isFolder = (item) => item.kind === 'folder' || item.kind === 'trash-folder';
 
-function ItemIcon({ item, size }) {
-  if (isFolder(item)) return <Folder size={size} weight="fill" className={styles.folderIcon} aria-hidden="true" />;
+function ItemIcon({ item, size, look }) {
+  if (isFolder(item)) return <FolderGlyph icon={look?.icon} color={look?.color} size={size} className={styles.folderIcon} />;
   if (!item.thumbDocument) return null;
   return size >= 28 ? <DocumentThumb document={item.thumbDocument} variant="row" /> : <FileTypeIcon filename={item.name} size={size} />;
+}
+
+/** A star on a file: on or off, announced as a toggle. Shown on hover, on focus, always when starred, and always on touch. */
+export function StarButton({ name, starred, onToggle }) {
+  return (
+    <button
+      type="button"
+      className={styles.starButton}
+      data-starred={starred || undefined}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      aria-pressed={Boolean(starred)}
+      aria-label={`${starred ? 'Remove the star from' : 'Star'} ${name}`}
+      title={starred ? 'Starred' : 'Star'}
+    >
+      <Star size={18} weight={starred ? 'fill' : 'regular'} />
+    </button>
+  );
+}
+
+export function InfoButton({ name, onShow }) {
+  return (
+    <button
+      type="button"
+      className={styles.infoButton}
+      onClick={(event) => {
+        event.stopPropagation();
+        onShow(event.currentTarget);
+      }}
+      aria-label={`Details for ${name}`}
+      aria-haspopup="dialog"
+      title="Details"
+    >
+      <Info size={18} />
+    </button>
+  );
 }
 
 function ItemMenu({ item, menuItems, placeholder = false }) {
@@ -115,6 +156,9 @@ function FileBrowser({
   menuFor,
   onItemContextMenu,
   onDropOnFolder,
+  // Star and details for FILES (the pages that offer them pass these; Trash and read-only views do not).
+  onToggleStar,
+  onShowDetails,
   showListHeader = true,
   // false = read-only browsing (Emergency Access): no checkboxes, no select-all, a click always opens.
   selectable = true,
@@ -123,6 +167,8 @@ function FileBrowser({
   // The first rows now, the rest in steps while the browser is idle (utils/useProgressiveList.js).
   const shownItems = useProgressiveList(items);
   const [draggable] = useState(canDragDocuments);
+  const looks = useFolderStyles();
+  const hasFileActions = Boolean(onToggleStar || onShowDetails);
   const [dropKey, setDropKey] = useState(null);
   const press = useRef(null);
   const suppressClickUntil = useRef(0);
@@ -159,7 +205,10 @@ function FileBrowser({
                 // The tap that ends this press must not also open the file.
                 suppressClickUntil.current = Date.now() + 700;
                 if (navigator.vibrate) navigator.vibrate(10);
-                openContext(item, clientX, clientY, currentTarget.querySelector('button[title]'));
+                // A long press on a touch screen enters select mode (the checkboxes appear and every tap then selects); the
+                // "..." button still opens the actions menu. Read-only views have nothing to select, so they keep the menu.
+                if (selectable) selection.toggle(item.key);
+                else openContext(item, clientX, clientY, currentTarget.querySelector('button[title]'));
               }, LONG_PRESS_MS),
             };
           },
@@ -207,8 +256,8 @@ function FileBrowser({
         if (!accepts(event)) return;
         event.preventDefault();
         setDropKey(null);
-        const id = event.dataTransfer.getData(DRAG_MIME);
-        if (id) onDropOnFolder(id, item);
+        const ids = idsFromDrag(event);
+        if (ids.length) onDropOnFolder(ids, item);
       },
     };
   };
@@ -218,7 +267,11 @@ function FileBrowser({
       ? {
           draggable: true,
           onDragStart: (event) => {
-            event.dataTransfer.setData(DRAG_MIME, item.id);
+            // Dragging a selected file takes the whole selection of files with it; any other file goes alone.
+            const ids = selection.isSelected(item.key)
+              ? items.filter((entry) => entry.kind === 'file' && selection.isSelected(entry.key)).map((entry) => entry.id)
+              : [item.id];
+            event.dataTransfer.setData(DRAG_MIME, ids.join(','));
             event.dataTransfer.effectAllowed = 'move';
           },
         }
@@ -257,6 +310,19 @@ function FileBrowser({
     ...dragProps(item),
   });
 
+  // The buttons at the end of a row or card: star and details for a file, then the "..." menu.
+  const actionsFor = (item) => (
+    <span className={styles.actions} data-no-open>
+      {hasFileActions && item.kind === 'file' && item.document && (
+        <>
+          {onToggleStar && <StarButton name={item.name} starred={item.document.starred} onToggle={() => onToggleStar(item)} />}
+          {onShowDetails && <InfoButton name={item.name} onShow={(opener) => onShowDetails(item, opener)} />}
+        </>
+      )}
+      <ItemMenu item={item} menuItems={menuFor?.(item)} placeholder />
+    </span>
+  );
+
   if (view === 'grid') {
     return (
       <ul className={styles.grid} data-any-selected={anySelected || undefined} aria-label={label}>
@@ -264,7 +330,7 @@ function FileBrowser({
           <li key={item.key} className={styles.card} {...common(item)}>
             <div className={styles.cardThumb}>
               {isFolder(item) ? (
-                <Folder size={72} weight="fill" className={styles.folderIconLarge} aria-hidden="true" />
+                <FolderGlyph icon={looks[item.path]?.icon} color={looks[item.path]?.color} size={72} className={styles.folderIconLarge} />
               ) : (
                 <DocumentThumb document={item.thumbDocument} variant="fill" />
               )}
@@ -272,7 +338,7 @@ function FileBrowser({
             <div className={styles.cardFooter}>
               {checkbox(item)}
               <span className={styles.cardIcon}>
-                <ItemIcon item={item} size={isFolder(item) ? 22 : 20} />
+                <ItemIcon item={item} size={isFolder(item) ? 22 : 20} look={looks[item.path]} />
               </span>
               <span className={styles.cardText}>
                 <button type="button" className={styles.cardName} title={item.name}>
@@ -281,7 +347,7 @@ function FileBrowser({
                 {item.subtitle && <span className={styles.cardMeta}>{item.subtitle}</span>}
                 {item.badge}
               </span>
-              <ItemMenu item={item} menuItems={menuFor?.(item)} />
+              {actionsFor(item)}
             </div>
           </li>
         ))}
@@ -289,9 +355,15 @@ function FileBrowser({
     );
   }
 
-  const wide = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', ...columns.map((column) => column.width), '44px'].join(' ');
-  const narrow = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', '44px'].join(' ');
-  const gridVars = { '--cols-wide': wide, '--cols-narrow': narrow, ...(selectable ? {} : { '--check-w': '0px' }) };
+  const wide = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', ...columns.map((column) => column.width), 'var(--actions-w)'].join(' ');
+  const narrow = ['var(--check-w)', 'var(--icon-w)', 'minmax(0, 1fr)', 'var(--actions-w)'].join(' ');
+  const gridVars = {
+    '--cols-wide': wide,
+    '--cols-narrow': narrow,
+    // Room at the end of a row for star, details and the menu (just the menu where a page offers no file actions).
+    '--actions-w': hasFileActions ? '120px' : '44px',
+    ...(selectable ? {} : { '--check-w': '0px' }),
+  };
 
   return (
     <ul className={styles.list} data-any-selected={anySelected || undefined} style={gridVars} aria-label={label}>
@@ -316,7 +388,7 @@ function FileBrowser({
         <li key={item.key} className={`${styles.row} ${columns.length > 3 ? styles.manyCols : ''}`} {...common(item)}>
           {checkbox(item)}
           <span className={styles.leadIcon}>
-            <ItemIcon item={item} size={28} />
+            <ItemIcon item={item} size={28} look={looks[item.path]} />
           </span>
           <span className={styles.nameCell}>
             <button type="button" className={styles.name} title={item.name}>
@@ -332,7 +404,7 @@ function FileBrowser({
               {item.cells?.[column.id]}
             </span>
           ))}
-          <ItemMenu item={item} menuItems={menuFor?.(item)} placeholder />
+          {actionsFor(item)}
         </li>
       ))}
     </ul>

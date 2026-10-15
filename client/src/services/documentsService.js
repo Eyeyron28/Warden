@@ -1,5 +1,6 @@
 import api from './api.js';
 import { fetchCached, peek } from './dataCache.js';
+import { setFolderStyles } from './folderStyles.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
 import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileNames.js';
 
@@ -44,8 +45,8 @@ export const peekFolders = () => peek('documents/folders');
  * @param {string} name
  * @returns {Promise<{ name: string }>}
  */
-export async function createFolder(name) {
-  const { data } = await api.post('/documents/folders', { name });
+export async function createFolder(name, style = {}) {
+  const { data } = await api.post('/documents/folders', { name, ...pickStyle(style) });
   return data;
 }
 
@@ -57,9 +58,22 @@ export async function createFolder(name) {
  * @param {string} name - the new name (one segment, no "/" or "\")
  * @returns {Promise<{ path: string }>} the folder's new full path
  */
-export async function renameFolder(path, name) {
-  const { data } = await api.patch('/documents/folders', { path, name });
+export async function renameFolder(path, name, style = {}) {
+  const { data } = await api.patch('/documents/folders', { path, ...(name === undefined ? {} : { name }), ...pickStyle(style) });
   return data;
+}
+
+/** Only the look's own fields ever go out (null = back to the default look; the server checks them against its lists). */
+function pickStyle(style) {
+  const out = {};
+  if (style && 'color' in style) out.color = style.color || null;
+  if (style && 'icon' in style) out.icon = style.icon || null;
+  return out;
+}
+
+/** PATCH /api/documents/folders with only a colour and/or icon: the folder keeps its path and name. */
+export async function setFolderStyle(path, style) {
+  return renameFolder(path, undefined, style);
 }
 
 /**
@@ -253,7 +267,16 @@ export async function getStorage() {
  * @returns {Promise<{ path: string, folders: Array<{ name: string, path: string, hasChildren: boolean }> }>}
  */
 export function listFolderChildren(path = '', options) {
-  return fetchCached(`documents/folders/children:${path}`, async () => (await api.get('/documents/folders/children', { params: { path } })).data, options);
+  return fetchCached(
+    `documents/folders/children:${path}`,
+    async () => {
+      const { data } = await api.get('/documents/folders/children', { params: { path } });
+      // The top-level answer also holds the look of every styled folder (see services/folderStyles.js).
+      if (path === '' && data?.styles) setFolderStyles(data.styles);
+      return data;
+    },
+    options
+  );
 }
 
 export const peekFolderChildren = (path = '') => peek(`documents/folders/children:${path}`);
@@ -265,6 +288,72 @@ export const peekFolderChildren = (path = '') => peek(`documents/folders/childre
 export async function deleteDocument(id) {
   await api.delete(`/documents/${id}`);
 }
+
+/** Splits a long list into batches the server accepts (at most 50 files each). */
+export const BATCH_SIZE = 50;
+const chunk = (list, size = BATCH_SIZE) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size));
+
+/**
+ * POST /api/documents/star - stars or unstars files (50 at a time; a longer list goes out in several requests).
+ * @returns {Promise<number>} how many of them were the caller's
+ */
+export async function starDocuments(ids, starred) {
+  let updated = 0;
+  for (const batch of chunk(ids)) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data } = await api.post('/documents/star', { ids: batch, starred });
+    updated += data.updatedCount;
+  }
+  return updated;
+}
+
+/**
+ * POST /api/documents/batch/move - files only, 50 per request, with a result for each id.
+ * @returns {Promise<{ destination: string, movedCount: number, results: object[] }>}
+ */
+export async function batchMoveDocuments(ids, destination) {
+  const total = { destination, movedCount: 0, results: [] };
+  for (const batch of chunk(ids)) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data } = await api.post('/documents/batch/move', { ids: batch, destination });
+    total.destination = data.destination;
+    total.movedCount += data.movedCount;
+    total.results.push(...data.results);
+  }
+  return total;
+}
+
+/**
+ * POST /api/documents/batch/trash - files only, 50 per request.
+ * @returns {Promise<{ trashedCount: number, results: object[] }>}
+ */
+export async function batchTrashDocuments(ids) {
+  const total = { trashedCount: 0, results: [] };
+  for (const batch of chunk(ids)) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data } = await api.post('/documents/batch/trash', { ids: batch });
+    total.trashedCount += data.trashedCount;
+    total.results.push(...data.results);
+  }
+  return total;
+}
+
+/**
+ * GET /api/documents/recent - the last 30 files uploaded, opened or changed, with the device that last opened each.
+ * @returns {Promise<{ retentionDays: number, items: object[] }>}
+ */
+export function listRecent(options) {
+  return fetchCached('documents/recent', async () => (await api.get('/documents/recent')).data, options);
+}
+
+/**
+ * GET /api/documents/:id/details - everything the details panel shows, in one answer. Kept in the page cache, which every
+ * write empties, so reopening a file's panel costs nothing and a changed file is never shown stale.
+ */
+export function getDocumentDetails(id, options) {
+  return fetchCached(`documents/details:${id}`, async () => (await api.get(`/documents/${id}/details`)).data, { maxAgeMs: 30000, ...options });
+}
+export const peekDocumentDetails = (id) => peek(`documents/details:${id}`);
 
 /**
  * DELETE /api/documents/folders?path=...

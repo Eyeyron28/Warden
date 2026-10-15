@@ -30,6 +30,7 @@ const {
 } = require('../utils/folders');
 const { sniffImageType, sniffPreviewKind, IMAGE_TYPES } = require('../utils/sniff');
 const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
+const { parseFolderStyle, hasStyleFields } = require('../utils/folderStyle');
 const Folder = require('../models/Folder');
 
 // Routes are async, but Express doesn't forward rejected promises to
@@ -109,6 +110,8 @@ function toListSummary(doc, sharedIds = null) {
     thumbFailed: Boolean(doc.thumbFailedAt),
     thumbFailReason: doc.thumbFailedAt ? doc.thumbFailReason ?? null : null,
     mimeType: doc.mimeType,
+    // The owner's star (a document from before stars existed has none: false).
+    starred: Boolean(doc.starred),
     // Whether the file is in a link that is still active (for the list's shared indicator).
     shared: sharedIds ? sharedIds.has(String(doc._id)) : false,
   };
@@ -218,6 +221,7 @@ const LIST_PROJECTION = {
   previewKind: 1,
   thumbFailedAt: 1,
   thumbFailReason: 1,
+  starred: 1,
   size: { $binarySize: '$encryptedBlob' },
 };
 
@@ -325,15 +329,28 @@ const listFolderChildren = asyncHandler(async (req, res) => {
     }
     if (!pathInScope(req.emergency, canonical)) throw httpError(404, 'Folder not found.');
   }
-  const children = await Folder.find({ userId: req.userId, parentPath: canonical }).select('name parentPath');
+  const children = await Folder.find({ userId: req.userId, parentPath: canonical }).select('name parentPath color icon');
   const paths = children.map((folder) => joinPath(canonical, folder.name));
   const withChildren = new Set(
     paths.length ? await Folder.distinct('parentPath', { userId: req.userId, parentPath: { $in: paths } }) : []
   );
   const folders = children
-    .map((folder, index) => ({ name: folder.name, path: toVirtual(req.emergency, paths[index]), hasChildren: withChildren.has(paths[index]) }))
+    .map((folder, index) => ({
+      name: folder.name,
+      path: toVirtual(req.emergency, paths[index]),
+      hasChildren: withChildren.has(paths[index]),
+      // The look of a folder is the owner's; an Emergency Access answer stays exactly what it was.
+      ...(req.emergency ? {} : { color: folder.color ?? null, icon: folder.icon ?? null }),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  res.status(200).json({ path: toVirtual(req.emergency, canonical), folders });
+  const answer = { path: toVirtual(req.emergency, canonical), folders };
+  // The top-level answer (which every page already asks for) also carries the look of EVERY styled folder, by path, so
+  // breadcrumbs and folder tiles can be drawn without another request. Only folders that were given a look are in it.
+  if (canonical === '' && !req.emergency) {
+    const styled = await Folder.find({ userId: req.userId, $or: [{ color: { $exists: true } }, { icon: { $exists: true } }] }).select('name parentPath color icon');
+    answer.styles = Object.fromEntries(styled.map((folder) => [joinPath(folder.parentPath || '', folder.name), { color: folder.color ?? null, icon: folder.icon ?? null }]));
+  }
+  res.status(200).json(answer);
 });
 
 
@@ -404,7 +421,9 @@ const createFolder = asyncHandler(async (req, res) => {
     leaf = lastSlash === -1 ? name : name.slice(lastSlash + 1);
   }
 
-  const created = await createFolderExplicit(req.userId, parent, leaf);
+  // An optional look for the new folder, from the server's own lists (a value outside them is a 400).
+  const { set } = parseFolderStyle(req.body);
+  const created = await createFolderExplicit(req.userId, parent, leaf, set);
   res.status(201).json({ name: created });
 });
 
@@ -421,17 +440,30 @@ const renameFolder = asyncHandler(async (req, res) => {
   if (typeof folderPath !== 'string' || !folderPath.trim()) {
     throw badRequest('A folder path is required.');
   }
+  // Validated before anything changes: a bad colour or icon must not leave a half-done rename.
+  const style = parseFolderStyle(req.body);
+  if (name === undefined && !hasStyleFields(req.body)) throw badRequest('A new name, a colour or an icon is required.');
 
   const srcPath = await resolveFolderPath(req.userId, folderPath);
   if (!srcPath) throw httpError(404, 'Folder not found.');
 
-  const parent = parentOf(srcPath);
-  const newName = validateFolderName(name, { atRoot: !parent });
-
-  const { newPath } = await runInTransaction((session) =>
-    moveFolder(req.userId, srcPath, parent, newName, session)
-  );
-  await recordEvent(req, 'rename');
+  let newPath = srcPath;
+  let renamed = false;
+  if (name !== undefined) {
+    const parent = parentOf(srcPath);
+    const newName = validateFolderName(name, { atRoot: !parent });
+    ({ newPath } = await runInTransaction((session) => moveFolder(req.userId, srcPath, parent, newName, session)));
+    renamed = newPath !== srcPath;
+  }
+  if (Object.keys(style.set).length || Object.keys(style.unset).length) {
+    // Only the look changes: the folder keeps its path, its place and its unique name (nothing here touches nameKey).
+    await Folder.updateOne(
+      { userId: req.userId, parentPath: parentOf(newPath), name: lastSegment(newPath) },
+      { ...(Object.keys(style.set).length ? { $set: style.set } : {}), ...(Object.keys(style.unset).length ? { $unset: style.unset } : {}) },
+      { timestamps: false }
+    );
+  }
+  if (renamed || name !== undefined) await recordEvent(req, 'rename');
   res.status(200).json({ path: newPath });
 });
 
@@ -904,6 +936,8 @@ const deleteDocument = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  toListSummary,
+  LIST_PROJECTION,
   createDocument,
   listDocuments,
   listExpiringDocuments,

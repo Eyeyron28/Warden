@@ -28,7 +28,7 @@ deadline. Both advisories cover every 6.x release, so no patch or minor update i
      `//`, any scheme and control characters, also after percent-decoding, and falls back to `/files`.
    - `FilesPage.jsx` and `FolderTree.jsx`: `` `/files?path=${encodeURIComponent(path)}` ``, which always starts with the fixed text
      `/files`.
-   - `OverviewPage.jsx`: `openLink(doc)`, the same fixed `/files?path=` start.
+   - `OverviewPage.jsx` and `DriveList.jsx` (the Starred and Recent lists): `openLink(doc)`, the same fixed `/files?path=` start.
    - `VaultHealthCard.jsx`: `item.actionPath`, fixed paths written by the server in `server/utils/vaultHealth.js`.
    - `SiteHeader.jsx`, `EmergencyShell.jsx`: constant lists, and `emergencyRedirect()` returns one of the app's own fixed paths.
 3. `client/src/utils/router-advisory.test.js` fails when a new computed navigation target appears that is not on that reviewed list,

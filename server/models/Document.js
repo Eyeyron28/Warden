@@ -119,6 +119,8 @@ const documentSchema = new mongoose.Schema(
     lastOpenedAt: { type: Date, default: null },
     viewCount: { type: Number, default: 0 },
     downloadCount: { type: Number, default: 0 },
+    // A star the owner put on the file (Starred view). A document saved before this existed has none, which reads as false.
+    starred: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },

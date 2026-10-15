@@ -606,6 +606,7 @@ const stopAllShares = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  readLabel,
   createShare,
   createBulkShare,
   listShares,

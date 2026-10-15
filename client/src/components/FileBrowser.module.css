@@ -404,3 +404,63 @@
     transition: none;
   }
 }
+
+/* ---- Star, details and the menu at the end of a row or card ---- */
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  min-width: 0;
+}
+
+.starButton,
+.infoButton {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.starButton:hover,
+.infoButton:hover {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.starButton[data-starred] {
+  opacity: 1;
+  color: var(--color-warn);
+}
+
+.row:hover .starButton,
+.row:hover .infoButton,
+.row:focus-within .starButton,
+.row:focus-within .infoButton,
+.card:hover .starButton,
+.card:hover .infoButton,
+.card:focus-within .starButton,
+.card:focus-within .infoButton,
+.starButton:focus-visible,
+.infoButton:focus-visible {
+  opacity: 1;
+}
+
+.starButton:focus-visible,
+.infoButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* No hover on a touch screen: the buttons are always there. */
+@media (hover: none) {
+  .starButton,
+  .infoButton {
+    opacity: 1;
+  }
+}

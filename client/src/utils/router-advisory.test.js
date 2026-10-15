@@ -40,6 +40,7 @@ const REVIEWED = new Map([
   ['components/site/SiteHeader.jsx', ['{link.to}']], // NAV_LINKS, constants
   ['components/VaultHealthCard.jsx', ['{item.actionPath}']], // fixed paths written by the server (utils/vaultHealth.js)
   ['pages/OverviewPage.jsx', ['{openLink(doc)}']], // always "/files?path=" + encodeURIComponent(...): a fixed start
+  ['components/DriveList.jsx', ['{openLink(doc)}']], // the same helper, in the Starred and Recent lists
   ['pages/auth/LoginPage.jsx', ['returnPathFrom(location', '{returnPathFrom(location)}']], // goes through safeRedirectPath (utils/safeRedirect.js)
   // `path ? "/files?path=" + encodeURIComponent(path) : '/files'`: both branches start with the fixed text "/files".
   ['components/FolderTree.jsx', ['path ? `/files?path=${encodeURIComponent(path']],

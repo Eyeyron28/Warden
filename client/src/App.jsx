@@ -28,6 +28,8 @@ const VerifyEmailPage = lazy(() => import('./pages/auth/VerifyEmailPage.jsx'));
 const FilesPage = lazy(() => import('./pages/FilesPage.jsx'));
 const PhotosPage = lazy(() => import('./pages/PhotosPage.jsx'));
 const TrashPage = lazy(() => import('./pages/TrashPage.jsx'));
+const StarredPage = lazy(() => import('./pages/StarredPage.jsx'));
+const RecentPage = lazy(() => import('./pages/RecentPage.jsx'));
 const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage.jsx'));
@@ -141,6 +143,8 @@ function App() {
           <Route path="/photos" element={<PhotosPage />} />
           <Route path="/shared" element={<SharesPage />} />
           <Route path="/trash" element={<TrashPage />} />
+          <Route path="/starred" element={<StarredPage />} />
+          <Route path="/recent" element={<RecentPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/overview" element={<OverviewPage />} />
           <Route path="/devices" element={<DevicesPage />} />

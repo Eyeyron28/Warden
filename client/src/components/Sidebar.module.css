@@ -310,3 +310,10 @@
     transition: none;
   }
 }
+
+/* A file being dragged over a folder in the tree. */
+.treeDrop {
+  background: var(--color-accent-wash);
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+}

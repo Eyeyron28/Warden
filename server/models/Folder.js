@@ -39,6 +39,10 @@ const folderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // The folder's look: ids from the server's own lists (utils/folderStyle.js). Absent = the default look, which is how
+    // every folder made before this existed is drawn. Neither is part of the path or of the unique index below.
+    color: { type: String, default: undefined },
+    icon: { type: String, default: undefined },
   },
   {
     timestamps: true,

@@ -8,16 +8,19 @@ import {
   FolderLock,
   FolderOpen,
   FolderSimplePlus,
+  Info,
   PencilSimple,
   Rows,
   ShareNetwork,
   SquaresFour,
+  Star,
   Trash,
   UploadSimple,
 } from '@phosphor-icons/react';
 
 import FileBrowser, { SelectAllCheckbox, focusBrowserItem } from '../components/FileBrowser.jsx';
 import ContextMenu from '../components/ContextMenu.jsx';
+import { useDetailsPanel } from '../components/useDetailsPanel.jsx';
 import { ListSkeleton } from '../components/Skeletons.jsx';
 import { JUST_ASKED_MS } from '../services/dataCache.js';
 import FilePreview from '../components/FilePreview.jsx';
@@ -51,8 +54,11 @@ import {
   fetchDocumentBytes,
   getStorage,
   listFolders,
-  moveItems,
+  starDocuments,
+  batchMoveDocuments,
+  batchTrashDocuments,
 } from '../services/documentsService.js';
+import { DOCUMENTS_CHANGED, describeMove } from '../utils/dragMove.js';
 import { usePreviewGenerator } from '../utils/usePreviewGenerator.js';
 import { extractErrorMessage } from '../services/api.js';
 import { invalidateThumbnail } from '../services/thumbnailCache.js';
@@ -457,15 +463,45 @@ function FilesPage() {
     return { documentIds: [...allIds], looseIds: selectedFiles.filter((doc) => !nestedIds.has(doc.id)).map((doc) => doc.id) };
   };
 
+  // ---- stars and the details panel ----
+  // The star shows at once and is put back if the server refuses; the cached lists are emptied by the write itself.
+  const setStar = async (ids, value) => {
+    setActionError('');
+    const mark = (to) => setDocuments((prev) => prev.map((doc) => (ids.includes(doc.id) ? { ...doc, starred: to } : doc)));
+    mark(value);
+    try {
+      await starDocuments(ids, value);
+    } catch (err) {
+      mark(!value);
+      if (!isSessionExpired(err)) setActionError(extractErrorMessage(err, 'Could not change the star.'));
+    }
+  };
+  const toggleStarItem = (item) => setStar([item.id], !item.document.starred);
+  const details = useDetailsPanel({
+    isStarred: (id) => Boolean(documents.find((doc) => doc.id === id)?.starred),
+    toggleStar: (id) => setStar([id], !documents.find((doc) => doc.id === id)?.starred),
+  });
+
   const handleBulkTrash = async () => {
     setActionError('');
     setBusy(true);
     const plan = resolveSelection();
-    // allSettled: one failure must not undo the rest.
-    const fileResults = await Promise.allSettled(plan.looseIds.map((id) => deleteDocument(id)));
+    // One request per 50 files (the server's limit), a result for each; a failure must not undo the rest.
+    let fileTrashed = 0;
+    let fileFailed = 0;
+    if (plan.looseIds.length > 0) {
+      try {
+        const response = await batchTrashDocuments(plan.looseIds);
+        fileTrashed = response.trashedCount;
+        fileFailed = plan.looseIds.length - response.trashedCount;
+      } catch {
+        fileFailed = plan.looseIds.length;
+      }
+    }
     const folderResults = await Promise.allSettled(selectedFolderPaths.map((path) => deleteFolder(path)));
-    const failed = [...fileResults, ...folderResults].filter((result) => result.status === 'rejected').length;
-    const moved = plan.looseIds.length + selectedFolderPaths.length - failed;
+    const folderFailed = folderResults.filter((result) => result.status === 'rejected').length;
+    const failed = fileFailed + folderFailed;
+    const moved = fileTrashed + selectedFolderPaths.length - folderFailed;
     selection.clear();
     await refresh();
     refreshFolders();
@@ -558,22 +594,36 @@ function FilesPage() {
     refreshFolders();
   };
 
-  const handleDropDocument = async (documentId, folderItem) => {
+  // Files dropped on a folder (one, or the whole selection): the batch move, which answers for each file.
+  const handleDropDocument = async (ids, folderItem) => {
     setActionError('');
     try {
-      const response = await moveItems([{ type: 'file', id: documentId }], folderItem.path);
-      const entry = response.results[0];
-      if (entry.status === 'moved') {
-        showToast(`Moved "${entry.name}" to ${response.destination || 'My files'}`);
+      const response = await batchMoveDocuments(ids, folderItem.path);
+      const outcome = describeMove(response);
+      if (response.movedCount > 0) {
+        showToast(outcome.message);
+        selection.clear();
         await refresh();
         refreshFolders();
-      } else if (entry.status !== 'unchanged') {
-        setActionError(entry.message || 'Could not move this document.');
+      } else if (outcome.error) {
+        setActionError(outcome.error);
       }
     } catch (err) {
-      if (!isSessionExpired(err)) setActionError(extractErrorMessage(err, 'Could not move this document.'));
+      if (!isSessionExpired(err)) setActionError(extractErrorMessage(err, 'Could not move these files.'));
     }
   };
+
+  // Files moved by a drop on the sidebar's folder tree (outside this page) announce themselves; show it and reload.
+  useEffect(() => {
+    const onChanged = async (event) => {
+      if (event.detail?.message) showToast(event.detail.message);
+      if (event.detail?.error) setActionError(event.detail.error);
+      await refresh();
+      refreshFolders();
+    };
+    window.addEventListener(DOCUMENTS_CHANGED, onChanged);
+    return () => window.removeEventListener(DOCUMENTS_CHANGED, onChanged);
+  }, [refresh, refreshFolders, showToast]);
 
   // A new "Expires on" date: only its fields change in the list; the banner and Overview read it from the server.
   const handleExpirySaved = (updated) => {
@@ -627,6 +677,8 @@ function FilesPage() {
     const doc = item.document;
     return [
       { label: 'Open / Preview', icon: icon(Eye), onSelect: () => openItem(item) },
+      { label: 'Details', icon: icon(Info), onSelect: () => details.show(doc.id, doc.filename, null) },
+      { label: doc.starred ? 'Remove star' : 'Star', icon: icon(Star), onSelect: () => setStar([doc.id], !doc.starred) },
       { label: 'Download', icon: icon(DownloadSimple), onSelect: () => handleDownloadFiles([doc]) },
       { label: 'Share', icon: icon(ShareNetwork), onSelect: () => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` }) },
       { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setEditingDocument(doc) },
@@ -636,6 +688,7 @@ function FilesPage() {
     ];
   };
 
+  const allStarred = selectedFiles.length > 0 && selectedFiles.every((doc) => doc.starred);
   const selectionActions = [
     {
       key: 'download',
@@ -646,11 +699,19 @@ function FilesPage() {
       title: selectedFolderPaths.length > 0 ? 'Folders cannot be downloaded: select only files' : undefined,
     },
     { key: 'share', label: 'Share', icon: <ShareNetwork size={18} />, onClick: handleBulkShare, disabled: busy },
+    {
+      key: 'star',
+      label: allStarred ? 'Remove star' : 'Star',
+      icon: <Star size={18} weight={allStarred ? 'fill' : 'regular'} />,
+      onClick: () => setStar(selectedFiles.map((doc) => doc.id), !allStarred),
+      disabled: busy || selectedFiles.length === 0,
+      title: selectedFiles.length === 0 ? 'Select files to star them' : undefined,
+    },
     { key: 'move', label: 'Move to…', icon: <ArrowsOutCardinal size={18} />, onClick: openMoveForSelection, disabled: busy },
     { key: 'trash', label: 'Move to trash', icon: <Trash size={18} />, onClick: handleBulkTrash, disabled: busy, danger: true },
   ];
 
-  const ACTION_ICONS = { download: DownloadSimple, share: ShareNetwork, move: ArrowsOutCardinal, trash: Trash };
+  const ACTION_ICONS = { download: DownloadSimple, share: ShareNetwork, star: Star, move: ArrowsOutCardinal, trash: Trash };
   const selectionMenuItems = () =>
     selectionActions.map((action) => ({
       label: action.label,
@@ -781,6 +842,8 @@ function FilesPage() {
           menuFor={menuFor}
           onItemContextMenu={handleItemContextMenu}
           onDropOnFolder={handleDropDocument}
+          onToggleStar={toggleStarItem}
+          onShowDetails={(item, opener) => details.show(item.id, item.name, opener)}
           label="Files and folders"
         />
       )}
@@ -934,6 +997,7 @@ function FilesPage() {
       )}
 
       {renamingPath && <RenameFolderModal path={renamingPath} onClose={() => setRenamingPath(null)} onRenamed={handleRenamed} />}
+      {details.element}
     </div>
   );
 }

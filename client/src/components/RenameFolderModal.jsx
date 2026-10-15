@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
+import FolderStylePicker from './FolderStylePicker.jsx';
 import Modal from './Modal.jsx';
 import { renameFolder } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
+import { getFolderStyles } from '../services/folderStyles.js';
 import styles from './NewFolderModal.module.css';
 
 /**
@@ -14,6 +16,9 @@ import styles from './NewFolderModal.module.css';
 function RenameFolderModal({ path, onClose, onRenamed }) {
   const currentName = path.split('/').pop();
   const [name, setName] = useState(currentName);
+  const current = getFolderStyles()[path];
+  const startStyle = { color: current?.color ?? null, icon: current?.icon ?? null };
+  const [style, setStyle] = useState(startStyle);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
@@ -26,7 +31,8 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed || submitting) return;
-    if (trimmed === currentName) {
+    const styleChanged = style.color !== startStyle.color || style.icon !== startStyle.icon;
+    if (trimmed === currentName && !styleChanged) {
       onClose();
       return;
     }
@@ -34,7 +40,8 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
     setSubmitting(true);
     setError('');
     try {
-      const { path: newPath } = await renameFolder(path, trimmed);
+      // Only what changed is sent: a new name, a new look, or both.
+      const { path: newPath } = await renameFolder(path, trimmed === currentName ? undefined : trimmed, styleChanged ? style : {});
       onRenamed(path, newPath);
       onClose();
     } catch (err) {
@@ -69,6 +76,8 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
             autoFocus
           />
         </div>
+
+        <FolderStylePicker value={style} onChange={setStyle} disabled={submitting} />
 
         <p id="rename-folder-error" className={styles.error} role="alert" aria-live="assertive">
           {error || ' '}

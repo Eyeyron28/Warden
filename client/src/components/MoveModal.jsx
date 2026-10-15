@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { CaretRight, CheckCircle, Folder, FolderSimplePlus, House, WarningCircle } from '@phosphor-icons/react';
 
 import Modal from './Modal.jsx';
-import { createFolder, moveItems } from '../services/documentsService.js';
+import { batchMoveDocuments, createFolder, moveItems } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { getImmediateChildren, joinPath, splitPath } from '../utils/folderPath.js';
 import styles from './MoveModal.module.css';
@@ -69,7 +69,8 @@ function MoveModal({
     setSubmitting(true);
     setError('');
     try {
-      const response = await moveItems(items, browsePath);
+      // Files only: the batch move (50 at a time, a result for each). Anything with a folder in it goes the existing way.
+      const response = items.every((item) => item.type === 'file') ? await batchMoveDocuments(items.map((item) => item.id), browsePath) : await moveItems(items, browsePath);
       const failed = response.results.filter((entry) => !['moved', 'unchanged'].includes(entry.status));
       if (failed.length === 0) {
         onMoved(response, { close: true });

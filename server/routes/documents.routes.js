@@ -3,6 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 
 const requireSession = require('../middleware/requireSession');
+const createRateLimiter = require('../middleware/rateLimit');
 const {
   createDocument,
   listDocuments,
@@ -24,6 +25,7 @@ const {
   getStorage,
   listFolderChildren,
 } = require('../controllers/documents.controller');
+const { setStarred, listRecent, getDetails, batchMove, batchTrash } = require('../controllers/driveBasics.controller');
 
 // 4MB, down from the old local-only 20MB cap: Vercel Hobby caps a whole
 // request body at 4.5MB, so a single upload has to fit comfortably under
@@ -69,6 +71,23 @@ function handleUpload(req, res, next) {
 
 // Every route below requires an unlocked vault session.
 router.use(requireSession);
+
+// Stars, Recent, the details panel and the batch actions: each has its OWN per-account budget (a bucket of its own, counted by
+// the signed-in account), after the session check, so a flood on one cannot use up another's.
+const perAccount = (name, max) =>
+  createRateLimiter({ name, max, windowMs: 60 * 60 * 1000, keyFn: (req) => (req.userId ? String(req.userId) : null) });
+const starLimit = perAccount('docs-star', 600);
+const recentLimit = perAccount('docs-recent', 300);
+const detailsLimit = perAccount('docs-details', 900);
+const batchMoveLimit = perAccount('docs-batch-move', 120);
+const batchTrashLimit = perAccount('docs-batch-trash', 120);
+
+// Registered before the routes with an :id so "recent" and "batch" are never captured as one.
+router.post('/star', starLimit, setStarred);
+router.get('/recent', recentLimit, listRecent);
+router.post('/batch/move', batchMoveLimit, batchMove);
+router.post('/batch/trash', batchTrashLimit, batchTrash);
+router.get('/:id/details', detailsLimit, getDetails);
 
 router.delete('/folders', deleteFolder);
 router.delete('/:id', deleteDocument);

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 
+import FolderStylePicker from './FolderStylePicker.jsx';
 import Modal from './Modal.jsx';
 import { createFolder } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -29,6 +30,7 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [style, setStyle] = useState({ color: null, icon: null });
   const inputRef = useRef(null);
 
   const showError = (message) => {
@@ -52,7 +54,7 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
     setSubmitting(true);
     setError('');
     try {
-      await createFolderFn(fullPath);
+      await createFolderFn(fullPath, { color: style.color, icon: style.icon });
       onCreated(fullPath);
       onClose();
     } catch (err) {
@@ -89,6 +91,7 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
           <p className={styles.helper}>
             {currentPath ? `Creates inside "${currentPath}".` : 'Creates at the top level.'}
           </p>
+          <FolderStylePicker value={style} onChange={setStyle} disabled={submitting} />
         </div>
 
         <p id="new-folder-error" className={styles.error} role="alert" aria-live="assertive">

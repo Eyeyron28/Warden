@@ -25,6 +25,7 @@ const brief = (doc) => ({
   downloadCount: doc.downloadCount || 0,
   lastOpenedAt: doc.lastOpenedAt || null,
   createdAt: doc.createdAt,
+  starred: Boolean(doc.starred),
 });
 
 const newestOpen = (a, b) => new Date(b.lastOpenedAt || 0) - new Date(a.lastOpenedAt || 0);
@@ -34,7 +35,7 @@ const lastTouched = (doc) => new Date(doc.lastOpenedAt || doc.createdAt || 0).ge
 
 /** Live (not trashed) documents of one account, with only the fields the insights need. */
 function liveDocuments(userId) {
-  return Document.find({ userId, deletedAt: LIVE.deletedAt }).select('filename folder viewCount downloadCount lastOpenedAt createdAt');
+  return Document.find({ userId, deletedAt: LIVE.deletedAt }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred');
 }
 
 /**
@@ -60,18 +61,20 @@ async function frequentFor(userId, knownDocs, now = new Date()) {
       userId,
       deletedAt: LIVE.deletedAt,
       $or: [{ _id: { $in: [...counts.keys()].filter((id) => mongoose.Types.ObjectId.isValid(id)) } }, { viewCount: { $gt: 0 }, lastOpenedAt: { $gte: since } }],
-    }).select('filename folder viewCount downloadCount lastOpenedAt createdAt'));
+    }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred'));
   const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
   const ranked = [...counts.entries()]
     .filter(([id]) => byId.has(id))
     .map(([id, opens]) => ({ ...brief(byId.get(id)), opens }))
     .sort((a, b) => b.opens - a.opens || newestOpen(a, b));
-  if (ranked.length > 0) return ranked.slice(0, TOP);
-  return docs
+  // Starred files come first (each group keeps its own order: most opened, then newest).
+  const starredFirst = (list) => [...list].sort((a, b) => Number(b.starred) - Number(a.starred));
+  if (ranked.length > 0) return starredFirst(ranked).slice(0, TOP);
+  return starredFirst(docs
     .filter((doc) => (doc.viewCount || 0) > 0 && doc.lastOpenedAt && new Date(doc.lastOpenedAt) >= since)
     .sort(newestOpen)
-    .slice(0, TOP)
-    .map((doc) => ({ ...brief(doc), opens: doc.viewCount || 0 }));
+    .map((doc) => ({ ...brief(doc), opens: doc.viewCount || 0 })))
+    .slice(0, TOP);
 }
 
 /** Files not opened (or, never opened, not created) for at least `days`, oldest first. */

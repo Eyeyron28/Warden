@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
   DownloadSimple,
+  Clock,
+  Star,
   CaretDoubleLeft,
   CaretDoubleRight,
   CaretDown,
@@ -127,6 +129,14 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           {treeOpen && !rail && <FolderTree current={currentFolder} active={onFiles} version={version} onNavigate={closeDrawer} />}
         </div>
 
+        <NavLink to="/recent" className={navClass} onClick={closeDrawer} {...tipFor('Recent')}>
+          <Clock size={ICON} weight="light" aria-hidden="true" />
+          {label('Recent')}
+        </NavLink>
+        <NavLink to="/starred" className={navClass} onClick={closeDrawer} {...tipFor('Starred')}>
+          <Star size={ICON} weight="light" aria-hidden="true" />
+          {label('Starred')}
+        </NavLink>
         <NavLink to="/photos" className={navClass} onClick={closeDrawer} {...tipFor('Photos')}>
           <Images size={ICON} weight="regular" aria-hidden="true" />
           {label('Photos')}

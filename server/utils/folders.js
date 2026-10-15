@@ -164,7 +164,7 @@ async function ensureFolderPath(userId, path, session) {
  * that parent (case-insensitively), otherwise 409 FOLDER_EXISTS. Returns the
  * new folder's full path.
  */
-async function createFolderExplicit(userId, parentPathInput, rawName) {
+async function createFolderExplicit(userId, parentPathInput, rawName, style = {}) {
   const parentPath = await ensureFolderPath(userId, parentPathInput);
   const name = validateFolderName(rawName, { atRoot: !parentPath });
 
@@ -172,7 +172,7 @@ async function createFolderExplicit(userId, parentPathInput, rawName) {
   if (existing) throw folderExistsError(existing.name);
 
   try {
-    await Folder.create({ userId, parentPath, name, nameKey: toNameKey(name) });
+    await Folder.create({ userId, parentPath, name, nameKey: toNameKey(name), ...style });
   } catch (err) {
     if (err?.code === 11000) throw folderExistsError(name);
     throw err;
