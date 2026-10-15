@@ -9,10 +9,13 @@
 // Build the client first (npm run build). The browser is the Chromium Playwright finds (PLAYWRIGHT_BROWSERS_PATH, e.g.
 // /opt/pw-browsers), or PW_CHROMIUM_PATH, or an installed Chrome or Edge. This script never downloads a browser.
 import fs from 'node:fs';
+import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import Module, { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+
+import zlib from 'node:zlib';
 
 import { chromium } from 'playwright-core';
 
@@ -187,6 +190,20 @@ async function launch() {
   throw new Error(`No Chromium found (set PLAYWRIGHT_BROWSERS_PATH or PW_CHROMIUM_PATH, or install Chrome or Edge): ${String(last?.message).split('\n')[0]}`);
 }
 
+// A small gray-gradient PNG for the Scan dialog (built here, so no file or library is needed).
+function samplePng(width, height) {
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buffer) => { let c = 0xffffffff; for (const byte of buffer) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const body = Buffer.concat([Buffer.from(type), data]); const out = Buffer.alloc(body.length + 8); out.writeUInt32BE(data.length, 0); body.copy(out, 4); out.writeUInt32BE(crc(body), body.length + 4); return out; };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2;
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) { const at = y * (width * 3 + 1) + 1 + x * 3; const v = 90 + Math.round((x / width) * 120) - (y % 40 < 3 ? 70 : 0); raw[at] = v; raw[at + 1] = v - 6; raw[at + 2] = v - 12; }
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const scanSample = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'warden-resp-')), 'sample.png');
+fs.writeFileSync(scanSample, samplePng(900, 1200));
+
 let browser;
 const rows = [];
 let failures = 0;
@@ -241,6 +258,40 @@ try {
             await page.keyboard.press('Escape');
             await page.getByRole('dialog', { name: /^Details for/ }).waitFor({ state: 'detached', timeout: 4000 }).catch(() => problems.push('Escape did not close the details panel'));
           } else problems.push('no details button found');
+        }
+        // The Scan dialog: opens from the Scan button, takes a page, shows the editor and the save step inside the screen.
+        if (route === '/files') {
+          await page.evaluate(() => window.scrollTo(0, 0));
+          const scan = page.getByRole('button', { name: 'Scan', exact: true });
+          if (!(await scan.isVisible())) problems.push('the Scan button is not visible');
+          else {
+            await scan.click();
+            const dialog = page.getByRole('dialog', { name: 'Scan documents' });
+            await dialog.waitFor({ timeout: 8000 });
+            const inside = async (label) => {
+              const found = await dialog.boundingBox();
+              const sideways = await dialog.evaluate((el) => [...el.querySelectorAll('*')].some((node) => node.getBoundingClientRect().right > el.getBoundingClientRect().right + 1 && getComputedStyle(node).position !== 'absolute'));
+              if (!found || found.x < -1 || found.x + found.width > size.width + 1 || found.y + found.height > size.height + 1) problems.push(`Scan dialog (${label}) outside the screen (${JSON.stringify(found)})`);
+              if (sideways) problems.push(`Scan dialog (${label}) has content past its right edge`);
+            };
+            await inside('start');
+            await page.getByTestId('scan-input').setInputFiles(scanSample);
+            await dialog.getByRole('button', { name: 'Page 1' }).waitFor({ timeout: 8000 });
+            await page.waitForTimeout(300);
+            await inside('editor');
+            for (const label of [/Crop corner, top left/, /Crop corner, bottom right/]) {
+              const handle = await dialog.getByRole('button', { name: label }).boundingBox();
+              if (!handle || handle.x < 0 || handle.y < 0 || handle.x + handle.width > size.width + 1 || handle.y + handle.height > size.height + 1) problems.push(`a crop handle is off the screen (${label})`);
+            }
+            if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `scan-editor-${process.env.THEME || 'light'}-${size.name}.png`) });
+            await dialog.getByRole('button', { name: 'Next: save' }).scrollIntoViewIfNeeded();
+            await dialog.getByRole('button', { name: 'Next: save' }).click();
+            await dialog.getByRole('button', { name: 'Save to the vault' }).waitFor({ timeout: 8000 });
+            await inside('save');
+            if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `scan-save-${process.env.THEME || 'light'}-${size.name}.png`) });
+            await page.keyboard.press('Escape');
+            await dialog.waitFor({ state: 'detached', timeout: 4000 }).catch(() => problems.push('Escape did not close the Scan dialog'));
+          }
         }
         if (top.hScroll || scrolled.hScroll) problems.push(`horizontal scroll: ${top.hScroll || scrolled.hScroll}`);
         for (const text of new Set([...top.overlaps, ...scrolled.overlaps])) problems.push(`overlap: ${text}`);

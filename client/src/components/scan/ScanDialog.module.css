@@ -1,0 +1,334 @@
+.start {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-2);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.start p {
+  margin: 0;
+  max-width: 38ch;
+}
+
+.primary,
+.secondary,
+.tool,
+.addPage,
+.pageButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+}
+
+.secondary,
+.tool,
+.addPage,
+.pageButton {
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.secondary:hover:not(:disabled),
+.tool:hover:not(:disabled),
+.addPage:hover:not(:disabled),
+.pageButton:hover {
+  background: var(--color-surface-raised);
+}
+
+.primary:disabled,
+.secondary:disabled,
+.tool:disabled,
+.addPage:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+.tool:focus-visible,
+.addPage:focus-visible,
+.pageButton:focus-visible,
+.cropBox:focus-visible,
+.cropHandle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.pageBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pageButton {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+
+.pageButton[aria-current='true'] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.addPage {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+
+.count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.stage {
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+/* The frame is exactly as big as the picture, so the crop rectangle (a percentage of the frame) lines up with it. */
+.frame {
+  position: relative;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 46dvh;
+  width: auto;
+  height: auto;
+}
+
+.cropArea {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.cropBox {
+  position: absolute;
+  border: 2px solid var(--color-accent);
+  /* Everything outside the rectangle is dimmed. */
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.55);
+  cursor: move;
+  touch-action: none;
+}
+
+.cropHandle {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--color-bg);
+  border-radius: 50%;
+  background: var(--color-accent);
+  touch-action: none;
+}
+
+.handle_nw {
+  left: -14px;
+  top: -14px;
+  cursor: nwse-resize;
+}
+
+.handle_ne {
+  right: -14px;
+  top: -14px;
+  cursor: nesw-resize;
+}
+
+.handle_sw {
+  left: -14px;
+  bottom: -14px;
+  cursor: nesw-resize;
+}
+
+.handle_se {
+  right: -14px;
+  bottom: -14px;
+  cursor: nwse-resize;
+}
+
+@media (pointer: coarse) {
+  .cropHandle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .handle_nw {
+    left: -18px;
+    top: -18px;
+  }
+
+  .handle_ne {
+    right: -18px;
+    top: -18px;
+  }
+
+  .handle_sw {
+    left: -18px;
+    bottom: -18px;
+  }
+
+  .handle_se {
+    right: -18px;
+    bottom: -18px;
+  }
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tool {
+  flex: 1 1 8rem;
+}
+
+.docMode {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 32px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.check input {
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+}
+
+.slider {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.slider input {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: var(--color-danger-wash);
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
+}
+
+.error p {
+  margin: 0 0 var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.saveForm {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.field input,
+.field select {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.formats {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--fs-sm);
+}
+
+.formats legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+
+.progress {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.progress progress {
+  width: 100%;
+}

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowsOutCardinal,
+  Camera,
   CalendarBlank,
   DownloadSimple,
   Eye,
@@ -83,6 +84,9 @@ import {
 } from '../utils/folderPath.js';
 import styles from './FilePages.module.css';
 
+// The scanner (camera input, crop, Document mode, PDF writer) is loaded the first time Scan is pressed.
+const ScanDialog = lazy(() => import('../components/scan/ScanDialog.jsx'));
+
 // A 401 mid-request means the session just expired - the axios interceptor
 // already clears it, and the route guard is about to unmount this page.
 const isSessionExpired = (err) => err?.response?.status === 401;
@@ -137,6 +141,7 @@ function FilesPage() {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
   const folderInputRef = useRef(null);
+  const [scanOpen, setScanOpen] = useState(false);
   const versionInputRef = useRef(null);
   const versionTarget = useRef(null);
 
@@ -826,6 +831,10 @@ function FilesPage() {
                 <SquaresFour size={16} weight="bold" />
               </button>
             </div>
+            <button type="button" className={styles.scanButton} onClick={() => setScanOpen(true)}>
+              <Camera size={16} weight="bold" />
+              <span>Scan</span>
+            </button>
             <NewMenu
               onOpenNewFolder={() => setNewFolderOpen(true)}
               onOpenUploadForm={() => setUploadOpen(true)}
@@ -1032,6 +1041,21 @@ function FilesPage() {
       )}
 
       {renamingPath && <RenameFolderModal path={renamingPath} onClose={() => setRenamingPath(null)} onRenamed={handleRenamed} />}
+      {scanOpen && (
+        <Suspense fallback={null}>
+          <ScanDialog
+            folderPaths={[...folders, ...documents.map((doc) => normalizeFolderPath(doc.folder))]}
+            currentPath={currentPath}
+            onClose={() => setScanOpen(false)}
+            // The upload has already emptied the page cache (every write does) and the server has logged it; read the list again.
+            onSaved={async () => {
+              await refresh();
+              refreshFolders();
+            }}
+          />
+        </Suspense>
+      )}
+
       {details.element}
       <input ref={versionInputRef} type="file" hidden tabIndex={-1} aria-hidden="true" onChange={handleVersionPicked} />
     </div>
