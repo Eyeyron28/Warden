@@ -16,6 +16,7 @@ import {
 import Modal from '../components/Modal.jsx';
 import { clearToken } from '../services/session.js';
 import { importJob } from '../services/importJob.js';
+import { forgetPreviousVisit } from '../services/sessionReset.js';
 import {
   forgetTrustedDevice,
   getActivity,
@@ -129,6 +130,7 @@ function DevicesPage() {
           const proceeded = await importJob.requestSignOut(async () => {
             const result = await signOutDevice(confirm.device.id);
             if (result.self) {
+              forgetPreviousVisit({ reason: 'signout' });
               clearToken();
               navigate('/login', { replace: true });
             }
@@ -138,6 +140,7 @@ function DevicesPage() {
         }
         const result = await signOutDevice(confirm.device.id);
         if (result.self) {
+          forgetPreviousVisit({ reason: 'signout' });
           clearToken();
           navigate('/login', { replace: true });
           return;

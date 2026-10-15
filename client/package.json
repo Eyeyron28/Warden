@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.js\"",
     "lint": "eslint .",
-    "check:responsive": "node scripts/check-responsive.mjs"
+    "check:responsive": "node scripts/check-responsive.mjs",
+    "check:import": "node scripts/check-import.mjs",
+    "check:logout": "node scripts/check-logout.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.1.0",

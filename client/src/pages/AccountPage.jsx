@@ -13,6 +13,7 @@ import { getMe } from '../services/authService.js';
 import { deleteAccount, requestDeleteCode, resendDeleteCode } from '../services/accountService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { clearToken } from '../services/session.js';
+import { forgetPreviousVisit } from '../services/sessionReset.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import site from '../components/site/site.module.css';
 import forms from '../components/site/forms.module.css';
@@ -106,6 +107,7 @@ function AccountPage() {
       // committed synchronously first. Dropping the token also empties the
       // decrypted thumbnail cache. The notice is plain text in router state.
       flushSync(() => navigate('/', { replace: true, state: { accountDeleted: true } }));
+      forgetPreviousVisit({ reason: 'signout' });
       clearToken();
     } catch (err) {
       setBusy(false);

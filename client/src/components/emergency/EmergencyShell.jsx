@@ -8,7 +8,8 @@ import EmergencyFilesPage from '../../pages/EmergencyFilesPage.jsx';
 import { logoutVault } from '../../services/authService.js';
 import { applySessionInfo, getEmergencyMode, leaveEmergencyMode, subscribeEmergencyMode } from '../../services/emergencyMode.js';
 import { getSessionInfo } from '../../services/emergencyService.js';
-import { clearToken } from '../../services/session.js';
+import { clearToken, expireSession } from '../../services/session.js';
+import { forgetPreviousVisit } from '../../services/sessionReset.js';
 import { EMERGENCY_NAV, emergencyRedirect, sessionBannerText } from '../../utils/emergencyMode.js';
 import { formatManila } from '../../utils/activityText.js';
 import styles from './EmergencyShell.module.css';
@@ -42,7 +43,8 @@ function EmergencyShell() {
     if (wait <= 0 || wait > 2 ** 31 - 1) return undefined;
     const timer = setTimeout(() => {
       leaveEmergencyMode({ keepFlag: true });
-      clearToken();
+      // The server's 4 hours are over: an ended session (the contact's page says so), not a sign-out.
+      expireSession('Emergency access has ended.');
     }, wait);
     return () => clearTimeout(timer);
   }, [mode.endsAt]);
@@ -56,7 +58,8 @@ function EmergencyShell() {
     } catch {
       // the session expires on its own
     } finally {
-      leaveEmergencyMode({ keepFlag: true });
+      // Signing out of an emergency session removes its token and state and goes to the sign-in page (not an "ended" screen).
+      forgetPreviousVisit({ reason: 'signout' });
       clearToken();
     }
   };

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import Icon from '../../components/site/Icon.jsx';
@@ -8,7 +8,8 @@ import { loginVault, resendOtp, verifyOtp } from '../../services/authService.js'
 import { extractErrorMessage } from '../../services/api.js';
 import { adoptTokenFromOtherTabs, setToken, takeSessionNotice } from '../../services/session.js';
 import { formatClock } from '../../utils/otpInput.js';
-import { safeRedirectPath } from '../../utils/safeRedirect.js';
+import { getEmergencyMode, leaveEmergencyMode, subscribeEmergencyMode } from '../../services/emergencyMode.js';
+import { visitMemory } from '../../services/visitMemory.js';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import AuthLayout from './AuthLayout.jsx';
@@ -21,16 +22,12 @@ import styles from './auth.module.css';
 const SETTLE_DELAY_MS = 350; // lets the vault dial finish its "unlocked" turn
 
 /**
- * Where to go after logging in: back to the page the person was on, if
- * there is one, otherwise the vault. The remembered path is router state,
- * so it goes through safeRedirectPath (utils/safeRedirect.js) - a missing,
- * malformed or hostile value (`//evil.com`, `/\evil.com`, encoded variants)
- * is ignored and the normal destination is used instead.
+ * Where to go after a fresh sign-in: My Files, always - except for the same account signing in again after the server ended its
+ * session on an ordinary page (services/visitMemory.js: an allowlist of known routes, never a full URL). Nothing is read from the
+ * router state or the address bar, so no page the person left can come back.
  */
-export function returnPathFrom(location) {
-  const from = location.state?.from;
-  const path = from ? `${from.pathname || ''}${from.search || ''}` : '';
-  return safeRedirectPath(path, '/files');
+export function landingFor(email) {
+  return visitMemory.landingAfterLogin(email);
 }
 
 /**
@@ -45,6 +42,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const token = useSessionToken();
+  const emergency = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,7 +77,9 @@ function LoginPage() {
   }, [problem]);
 
   // Already signed in (e.g. pressed Back after logging in): straight on.
-  if (token && !submitting && !challenge) return <Navigate to={returnPathFrom(location)} replace />;
+  // Already signed in as the owner (e.g. pressed Back after logging in): straight on, to My Files. (An emergency session does not count:
+  // signing in here ends it, below.)
+  if (token && !emergency.emergency && !submitting && !challenge) return <Navigate to="/files" replace />;
 
   const locked = problem?.kind === 'locked' && secondsLeft > 0;
 
@@ -94,8 +94,13 @@ function LoginPage() {
     setChallenge(null);
     setDial('unlocked');
     settleTimer.current = setTimeout(() => {
+      // Every fresh sign-in lands on My Files; the one exception is the same account coming back after the SERVER ended its session
+      // on an ordinary page (services/visitMemory.js). Decided BEFORE the new session starts, and the old URL leaves the history.
+      const landing = landingFor(email.trim());
+      leaveEmergencyMode(); // an emergency session and an owner's session are never active together: the new one ends the old
       setToken(sessionToken);
-      navigate(returnPathFrom(location), { replace: true });
+      visitMemory.rememberAccount(email.trim());
+      navigate(landing, { replace: true });
     }, SETTLE_DELAY_MS);
   };
 

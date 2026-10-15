@@ -11,6 +11,8 @@ import { getMe } from './services/authService.js';
 import { JUST_ASKED_MS } from './services/dataCache.js';
 import { checkStoredSession } from './services/sessionCheck.js';
 import { importJob } from './services/importJob.js';
+import { forgetPreviousVisit } from './services/sessionReset.js';
+import { visitMemory } from './services/visitMemory.js';
 import { useSessionToken } from './utils/useSessionToken.js';
 import { getEmergencyMode, setModeFromMe, subscribeEmergencyMode, wasEmergencyTab } from './services/emergencyMode.js';
 
@@ -52,12 +54,18 @@ function RequireSession({ children }) {
   const token = useSessionToken();
   const location = useLocation();
   const ready = useSessionCheck();
+  // The page being looked at, in memory, for the one case where a session the server ended may return to it.
+  useEffect(() => {
+    if (token) visitMemory.trackVisit(`${location.pathname}${location.search}`);
+  }, [token, location.pathname, location.search]);
   // A token kept from before a reload (or handed over by another tab) is proved with the server first, so a
   // dead one sends you to the login page with a message instead of a screen full of failed requests.
   if (!ready) return <AppFrameSkeleton />;
   // An emergency session that ended (4 hours, turned off by the owner, signed out) says so on the contact's own page.
   if (!token && wasEmergencyTab()) return <Navigate to="/emergency?ended=1" replace />;
-  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
+  // The sign-in page is its own route, and nothing about this page travels with the redirect: a fresh sign-in lands on My Files
+  // (services/visitMemory.js decides the one exception, a session the server ended).
+  if (!token) return <Navigate to="/login" replace />;
   return children;
 }
 
@@ -108,6 +116,7 @@ function App() {
           // Locking the vault should never get the user stuck - worst case is
           // an orphaned server-side session that expires naturally in 30 min.
         } finally {
+          forgetPreviousVisit({ reason: 'signout' });
           clearToken();
         }
       }),

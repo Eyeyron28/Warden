@@ -43,7 +43,7 @@ const REVIEWED = new Map([
   ['components/DriveList.jsx', ['{openLink(doc)}']], // the same helper, in the Starred and Recent lists
   ['pages/ExportPage.jsx', ['{filesLink(job.destination)}']], // filesLink(): "/files" + an encoded ?path= (utils/importCard.js)
   ['components/ImportCard.jsx', ['view.target']], // utils/importCard.js: only '/export' or filesLink() ("/files" + an encoded ?path=)
-  ['pages/auth/LoginPage.jsx', ['returnPathFrom(location', '{returnPathFrom(location)}']], // goes through safeRedirectPath (utils/safeRedirect.js)
+  ['pages/auth/LoginPage.jsx', ['landing']], // goes through safeRedirectPath (utils/safeRedirect.js)
   // `path ? "/files?path=" + encodeURIComponent(path) : '/files'`: both branches start with the fixed text "/files".
   ['components/FolderTree.jsx', ['path ? `/files?path=${encodeURIComponent(path']],
   ['pages/FilesPage.jsx', ['path ? `/files?path=${encodeURIComponent(path']],
@@ -73,6 +73,7 @@ test('GHSA-wrjc-x8rr-h8h6 (backslash open redirect): every computed navigation t
 
 test('the one place a returned-to address comes from outside goes through the redirect guard', () => {
   const login = strip(fs.readFileSync(path.join(src, 'pages', 'auth', 'LoginPage.jsx'), 'utf8'));
-  assert.match(login, /safeRedirectPath\(/);
+  assert.match(login, /landingFor\(email\.trim\(\)\)/);
+  assert.match(fs.readFileSync(path.join(src, 'services', 'visitMemory.js'), 'utf8'), /isSafeRedirectPath\(path\)/);
   assert.match(fs.readFileSync(path.join(src, 'utils', 'safeRedirect.js'), 'utf8'), /backslash/);
 });

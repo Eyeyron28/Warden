@@ -1,5 +1,6 @@
 import api from './api.js';
 import { fetchCached } from './dataCache.js';
+import { visitMemory } from './visitMemory.js';
 
 /**
  * POST /api/auth/signup/start - step 1 of sign-up. Nothing is created: a 6-digit code is emailed (or, for an address that
@@ -110,7 +111,16 @@ export async function resendOtp(challengeToken) {
  */
 export function getMe(options) {
   // Shared with the start-up prefetch (services/prefetch.js), so the session check does not wait for the page to render.
-  return fetchCached('auth/me', async () => (await api.get('/auth/me')).data, options);
+  return fetchCached(
+    'auth/me',
+    async () => {
+      const me = (await api.get('/auth/me')).data;
+      // Who is signed in (in memory): a session the server ends may return to its page only for this same account (services/visitMemory.js).
+      if (me?.email) visitMemory.rememberAccount(me.email);
+      return me;
+    },
+    options
+  );
 }
 
 // ---- Forgot password: emailed code -> single-use ticket -> recovery key or start over ----
