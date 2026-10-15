@@ -75,7 +75,7 @@ function gaps(model, actual) {
 }
 
 it('every model file is registered with Mongoose (so the migration sees it)', () => {
-  assert.equal(modelFiles.length, 19, 'a model was added or removed: update this count and check its indexes below');
+  assert.equal(modelFiles.length, 20, 'a model was added or removed: update this count and check its indexes below');
   assert.equal(mongoose.modelNames().length, modelFiles.length);
 });
 

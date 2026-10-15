@@ -30,7 +30,7 @@ test('the policy version on the page is the one the server records with a new ac
 
 // If this fails you changed what the privacy page says. Bump PRIVACY_POLICY_VERSION in server/utils/policyVersion.js and
 // PRIVACY_POLICY in client/src/config.js (version and date), then put the new fingerprint here (it is printed by the failure).
-const POLICY_TEXT_FINGERPRINT = '71fb1d9759186367597512d74021eaa8e2216171560652eecca6180b3e627852';
+const POLICY_TEXT_FINGERPRINT = 'af56f7ff269b69c32ea5f2dcb2c3d7e7af7177d51bad8a74274c8242d4276b4f';
 
 function policyFingerprint() {
   const files = ['pages/public/PrivacyPage.jsx', 'pages/public/limits.js', 'components/site/retention.js'];
@@ -68,6 +68,8 @@ test('the retention table matches the code', () => {
   const rows = Object.fromEntries(RETENTION.map((row) => [row.what, row.how]));
   const need = (what, pattern) => assert.match(rows[what] || '', pattern, what);
   need('Trash', /30 days/);
+  need('Private notes on files', /Until you delete them, or delete the file or your account/);
+  need('Earlier versions of a file', /30 days, up to 3 per file/);
   need('Activity log', /30 days by default/);
   need('Sign-in sessions', /30 minutes without activity, and after 12 hours at most/);
   need('Sign-up code (before an account exists)', /few minutes/);
@@ -85,6 +87,10 @@ test('the retention table matches the code', () => {
   assert.equal(legacy.MIN_AGE_MS, 24 * 60 * 60 * 1000);
   const shares = require('../../../server/utils/shareLimits.js');
   assert.equal(shares.MAX_DURATION_HOURS, 24 * 30);
+  // the version limits in the table are the server's own
+  const versions = require('../../../server/utils/versions.js');
+  assert.equal(versions.MAX_VERSIONS, 3);
+  assert.equal(versions.VERSION_DAYS, 30);
   const trash = fs.readFileSync(path.join(src, '..', '..', 'server', 'utils', 'trash.js'), 'utf8');
   assert.match(trash, /const RETENTION_DAYS = 30;/);
   const trusted = fs.readFileSync(path.join(src, '..', '..', 'server', 'utils', 'trustedDevice.js'), 'utf8');

@@ -112,6 +112,8 @@ function toListSummary(doc, sharedIds = null) {
     mimeType: doc.mimeType,
     // The owner's star (a document from before stars existed has none: false).
     starred: Boolean(doc.starred),
+    // Only THAT the file has a private note, never the note (it is read, decrypted, by the details panel alone).
+    hasNote: Boolean(doc.hasNote),
     // Whether the file is in a link that is still active (for the list's shared indicator).
     shared: sharedIds ? sharedIds.has(String(doc._id)) : false,
   };
@@ -222,6 +224,7 @@ const LIST_PROJECTION = {
   thumbFailedAt: 1,
   thumbFailReason: 1,
   starred: 1,
+  hasNote: 1,
   size: { $binarySize: '$encryptedBlob' },
 };
 
@@ -244,7 +247,8 @@ const listDocuments = asyncHandler(async (req, res) => {
     // A contact sees paths that start at the scope folder (never the names above it) and no sharing information.
     return res.status(200).json(
       documents.map((doc) => {
-        const summary = toListSummary(doc, null);
+        // eslint-disable-next-line no-unused-vars -- a note is the owner's alone: not even whether one exists
+        const { hasNote, ...summary } = toListSummary(doc, null);
         return { ...summary, folder: toVirtual(req.emergency, summary.folder) };
       })
     );

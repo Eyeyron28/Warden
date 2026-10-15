@@ -355,6 +355,61 @@ export function getDocumentDetails(id, options) {
 }
 export const peekDocumentDetails = (id) => peek(`documents/details:${id}`);
 
+/** The longest private note the server accepts (characters). */
+export const MAX_NOTE_CHARS = 2000;
+
+/**
+ * PUT /api/documents/:id/note - sets, changes (text) or clears (null or empty) the file's private note. The server encrypts it
+ * with the vault key; it comes back only in the details answer.
+ * @returns {Promise<{ id: string, hasNote: boolean, note: string|null }>}
+ */
+export async function setDocumentNote(id, note) {
+  const { data } = await api.put(`/documents/${id}/note`, { note: note && note.trim() ? note : null });
+  return data;
+}
+
+/**
+ * POST /api/documents/:id/versions - "Upload new version": replaces the file's contents (same id, name, folder, expiry, star, note and
+ * share links); what it held is kept as a previous version. The same 4 MB cap, preview and server checks as a new upload.
+ */
+export async function uploadNewVersion(id, file, onProgress) {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw Object.assign(new Error(TOO_LARGE_MESSAGE), { response: { status: 413, data: { error: { message: TOO_LARGE_MESSAGE } } } });
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  const thumb = await generateThumbnail(file);
+  if (thumb) formData.append('thumb', thumb, 'thumb');
+  try {
+    const { data } = await api.post(`/documents/${id}/versions`, formData, {
+      onUploadProgress: (event) => {
+        if (onProgress && event.total) onProgress(Math.round((event.loaded / event.total) * 100));
+      },
+    });
+    return data;
+  } catch (err) {
+    if (err?.response?.status === 413 && !err.response.data?.error?.message) err.response.data = { error: { message: TOO_LARGE_MESSAGE } };
+    throw err;
+  }
+}
+
+/** POST /api/documents/:id/versions/:versionId/restore - the current file becomes a version, the chosen one becomes current. */
+export async function restoreDocumentVersion(id, versionId) {
+  const { data } = await api.post(`/documents/${id}/versions/${versionId}/restore`);
+  return data;
+}
+
+/** DELETE /api/documents/:id/versions/:versionId */
+export async function deleteDocumentVersion(id, versionId) {
+  await api.delete(`/documents/${id}/versions/${versionId}`);
+}
+
+/** GET /api/documents/:id/versions/:versionId/download - the bytes of a previous version (saved with downloadBytes). */
+export async function fetchVersionBytes(id, versionId) {
+  const response = await api.get(`/documents/${id}/versions/${versionId}/download`, { responseType: 'arraybuffer' });
+  return { bytes: new Uint8Array(response.data), filename: filenameFromDisposition(response.headers['content-disposition']) };
+}
+
 /**
  * DELETE /api/documents/folders?path=...
  * Moves the folder, everything nested in it and every file inside to Trash as

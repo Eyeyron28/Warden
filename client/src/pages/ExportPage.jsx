@@ -160,7 +160,7 @@ function ExportPage() {
         <h2 id="export-title" className={styles.heading}>Export my files</h2>
         <p className={styles.text}>
           Download everything in My files as one .zip, with your folders (empty ones too) and the original file names.
-          Trash, share links and previews are not included.
+          Trash, share links, previews, private notes and earlier versions are not included: the zip holds each file as it is now.
         </p>
         <p className={styles.warning}>
           <strong>The zip is not encrypted.</strong> Anyone who gets the file can open it.

@@ -40,6 +40,12 @@ export function describeEvent(event) {
     case 'restore': return `Restored ${file}`;
     case 'expiry_set': return `Set an expiry date on ${file}`;
     case 'expiry_cleared': return `Cleared the expiry date on ${file}`;
+    case 'note_set': return `Added a private note to ${file}`;
+    case 'note_changed': return `Changed the private note on ${file}`;
+    case 'note_cleared': return `Removed the private note from ${file}`;
+    case 'version_created': return `Uploaded a new version of ${file}`;
+    case 'version_restored': return `Restored an earlier version of ${file}`;
+    case 'version_deleted': return `Deleted an earlier version of ${file}`;
     case 'emergency_configured': return 'Set up emergency access';
     case 'emergency_kit_regenerated': return 'Replaced the emergency access kit';
     case 'emergency_revoked': return 'Turned off emergency access';

@@ -37,10 +37,10 @@ export const LIMITS = [
   {
     title: 'Storage and size limits',
     body:
-      'A single file can be at most 4 MB. Each account can store 25 MB in total (this server can set a different quota), counting everything in your vault and everything waiting in Trash; emptying Trash, permanent deletion and the 30-day clean-up free the space, and an upload that would go over is refused with a message. Share links have their own separate limits: up to 20 MB in one link, 60 MB across your active links, and 20 active links, for at most 30 days.',
+      'A single file can be at most 4 MB. Each account can store 25 MB in total (this server can set a different quota), counting everything in your vault, everything waiting in Trash and the earlier versions of your files (a file keeps up to 3 for 30 days); emptying Trash, permanent deletion and the 30-day clean-up free the space, and an upload that would go over is refused with a message. Share links have their own separate limits: up to 20 MB in one link, 60 MB across your active links, and 20 active links, for at most 30 days.',
   },
   {
     title: 'File names and sizes',
-    body: 'File and folder names, file types and dates are stored as plain text. Encrypted data is the same size as the file, so file sizes are visible to anyone with access to the database. Only file contents and previews are encrypted (and, inside a share, the names too).',
+    body: 'File and folder names, file types and dates are stored as plain text. Encrypted data is the same size as the file, so file sizes are visible to anyone with access to the database. Only file contents, previews, private notes and earlier versions are encrypted (and, inside a share, the names too).',
   },
 ];

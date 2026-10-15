@@ -45,6 +45,35 @@ deadline. Both advisories cover every 6.x release, so no patch or minor update i
 **When to remove this entry:** upgrade to react-router-dom 7.18 or later, run `npm audit --omit=dev`, and delete the two rows. The
 upgrade is a major version, so the routing code (`App.jsx`, `main.jsx`) and the tests that read it need to be re-checked.
 
+## Private notes and version history
+
+Both are encrypted **by the server with the vault key**, the same way a file or a share's purpose label is. They are **not end-to-end
+encrypted**: while you are signed in the server holds the vault key for each request, so a compromised running server could read a
+note or an earlier version at that moment, exactly as it could read a file you open. At rest the database holds only ciphertext
+(a note is `noteCipher` / `noteIv` / `noteAuthTag` on the document; a version is a `DocumentVersion` record with its own IV, auth tag and
+bytes).
+
+What the code guarantees, each with a test (`server/test/notes-versions.test.js`):
+
+- A note is plain text, at most 2000 characters, never in a share, never in an Emergency Access answer (not even whether one exists),
+  never searched, and never in the activity log (the log records only that one was set, changed or cleared).
+- Notes and earlier versions are **not in the zip export** (it holds each file as it is now), and the Export screen says so.
+- Up to 3 earlier versions per file, each kept 30 days (a TTL index on `expiresAt`, as for Trash). Version bytes count against the
+  account's storage quota; a new version that does not fit is refused with the normal upload error.
+- A file purged from Trash, a version past its date, and an account deletion each remove the version records, which hold their own
+  bytes (there is no other copy). When the database's own TTL removes a *file*, no code runs, so its versions are removed by the next
+  purge sweep (`pruneOrphanVersions`, run with every purge and on the account's own list request); they would in any case expire
+  by their own 30 days.
+
+Not covered:
+
+- Preview thumbnails (at most 40 KB each, kept with the file and with each version) are not counted in the quota. That was already
+  true of the current file's thumbnail; a version adds at most one more per version.
+- The quota check is not atomic: two uploads racing can each pass it, as before.
+- Two people cannot edit a note together; the last save wins.
+- Restoring a version does not bring back share links that were stopped, and does not change ones that are active (a share holds its
+  own encrypted copy of what was shared).
+
 ## Lint
 
 `npm run lint` exists in `client` and `server` (ESLint, recommended rules only, no style rules). Both exit 0. The remaining

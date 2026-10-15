@@ -8,6 +8,8 @@ import { formatManila } from '../utils/activityText.js';
 import { formatDate } from '../utils/formatDate.js';
 import { formatBytes } from '../utils/listing.js';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
+import DetailsNotes from './DetailsNotes.jsx';
+import DetailsVersions, { UploadVersion } from './DetailsVersions.jsx';
 import styles from './DetailsPanel.module.css';
 
 // What each kind of activity is called in this short list (the full wording is on the Devices & activity page).
@@ -21,6 +23,12 @@ const ACTIVITY = {
   delete: 'Moved to Trash',
   expiry_set: 'Expiry date set',
   expiry_cleared: 'Expiry date removed',
+  note_set: 'Note added',
+  note_changed: 'Note changed',
+  note_cleared: 'Note removed',
+  version_created: 'New version uploaded',
+  version_restored: 'Earlier version restored',
+  version_deleted: 'Earlier version deleted',
 };
 
 const FINGERPRINT_HELP =
@@ -45,12 +53,13 @@ function Row({ label, children }) {
  * request when it opens (kept in the page cache, which every write empties); nothing in it is a key, an IV or a storage path.
  * Loaded on demand, so it is not part of the main bundle.
  */
-function DetailsPanel({ id, name, opener, starred, onToggleStar, onClose }) {
+function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onClose }) {
   const ref = useRef(null);
   const [details, setDetails] = useState(() => peekDocumentDetails(id) ?? null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [help, setHelp] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useFocusTrap(ref, true, { opener: opener ?? 'mount' });
 
@@ -67,7 +76,13 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [id, starred]); // a changed star is a write: the cached answer is gone, so ask again
+  }, [id, starred, reload]); // a changed star or file is a write: the cached answer is gone, so ask again
+
+  // The file's contents changed (a new version, a restore, a deleted version): ask again, and tell the page.
+  const changed = (kind) => {
+    if (kind === 'file') setReload((value) => value + 1);
+    onChanged?.({ id, kind });
+  };
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -119,6 +134,8 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onClose }) {
                 <span className={styles.hint}>{starred ? 'Click to remove the star' : 'Click to star this file'}</span>
               </button>
 
+              <UploadVersion id={id} name={name} onChanged={changed} />
+
               <dl className={styles.list}>
                 <Row label="Type">{kindLabel(details)}</Row>
                 <Row label="Size">{formatBytes(details.size)}</Row>
@@ -164,6 +181,17 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onClose }) {
                   )}
                 </Row>
               </dl>
+
+              <DetailsNotes
+                id={id}
+                note={details.note}
+                onSaved={(note) => {
+                  setDetails((current) => (current ? { ...current, note: note ?? null, hasNote: Boolean(note) } : current));
+                  onChanged?.({ id, kind: 'note', hasNote: Boolean(note) });
+                }}
+              />
+
+              <DetailsVersions id={id} versions={details.versions} limits={details.versionLimits} onChanged={changed} />
 
               <h3 className={styles.sub}>Latest activity</h3>
               {details.activity.length === 0 ? (

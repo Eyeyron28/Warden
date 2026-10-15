@@ -26,6 +26,7 @@ const {
   listFolderChildren,
 } = require('../controllers/documents.controller');
 const { setStarred, listRecent, getDetails, batchMove, batchTrash } = require('../controllers/driveBasics.controller');
+const { setNote, uploadVersion, restoreVersion, deleteVersion, downloadVersion } = require('../controllers/notesVersions.controller');
 
 // 4MB, down from the old local-only 20MB cap: Vercel Hobby caps a whole
 // request body at 4.5MB, so a single upload has to fit comfortably under
@@ -81,6 +82,11 @@ const recentLimit = perAccount('docs-recent', 300);
 const detailsLimit = perAccount('docs-details', 900);
 const batchMoveLimit = perAccount('docs-batch-move', 120);
 const batchTrashLimit = perAccount('docs-batch-trash', 120);
+const noteLimit = perAccount('docs-note', 300);
+const versionUploadLimit = perAccount('docs-version-upload', 60);
+const versionRestoreLimit = perAccount('docs-version-restore', 120);
+const versionDeleteLimit = perAccount('docs-version-delete', 120);
+const versionDownloadLimit = perAccount('docs-version-download', 300);
 
 // Registered before the routes with an :id so "recent" and "batch" are never captured as one.
 router.post('/star', starLimit, setStarred);
@@ -88,6 +94,12 @@ router.get('/recent', recentLimit, listRecent);
 router.post('/batch/move', batchMoveLimit, batchMove);
 router.post('/batch/trash', batchTrashLimit, batchTrash);
 router.get('/:id/details', detailsLimit, getDetails);
+// Private notes and version history: also each its own bucket, counted per account.
+router.put('/:id/note', noteLimit, setNote);
+router.post('/:id/versions', versionUploadLimit, handleUpload, uploadVersion);
+router.post('/:id/versions/:versionId/restore', versionRestoreLimit, restoreVersion);
+router.delete('/:id/versions/:versionId', versionDeleteLimit, deleteVersion);
+router.get('/:id/versions/:versionId/download', versionDownloadLimit, downloadVersion);
 
 router.delete('/folders', deleteFolder);
 router.delete('/:id', deleteDocument);

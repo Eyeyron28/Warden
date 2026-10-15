@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Document = require('../models/Document');
+const DocumentVersion = require('../models/DocumentVersion');
 const Folder = require('../models/Folder');
 const TrashFolder = require('../models/TrashFolder');
 const BackupLog = require('../models/BackupLog');
@@ -101,6 +102,8 @@ async function wipeVault(userId) {
   await revokeAllTrustedDevices(userId);
   // Then the data.
   await Document.deleteMany({ userId });
+  // Previous versions are encrypted under the old vault key too, so they go with the files.
+  await DocumentVersion.deleteMany({ userId });
   await TrashFolder.deleteMany({ userId });
   await Folder.deleteMany({ userId });
   await BackupLog.deleteMany({ userId });

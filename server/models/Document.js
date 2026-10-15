@@ -121,6 +121,15 @@ const documentSchema = new mongoose.Schema(
     downloadCount: { type: Number, default: 0 },
     // A star the owner put on the file (Starred view). A document saved before this existed has none, which reads as false.
     starred: { type: Boolean, default: false },
+    // A private note the owner wrote on the file: plain text, encrypted with the vault key exactly like a share's purpose label
+    // (the same three fields and the same encryptFile call), so the database never holds it readable. hasNote is the only part the
+    // list ever reads. A document without a note has none of these.
+    hasNote: { type: Boolean, default: false },
+    noteCipher: { type: String },
+    noteIv: { type: String },
+    noteAuthTag: { type: String },
+    // How many versions of this file have ever been kept (the next one is this + 1); see models/DocumentVersion.js.
+    versionCounter: { type: Number, default: 0 },
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },

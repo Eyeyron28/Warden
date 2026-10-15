@@ -18,7 +18,7 @@ export const PROJECT = {
 
 // The version of the Privacy policy shown on the privacy page and recorded with a new account's consent. Keep it equal to
 // PRIVACY_POLICY_VERSION in server/utils/policyVersion.js (a test checks), and change both only when the page's text changes.
-export const PRIVACY_POLICY = { version: '2026-10-15.2', date: '15 October 2026' };
+export const PRIVACY_POLICY = { version: '2026-10-15.3', date: '15 October 2026' };
 
 // The project's source code (the repository this app is built from).
 export const REPO_URL = 'https://github.com/Eyeyron28/Warden';

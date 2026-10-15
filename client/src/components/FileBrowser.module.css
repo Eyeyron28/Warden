@@ -165,6 +165,13 @@
   display: none;
 }
 
+.noteMarker {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
 .mobileMeta {
   font-size: var(--fs-xs);
   color: var(--color-text-muted);

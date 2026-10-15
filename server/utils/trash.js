@@ -20,6 +20,7 @@ const {
 } = require('./folders');
 const { removeShares } = require('./shareCleanup');
 const { dropReminders } = require('./reminderCleanup');
+const { dropVersions, pruneOrphanVersions } = require('./versions');
 
 /**
  * Trash: deleting a file or folder is a soft delete. The encrypted data stays
@@ -292,6 +293,7 @@ async function deletePermanently(userId, kind, id) {
   if (kind === 'file') {
     if (!mongoose.Types.ObjectId.isValid(id)) throw httpError(404, 'Item not found.');
     const result = await Document.deleteOne({ _id: id, userId, deletedAt: { $ne: null }, trashBatchId: null });
+    if (result.deletedCount) await dropVersions(userId, [id]);
     if (result.deletedCount === 0) throw httpError(404, 'Item not found.');
     await dropReminders(userId, [id]);
     return { deletedDocuments: 1 };
@@ -302,6 +304,7 @@ async function deletePermanently(userId, kind, id) {
     const goneIds = await Document.distinct('_id', { userId, trashBatchId: id });
     const result = await Document.deleteMany({ userId, trashBatchId: id });
     await dropReminders(userId, goneIds);
+    await dropVersions(userId, goneIds);
     await TrashFolder.deleteOne({ _id: trashed._id });
     return { deletedDocuments: result.deletedCount };
   }
@@ -313,6 +316,7 @@ async function emptyTrash(userId) {
   const goneIds = await Document.distinct('_id', { userId, deletedAt: { $ne: null } });
   const documents = await Document.deleteMany({ userId, deletedAt: { $ne: null } });
   await dropReminders(userId, goneIds);
+  await dropVersions(userId, goneIds);
   const folders = await TrashFolder.deleteMany({ userId });
   return { deletedDocuments: documents.deletedCount, deletedFolders: folders.deletedCount };
 }
@@ -327,6 +331,9 @@ async function purgeExpired(userId = null, now = new Date()) {
   const goneIds = await Document.distinct('_id', { ...scope, purgeAt: { $lte: now } });
   const documents = await Document.deleteMany({ ...scope, purgeAt: { $lte: now } });
   await dropReminders(null, goneIds);
+  // Versions of what was just removed, and of anything the database's own TTL index removed on its own.
+  await dropVersions(null, goneIds);
+  await pruneOrphanVersions(userId);
   const folders = await TrashFolder.deleteMany({ ...scope, purgeAt: { $lte: now } });
   return { deletedDocuments: documents.deletedCount, deletedFolders: folders.deletedCount };
 }

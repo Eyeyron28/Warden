@@ -1,5 +1,6 @@
 const Document = require('../models/Document');
 const TrashFolder = require('../models/TrashFolder');
+const DocumentVersion = require('../models/DocumentVersion');
 
 const MB = 1024 * 1024;
 const DEFAULT_QUOTA_MB = 25;
@@ -46,20 +47,32 @@ async function sumFor(userId, filter) {
  * files are inside its entry). Encrypted share copies are NOT in `usedBytes`:
  * they have their own, separate limit (utils/shareLimits.js).
  */
+async function versionsFor(userId) {
+  const [row] = await DocumentVersion.aggregate([
+    { $match: { userId } },
+    { $group: { _id: null, bytes: { $sum: { $binarySize: '$encryptedBlob' } }, count: { $sum: 1 } } },
+  ]);
+  return { bytes: row?.bytes ?? 0, count: row?.count ?? 0 };
+}
+
 async function getUsage(userId) {
-  const [files, trashed, trashedFolders, loose] = await Promise.all([
+  const [files, trashed, versions, trashedFolders, loose] = await Promise.all([
     sumFor(userId, LIVE),
     sumFor(userId, TRASHED),
+    versionsFor(userId),
     TrashFolder.countDocuments({ userId }),
     Document.countDocuments({ userId, ...TRASHED, trashBatchId: null }),
   ]);
   const quota = quotaBytes();
-  const usedBytes = files.bytes + trashed.bytes;
+  // Previous versions of files (models/DocumentVersion.js) count against the same quota as the files themselves.
+  const usedBytes = files.bytes + trashed.bytes + versions.bytes;
   return {
     fileBytes: files.bytes,
     fileCount: files.count,
     trashBytes: trashed.bytes,
     trashCount: loose + trashedFolders,
+    versionBytes: versions.bytes,
+    versionCount: versions.count,
     usedBytes,
     quotaBytes: quota,
     availableBytes: Math.max(0, quota - usedBytes),

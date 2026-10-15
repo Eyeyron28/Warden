@@ -109,6 +109,16 @@ async function seed() {
   await api('DELETE', `/api/documents/${ids[11]}`, { token });
   await api('POST', '/api/documents/star', { token, json: { ids: [ids[0], ids[3]], starred: true } });
   for (const id of ids.slice(0, 4)) await api('GET', `/api/documents/${id}/view`, { token });
+  // A private note (one long unbroken word, to try the layout) and two earlier versions on every live file, so the notes box and
+  // the Versions section are there whichever file's details open.
+  for (const [n, id] of ids.slice(0, 11).entries()) {
+    await api('PUT', `/api/documents/${id}/note`, { token, json: { note: `Original is in the blue folder, drawer ${n}.\n${'x'.repeat(60)}-unbroken-word-to-test-wrapping\nCall the office before Friday.` } });
+    for (const round of [1, 2]) {
+      const form = new FormData();
+      form.append('file', new Blob([`document number ${n} revised ${round} `.repeat(30)], { type: 'text/plain' }), 'ignored.txt');
+      await api('POST', `/api/documents/${id}/versions`, { token, form });
+    }
+  }
   await api('POST', `/api/documents/${ids[1]}/share`, { token, json: { durationHours: 24 } });
   await api('PATCH', `/api/documents/${ids[2]}`, { token, json: { docExpiresAt: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) } });
   return token;
@@ -212,6 +222,17 @@ try {
             const panel = page.getByRole('dialog', { name: /^Details for/ });
             await panel.waitFor({ timeout: 8000 });
             await page.waitForFunction(() => document.querySelector('[role=dialog] dl'), null, { timeout: 8000 }).catch(() => {});
+            // The notes box and the Versions section, and that nothing in them pushes the panel sideways.
+            const notes = panel.locator('textarea');
+            if ((await notes.count()) !== 1) problems.push('details panel has no notes box');
+            else if (!(await notes.inputValue()).includes('unbroken-word')) problems.push('the saved note is not in the box');
+            if (!(await panel.getByText('Versions are kept for 30 days, up to 3 per file.').count())) problems.push('details panel has no Versions section');
+            if ((await panel.getByRole('button', { name: /^Restore version/ }).count()) < 1) problems.push('no Restore button on a version');
+            if (!(await panel.getByRole('button', { name: /Upload new version/ }).count())) problems.push('no Upload new version button');
+            await panel.locator('[class*=versions]').first().scrollIntoViewIfNeeded().catch(() => {});
+            const sideways = await page.evaluate(() => [...document.querySelectorAll('[role=dialog] *')].filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === 'visible' && el.getBoundingClientRect().right > window.innerWidth + 1).map((el) => el.className).slice(0, 3));
+            if (sideways.length) problems.push(`details panel content runs off the right edge: ${sideways.join(', ')}`);
+            if (process.env.SHOTS && route === '/files') await page.screenshot({ path: path.join(process.env.SHOTS, `files-versions-${process.env.THEME || 'light'}-${size.name}.png`) });
             if (process.env.SHOTS && route === '/files') await page.screenshot({ path: path.join(process.env.SHOTS, `files-details-${process.env.THEME || 'light'}-${size.name}.png`) });
             const box = await panel.boundingBox();
             const wide = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);

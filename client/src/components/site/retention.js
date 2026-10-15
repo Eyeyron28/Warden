@@ -3,6 +3,8 @@
 export const RETENTION = [
   { what: 'Your files, folders and file details', how: 'Until you delete them or delete your account.' },
   { what: 'Trash', how: '30 days, still encrypted, then removed with the previews.' },
+  { what: 'Private notes on files', how: 'Until you delete them, or delete the file or your account. Encrypted with your vault key.' },
+  { what: 'Earlier versions of a file', how: '30 days, up to 3 per file, still encrypted, then removed. They go sooner if you delete them, the file, or your account.' },
   { what: 'Activity log', how: '30 days by default. The person who runs this Warden can set a different number of days.' },
   { what: 'Sign-in sessions', how: 'They end after 30 minutes without activity, and after 12 hours at most.' },
   { what: 'Sign-up code (before an account exists)', how: 'A few minutes, then it is deleted. No account is made until you enter it.' },

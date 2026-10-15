@@ -211,6 +211,148 @@
   color: var(--color-text-muted);
 }
 
+.uploadRow {
+  margin-top: 8px;
+}
+
+.wideButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wideButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.wideButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wideButton:focus-visible,
+.noteBox:focus-visible,
+.dangerButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.notes {
+  margin-top: 4px;
+}
+
+/* The note is plain text in a plain box: whatever is typed is shown as typed. */
+.noteBox {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  max-height: 40dvh;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.noteBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.counter {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.noteStatus {
+  flex: 1;
+  min-width: 4rem;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.smallButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.versions {
+  margin-top: 4px;
+}
+
+.versionList {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.versionInfo {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.versionActions,
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.confirm p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.dangerButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-danger);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-danger);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
 /* A sheet rising from the bottom on a phone. */
 @media (max-width: 719px) {
   .layer {

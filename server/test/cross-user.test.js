@@ -152,6 +152,11 @@ async function buildWorld() {
   const share2 = await api('POST', `/api/documents/${world.docId2}/share`, { token: A.token, json: { durationHours: 24, maxDownloads: 3 } });
   assert.equal(share2.status, 201, share2.text);
   world.shareId2 = share2.body.id;
+  // A: a private note on one file, and a replaced file (so it has a previous version)
+  assert.equal((await api('PUT', `/api/documents/${world.docId2}/note`, { token: A.token, json: { note: 'A-private-note: the safe code' } })).status, 200);
+  assert.equal((await api('POST', `/api/documents/${world.docId}/versions`, { token: A.token, form: textFile('A-secret-1.txt', 'A secret one, replaced') })).status, 201);
+  const versions = await api('GET', `/api/documents/${world.docId}/details`, { token: A.token });
+  world.versionId = versions.body.versions[0].id;
   const devices = await api('GET', '/api/security/devices', { token: A.token });
   world.deviceId = devices.body.devices[0].id;
   const trusted = await M.TrustedDevice.create({
@@ -195,7 +200,7 @@ async function buildWorld() {
 function markers() {
   return [
     world.docId, world.docId2, world.trashedDocId, world.trashedFolderId, world.shareId, world.shareId2, world.shareKey, world.deviceId, world.trustedId,
-    world.requestId, world.folderRowId, world.A.userId, A_EMAIL, A_CONTACT, A_HIDDEN, 'A-secret', 'A-in-trashed-folder', 'A-trusted-browser', 'A secret', 'hidden',
+    world.requestId, world.folderRowId, world.versionId, 'A-private-note', 'safe code', world.A.userId, A_EMAIL, A_CONTACT, A_HIDDEN, 'A-secret', 'A-in-trashed-folder', 'A-trusted-browser', 'A secret', 'hidden',
   ];
 }
 
@@ -207,6 +212,7 @@ async function snapshotOfA() {
   const rows = {
     user: await M.User.find({ _id: userId }).lean(),
     documents: await M.Document.find({ userId }).sort({ _id: 1 }).lean(),
+    versions: await M.DocumentVersion.find({ userId }).sort({ _id: 1 }).lean(),
     folders: await M.Folder.find({ userId }).sort({ _id: 1 }).lean(),
     trashFolders: await M.TrashFolder.find({ userId }).sort({ _id: 1 }).lean(),
     shares: await M.Share.find({ ownerUserId: userId }).sort({ _id: 1 }).lean(),
@@ -290,6 +296,12 @@ function plan() {
       why: 'answers per id; every one is "not_found" for B',
       after: (res) => assert.ok(res.body.trashedCount === 0 && res.body.results.every((item) => item.status === 'not_found'), res.text),
     },
+    // private notes and version history
+    [`PUT ${D}/:id/note`]: { kind: 'foreign', expect: GONE, params: { id: w.docId2 }, json: { note: 'planted by B' } },
+    [`POST ${D}/:id/versions`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, form: () => textFile('x.txt', 'planted by B') },
+    [`POST ${D}/:id/versions/:versionId/restore`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
+    [`DELETE ${D}/:id/versions/:versionId`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
+    [`GET ${D}/:id/versions/:versionId/download`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
     // shares (owner side)
     'POST /api/shares': { kind: 'foreign', expect: GONE, json: { documentIds: [w.docId, w.docId2] } },
     'GET /api/shares': { kind: 'own' },

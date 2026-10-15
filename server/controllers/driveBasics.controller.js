@@ -8,6 +8,8 @@ const { recordEvent } = require('../utils/audit');
 const { retentionDays } = require('../utils/auditConfig');
 const { trashDocument } = require('../utils/trash');
 const { readLabel } = require('./shares.controller');
+const { readNote, versionSummary, listVersionRows } = require('./notesVersions.controller');
+const { MAX_VERSIONS, VERSION_DAYS } = require('../utils/versions');
 const { toListSummary, LIST_PROJECTION, moveItems } = require('./documents.controller');
 
 /**
@@ -125,17 +127,21 @@ const getDetails = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) throw Object.assign(new Error('Document not found.'), { status: 404 });
   const _id = new mongoose.Types.ObjectId(id);
 
-  const [rows, shares, events] = await Promise.all([
-    Document.aggregate([{ $match: { _id, userId: req.userId, deletedAt: null } }, { $project: { ...LIST_PROJECTION, checksum: 1 } }]),
+  const [rows, shares, events, versionRows] = await Promise.all([
+    Document.aggregate([
+      { $match: { _id, userId: req.userId, deletedAt: null } },
+      { $project: { ...LIST_PROJECTION, checksum: 1, noteCipher: 1, noteIv: 1, noteAuthTag: 1 } },
+    ]),
     Share.find({ ownerUserId: req.userId, sourceDocumentIds: _id, ready: { $ne: false }, expiresAt: { $gt: new Date() } })
       .select('shareId expiresAt fileCount labelCipher labelIv labelAuthTag')
       .sort({ expiresAt: 1 }),
     AuditEvent.find({ userId: req.userId, actor: null, targetId: String(_id) }).sort({ at: -1 }).limit(5).select('type at deviceId'),
+    listVersionRows(req.userId, _id),
   ]);
   const doc = rows[0];
   if (!doc) throw Object.assign(new Error('Document not found.'), { status: 404 });
 
-  const labels = await deviceLabels(req.userId, events.map((event) => event.deviceId));
+  const labels = await deviceLabels(req.userId, [...events.map((event) => event.deviceId), ...versionRows.map((row) => row.deviceId)]);
   const purposes = [...new Set(shares.map((share) => readLabel(share, req.dek).purpose).filter(Boolean))];
   const summary = toListSummary(doc);
   res.status(200).json({
@@ -154,6 +160,12 @@ const getDetails = asyncHandler(async (req, res) => {
     shared: { count: shares.length, links: shares.map((share) => ({ expiresAt: share.expiresAt })) },
     purposes,
     fingerprint: typeof doc.checksum === 'string' ? doc.checksum.slice(0, 12) : null,
+    // The owner's private note, decrypted here for the panel (the file lists carry only hasNote).
+    note: readNote(doc, req.dek),
+    hasNote: summary.hasNote,
+    // Previous versions (newest first): metadata only. The limits are the server's, so the panel never hard-codes them.
+    versions: versionRows.map((row) => versionSummary(row, labels, req.deviceId)),
+    versionLimits: { max: MAX_VERSIONS, days: VERSION_DAYS },
     activity: events.map((event) => ({
       type: event.type,
       at: event.at,

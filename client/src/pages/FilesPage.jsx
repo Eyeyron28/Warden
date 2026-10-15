@@ -55,6 +55,9 @@ import {
   getStorage,
   listFolders,
   starDocuments,
+  uploadNewVersion,
+  MAX_UPLOAD_BYTES,
+  TOO_LARGE_MESSAGE,
   batchMoveDocuments,
   batchTrashDocuments,
 } from '../services/documentsService.js';
@@ -134,6 +137,8 @@ function FilesPage() {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
   const folderInputRef = useRef(null);
+  const versionInputRef = useRef(null);
+  const versionTarget = useRef(null);
 
   const refresh = useCallback(async ({ quiet = false, reuse = false } = {}) => {
     if (!quiet) setLoading(true);
@@ -480,7 +485,36 @@ function FilesPage() {
   const details = useDetailsPanel({
     isStarred: (id) => Boolean(documents.find((doc) => doc.id === id)?.starred),
     toggleStar: (id) => setStar([id], !documents.find((doc) => doc.id === id)?.starred),
+    onChanged: ({ id, kind, hasNote }) => {
+      if (kind === 'note') setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasNote } : doc)));
+      // New contents: the size, the preview and the modified time are different, so the list is read again.
+      if (kind === 'file') {
+        invalidateThumbnail(id);
+        refresh();
+      }
+    },
   });
+
+  // "Upload new version" from the file's menu: the same call as the button in the details panel.
+  const handleVersionPicked = async (event) => {
+    const file = event.target.files?.[0];
+    const doc = versionTarget.current;
+    event.target.value = '';
+    if (!file || !doc) return;
+    setActionError('');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setActionError(TOO_LARGE_MESSAGE);
+      return;
+    }
+    try {
+      await uploadNewVersion(doc.id, file);
+      invalidateThumbnail(doc.id);
+      showToast(`Uploaded a new version of "${doc.filename}"`);
+      await refresh();
+    } catch (err) {
+      if (!isSessionExpired(err)) setActionError(extractErrorMessage(err, 'Could not upload the new version.'));
+    }
+  };
 
   const handleBulkTrash = async () => {
     setActionError('');
@@ -680,6 +714,7 @@ function FilesPage() {
       { label: 'Details', icon: icon(Info), onSelect: () => details.show(doc.id, doc.filename, null) },
       { label: doc.starred ? 'Remove star' : 'Star', icon: icon(Star), onSelect: () => setStar([doc.id], !doc.starred) },
       { label: 'Download', icon: icon(DownloadSimple), onSelect: () => handleDownloadFiles([doc]) },
+      { label: 'Upload new version…', icon: icon(UploadSimple), onSelect: () => { versionTarget.current = doc; versionInputRef.current?.click(); } },
       { label: 'Share', icon: icon(ShareNetwork), onSelect: () => setSharingSelection({ documentIds: [doc.id], title: `Share "${doc.filename}"` }) },
       { label: 'Rename', icon: icon(PencilSimple), onSelect: () => setEditingDocument(doc) },
       { label: doc.docExpiresAt ? 'Change expiry date…' : 'Set expiry date…', icon: icon(CalendarBlank), onSelect: () => setExpiryDocument(doc) },
@@ -998,6 +1033,7 @@ function FilesPage() {
 
       {renamingPath && <RenameFolderModal path={renamingPath} onClose={() => setRenamingPath(null)} onRenamed={handleRenamed} />}
       {details.element}
+      <input ref={versionInputRef} type="file" hidden tabIndex={-1} aria-hidden="true" onChange={handleVersionPicked} />
     </div>
   );
 }

@@ -30,7 +30,7 @@ const MAX_EVENTS_READ = 5000;
 
 /** Event types by group, for the timeline filter. */
 const GROUPS = Object.freeze({
-  vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export', 'expiry_set', 'expiry_cleared'],
+  vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export', 'expiry_set', 'expiry_cleared', 'note_set', 'note_changed', 'note_cleared', 'version_created', 'version_restored', 'version_deleted'],
   sharing: ['share_created', 'share_revoked', 'share_opened', 'share_downloaded', 'shares_stopped_all'],
   account: ['login', 'login_failed', 'logout', 'otp_sent', 'password_changed', 'trusted_added', 'trusted_removed', 'device_signed_out'],
   emergency: [
@@ -39,7 +39,7 @@ const GROUPS = Object.freeze({
   ],
 });
 
-const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared', 'emergency_file_viewed', 'emergency_file_downloaded']);
+const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared', 'note_set', 'note_changed', 'note_cleared', 'version_created', 'version_restored', 'version_deleted', 'emergency_file_viewed', 'emergency_file_downloaded']);
 const SHARE_TARGET_TYPES = new Set(['share_created', 'share_revoked', 'share_opened', 'share_downloaded']);
 
 /** A country's English name from its two-letter code ("PH" -> "Philippines"), or the code itself. */

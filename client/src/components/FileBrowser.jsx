@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { DotsThree, Info, Star } from '@phosphor-icons/react';
+import { DotsThree, Info, NoteBlank, Star } from '@phosphor-icons/react';
 
 import DocumentThumb from './DocumentThumb.jsx';
 import DropdownMenu from './DropdownMenu.jsx';
@@ -69,6 +69,15 @@ export function StarButton({ name, starred, onToggle }) {
     >
       <Star size={18} weight={starred ? 'fill' : 'regular'} />
     </button>
+  );
+}
+
+/** A small marker on a file that has a private note. Only THAT a note exists is known here, never what it says. */
+export function NoteMarker() {
+  return (
+    <span className={styles.noteMarker} role="img" aria-label="Has a private note" title="Has a private note">
+      <NoteBlank size={14} weight="fill" />
+    </span>
   );
 }
 
@@ -345,6 +354,7 @@ function FileBrowser({
                   {item.name}
                 </button>
                 {item.subtitle && <span className={styles.cardMeta}>{item.subtitle}</span>}
+                {item.document?.hasNote && <NoteMarker />}
                 {item.badge}
               </span>
               {actionsFor(item)}
@@ -395,6 +405,7 @@ function FileBrowser({
               {item.name}
             </button>
             <span className={styles.subline}>
+              {item.document?.hasNote && <NoteMarker />}
               {item.badge}
               {item.subtitle && <span className={styles.mobileMeta}>{item.subtitle}</span>}
             </span>

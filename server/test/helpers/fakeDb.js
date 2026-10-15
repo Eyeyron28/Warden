@@ -249,7 +249,7 @@ function stubModule(modulePath, exportsObject) {
 }
 
 const MODEL_TABLES = {
-  User: 'users', Document: 'documents', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
+  User: 'users', Document: 'documents', DocumentVersion: 'documentversions', Folder: 'folders', BackupLog: 'backuplogs', Device: 'devices', AuditEvent: 'auditevents', Share: 'shares',
   SharedFile: 'sharedfiles', ShareAccess: 'shareaccess', Session: 'sessions', OtpChallenge: 'otpchallenges',
   RateLimit: 'ratelimits', TrashFolder: 'trashfolders', TrustedDevice: 'trusteddevices', ResetTicket: 'resettickets', ReminderLog: 'reminderlogs', EmergencyAccess: 'emergencyaccesses', EmergencyRequest: 'emergencyrequests', LoginFailure: 'loginfailures',
 };

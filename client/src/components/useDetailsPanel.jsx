@@ -7,7 +7,7 @@ const DetailsPanel = lazy(() => import('./DetailsPanel.jsx'));
  * Opening and closing the details panel for a file. `isStarred(id)` and `toggleStar(id)` come from the page (the star is shown
  * and changed inside the panel too). Returns `show(id, name, opener)` and the `element` to render once in the page.
  */
-export function useDetailsPanel({ isStarred, toggleStar }) {
+export function useDetailsPanel({ isStarred, toggleStar, onChanged }) {
   const [target, setTarget] = useState(null); // { id, name, opener }
   const element = target ? (
     <Suspense fallback={null}>
@@ -18,6 +18,7 @@ export function useDetailsPanel({ isStarred, toggleStar }) {
         opener={target.opener}
         starred={isStarred(target.id)}
         onToggleStar={() => toggleStar(target.id)}
+        onChanged={onChanged}
         onClose={() => setTarget(null)}
       />
     </Suspense>

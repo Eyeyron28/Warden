@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Document = require('../models/Document');
+const DocumentVersion = require('../models/DocumentVersion');
 const Folder = require('../models/Folder');
 const BackupLog = require('../models/BackupLog');
 const Device = require('../models/Device');
@@ -70,6 +71,8 @@ async function deleteAccountData(userId, { email = null, transaction = true } = 
     // Documents include everything in Trash (ciphertext and thumbnails); the
     // trashed-folder entries that group them go too.
     await del('documents', Document, { userId });
+    // Previous versions of those files: their encrypted bytes are inside the records, so this is the last of them.
+    await del('documentversions', DocumentVersion, { userId });
     await del('trashfolders', TrashFolder, { userId });
     await del('folders', Folder, { userId });
     await del('backuplogs', BackupLog, { userId });
