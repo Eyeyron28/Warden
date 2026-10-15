@@ -34,6 +34,13 @@ function UpdatePrompt() {
     };
   }, []);
 
+  // While the bar is up, the page gets room at its bottom (styles/global.css) so the footer and any bottom bar can scroll above it.
+  useEffect(() => {
+    if (!ready) return undefined;
+    document.documentElement.classList.add('update-bar-open');
+    return () => document.documentElement.classList.remove('update-bar-open');
+  }, [ready]);
+
   if (!ready) return null;
   return (
     <div className={styles.bar} role="status">

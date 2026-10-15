@@ -16,5 +16,8 @@ export const PROJECT = {
   group: 'Group 7',
 };
 
+// The project's source code (the repository this app is built from).
+export const REPO_URL = 'https://github.com/Eyeyron28/Warden';
+
 // Must match the server's own cap (server/routes/documents.routes.js).
 export const MAX_FILE_SIZE_MB = 4;

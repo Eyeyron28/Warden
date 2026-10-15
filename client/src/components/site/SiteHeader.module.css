@@ -8,9 +8,12 @@
 
 .scrolled {
   border-bottom-color: var(--color-border);
-  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--color-bg);
+}
+
+/* Slimmer once the page has moved: the bar takes less of a short screen. */
+.scrolled .inner {
+  height: 52px;
 }
 
 .inner {
@@ -18,6 +21,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-5);
+  transition: height 160ms var(--ease-standard);
 }
 
 .brand {

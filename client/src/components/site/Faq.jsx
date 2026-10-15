@@ -8,7 +8,7 @@ import styles from './Faq.module.css';
  * heading, with aria-expanded/aria-controls pointing at its answer
  * region. Several can be open at once.
  */
-function Faq({ items }) {
+function Faq({ items, columns = false }) {
   const baseId = useId();
   const [open, setOpen] = useState(() => new Set());
 
@@ -21,7 +21,7 @@ function Faq({ items }) {
     });
 
   return (
-    <div className={styles.faq}>
+    <div className={`${styles.faq} ${columns ? styles.twoColumns : ''}`}>
       {items.map((item, index) => {
         const isOpen = open.has(index);
         const buttonId = `${baseId}-q${index}`;

@@ -11,13 +11,22 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const src = path.join(here, '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 
-const PAGES = [
+// The landing page's words live in several files (the hero, the sections below it, the FAQ, the demo and the tabs).
+const HOME_FILES = [
   'pages/public/HomePage.jsx',
+  'pages/public/HomeBelow.jsx',
+  'pages/public/homeFaq.jsx',
+  'components/site/EncryptionDemo.jsx',
+  'components/site/HowItWorks.jsx',
+  'components/site/ProtectionCompare.jsx',
+];
+
+const PAGES = [
+  ...HOME_FILES,
   'pages/public/PrivacyPage.jsx',
   'pages/public/AboutSection.jsx',
   'pages/public/TermsPage.jsx',
   'pages/public/limits.js',
-  'components/site/StepExplorer.jsx',
   'components/ShareEditModal.jsx',
   'components/ShareModal.jsx',
   'pages/DevicesPage.jsx',
@@ -30,6 +39,11 @@ const PAGES = [
 
 // Words only, with line breaks, JSX entities and indentation folded into single spaces; comment lines dropped.
 function words(file) {
+  // 'pages/public/HomePage.jsx' stands for the whole landing page.
+  if (file === 'pages/public/HomePage.jsx') return HOME_FILES.map(wordsOf).join(' ');
+  return wordsOf(file);
+}
+function wordsOf(file) {
   return read(file)
     .split(/\r?\n/)
     .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))

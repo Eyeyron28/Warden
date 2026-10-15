@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#130C11" />
     <meta
       name="description"
-      content="Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. The database holds ciphertext and locked keys. A student project, provided as-is."
+      content="Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. File names and sizes are visible to the server, and it is not end-to-end encrypted. A student project, provided as-is."
     />
     <link rel="icon" type="image/svg+xml" href="/src/assets/warden_logo_badge.svg" />
 
@@ -18,7 +18,7 @@
     <meta property="og:title" content="Warden - an encrypted vault for your important documents" />
     <meta
       property="og:description"
-      content="Your documents are stored encrypted, with the key locked by your password and recovery key. A student capstone project from PHINMA University of Pangasinan, provided as-is."
+      content="Your documents are stored encrypted, with the key locked by your password and recovery key. Not end-to-end encrypted. A student capstone project from PHINMA University of Pangasinan, provided as-is."
     />
     <meta property="og:image" content="/icons/icon-512.png" />
     <meta name="twitter:card" content="summary" />
@@ -81,6 +81,23 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main style="max-width: 46rem; margin: 0 auto; padding: 24px 16px; font-family: system-ui, sans-serif; line-height: 1.55">
+        <h1>Warden: an encrypted vault for your important documents</h1>
+        <p>
+          Your files are stored as ciphertext, and the key is locked by your password and your recovery key. The server can still see
+          file names and sizes, and it is not end-to-end encrypted.
+        </p>
+        <ul>
+          <li>Files are encrypted with AES-256-GCM before they are stored. Passwords are hashed with scrypt.</li>
+          <li>Login needs your password and an emailed 6-digit code.</li>
+          <li>Sessions end after 30 minutes of inactivity, and after 12 hours at most.</li>
+          <li>Deleted files stay in Trash for 30 days.</li>
+        </ul>
+        <p>Warden is a class project (BSIT 3, COMSEC) and has not been audited by a third party. It needs JavaScript to run.</p>
+        <p><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

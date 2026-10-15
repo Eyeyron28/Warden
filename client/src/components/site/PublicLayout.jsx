@@ -42,7 +42,7 @@ function PublicLayout() {
       // The target may live in a route chunk that's still loading.
       let attempts = 0;
       const tryScroll = () => {
-        if (scrollToHash(hash) || attempts > 20) return;
+        if (scrollToHash(hash) || attempts > 120) return;
         attempts += 1;
         setTimeout(tryScroll, 50);
       };

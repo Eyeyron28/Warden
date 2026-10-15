@@ -1,20 +1,10 @@
 import { Link } from 'react-router-dom';
 
 import Reveal from '../../components/site/Reveal.jsx';
-import { PROJECT } from '../../config.js';
+import { PROJECT, REPO_URL } from '../../config.js';
 import { LIMITS } from './limits.js';
 import site from '../../components/site/site.module.css';
 import styles from './AboutSection.module.css';
-
-// ---- Edit the team here ----
-// Placeholder names and roles. Replace each entry with a real member;
-// the page renders whatever is in this array, in this order.
-const TEAM = [
-  { name: 'Member One', role: 'Project lead, backend' },
-  { name: 'Member Two', role: 'Cryptography and security review' },
-  { name: 'Member Three', role: 'Frontend and design' },
-  { name: 'Member Four', role: 'Testing and documentation' },
-];
 
 const DESIGN_POINTS = [
   {
@@ -52,111 +42,112 @@ const DESIGN_POINTS = [
 ];
 
 /**
- * The "About" part of the one-page landing site (Home -> About -> Contact):
- * why the project exists, how its security works in plain words, and the
- * team. Lives at /#about; the old /about route redirects there.
+ * The "About" part of the one-page landing site: who made it and why, the design in plain words, the limits, and the
+ * project facts. Lives at /#about; the old /about route redirects there.
  */
-function AboutSection() {
+function AboutSection({ cta = null }) {
   return (
-    <section id="about" className={`${site.container} ${site.sectionRule}`} aria-labelledby="about-title">
-      <header className={styles.intro}>
-        <p className={site.marker}>About the project</p>
-        <h2 id="about-title" className={styles.title}>
-          A capstone about keeping documents safe, built to be honest about how.
-        </h2>
-        <div className={styles.introText}>
-          <p>
-            Warden is the capstone project of {PROJECT.group}, {PROJECT.program} at {PROJECT.school}, for our{' '}
-            {PROJECT.course} (computer security) course.
-          </p>
-          <p>
-            We built it because the documents people most need to keep, like IDs, birth certificates, land titles
-            and tax records, usually end up as phone photos or files in a general-purpose drive. Warden is our
-            attempt at a vault for exactly those, with security claims you can check against the code, and a plain
-            list of what it does not protect against.
-          </p>
-        </div>
-      </header>
-
-      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="design-title">
-        <div className={styles.designGrid}>
-          <Reveal>
+    <section id="about" className={`${site.sectionRule} ${styles.about}`} aria-labelledby="about-title">
+      <div className={styles.wrap}>
+        <header className={styles.intro}>
+          <div>
             <p className={site.marker}>
-              <span className={site.markerNumber}>01</span> Security design
+              <span className={site.markerNumber}>06</span> About this project
             </p>
-            <h3 id="design-title" className={site.sectionTitle}>
-              The design, in plain words.
+            <h2 id="about-title" className={styles.title}>
+              We built this for our COMSEC class, and we tried to be honest about it.
+            </h2>
+            <div className={styles.introText}>
+              <p>
+                We are {PROJECT.group}, {PROJECT.program} at {PROJECT.school}. Warden is our capstone for {PROJECT.course}, the computer
+                security course.
+              </p>
+              <p>
+                We picked a problem we had ourselves: IDs, birth certificates, land titles and tax records end up as phone photos or
+                files in a general-purpose drive. Warden is our try at a vault for exactly those, with claims you can check against the
+                code and a plain list of what it does not protect against.
+              </p>
+            </div>
+            {cta && <div className={styles.cta}>{cta}</div>}
+          </div>
+
+          <dl className={styles.project} aria-label="Project facts">
+            <div>
+              <dt>School</dt>
+              <dd>{PROJECT.school}</dd>
+            </div>
+            <div>
+              <dt>Program</dt>
+              <dd>{PROJECT.program}</dd>
+            </div>
+            <div>
+              <dt>Course</dt>
+              <dd>{PROJECT.course}</dd>
+            </div>
+            <div>
+              <dt>Group</dt>
+              <dd>{PROJECT.group}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>Class project. Not audited by a third party. Provided as-is.</dd>
+            </div>
+            <div>
+              <dt>Source code</dt>
+              <dd>
+                <a href={REPO_URL} className={`${site.textLink} ${site.tapLink}`} rel="noopener noreferrer">
+                  GitHub repository
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Read next</dt>
+              <dd>
+                <Link to="/privacy" className={`${site.textLink} ${site.tapLink}`}>
+                  Privacy
+                </Link>
+                {' · '}
+                <Link to="/terms" className={`${site.textLink} ${site.tapLink}`}>
+                  Terms
+                </Link>
+              </dd>
+            </div>
+          </dl>
+        </header>
+
+        <div className={styles.block}>
+          <Reveal>
+            <h3 id="design-title" className={styles.blockTitle}>
+              The design, in plain words
             </h3>
-            <p className={site.lede}>
-              For the step-by-step version, see{' '}
-              <Link to="/#how-it-works" className={site.textLink}>
-                how it works
-              </Link>
-              .
-            </p>
           </Reveal>
           <Reveal as="ol" className={styles.designList}>
             {DESIGN_POINTS.map((point) => (
               <li key={point.title}>
-                <h3>{point.title}</h3>
+                <h4>{point.title}</h4>
                 <p>{point.body}</p>
               </li>
             ))}
           </Reveal>
         </div>
-      </section>
 
-      <section id="limits" className={`${site.section} ${site.sectionRule}`} aria-labelledby="limits-title">
-        <div className={styles.designGrid}>
+        <div id="limits" className={styles.block}>
           <Reveal>
-            <p className={site.marker}>
-              <span className={site.markerNumber}>02</span> Limits
-            </p>
-            <h3 id="limits-title" className={site.sectionTitle}>
-              What Warden does not protect against.
+            <h3 id="limits-title" className={styles.blockTitle}>
+              What Warden does not protect against
             </h3>
-            <p className={site.lede}>
-              Warden is not end-to-end encrypted, and some risks sit outside what encryption can do.
-            </p>
+            <p className={styles.blockNote}>Warden is not end-to-end encrypted, and some risks sit outside what encryption can do.</p>
           </Reveal>
           <Reveal as="ul" className={styles.designList}>
             {LIMITS.map((item) => (
               <li key={item.title}>
-                <h3>{item.title}</h3>
+                <h4>{item.title}</h4>
                 <p>{item.body}</p>
               </li>
             ))}
           </Reveal>
         </div>
-      </section>
-
-      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="team-title">
-        <Reveal>
-          <p className={site.marker}>
-            <span className={site.markerNumber}>03</span> Team
-          </p>
-          <h3 id="team-title" className={site.sectionTitle}>
-            {PROJECT.group}
-          </h3>
-        </Reveal>
-        <Reveal as="ul" className={styles.team}>
-          {TEAM.map((member) => (
-            <li key={member.name} className={styles.member}>
-              <span className={styles.initials} aria-hidden="true">
-                {member.name
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')
-                  .slice(0, 2)}
-              </span>
-              <span>
-                <span className={styles.memberName}>{member.name}</span>
-                <span className={styles.memberRole}>{member.role}</span>
-              </span>
-            </li>
-          ))}
-        </Reveal>
-      </section>
+      </div>
     </section>
   );
 }

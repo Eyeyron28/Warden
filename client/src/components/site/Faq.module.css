@@ -53,3 +53,29 @@
 .answer p + p {
   margin-top: var(--space-3);
 }
+
+/* The landing page uses the list in two columns on wide screens: each item opens on its own without moving the other column. */
+.twoColumns {
+  display: grid;
+  align-items: start;
+  column-gap: clamp(20px, 3vw, 48px);
+}
+
+.twoColumns .question {
+  min-height: 48px;
+  padding-block: var(--space-3);
+  font-size: var(--fs-base);
+}
+
+.twoColumns .answer {
+  max-width: none;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  padding-bottom: var(--space-4);
+}
+
+@media (min-width: 1000px) {
+  .twoColumns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

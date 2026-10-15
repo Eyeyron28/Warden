@@ -1,258 +1,51 @@
+import { Suspense, lazy } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+import EncryptionDemo from '../../components/site/EncryptionDemo.jsx';
 import Icon from '../../components/site/Icon.jsx';
-import Reveal from '../../components/site/Reveal.jsx';
-import VaultMock from '../../components/site/VaultMock.jsx';
-import StepExplorer from '../../components/site/StepExplorer.jsx';
-import Faq from '../../components/site/Faq.jsx';
-import AboutSection from './AboutSection.jsx';
-import ContactSection from './ContactSection.jsx';
+import PageIndex from '../../components/site/PageIndex.jsx';
 import { useSessionToken } from '../../utils/useSessionToken.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import { useSignupConfig } from '../../utils/publicConfig.js';
-import { MAX_FILE_SIZE_MB } from '../../config.js';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './HomePage.module.css';
 
-// Copy rule for this page: every claim has to match what the code
-// actually does (see server/utils/crypto.js, controllers/auth.controller.js
-// and controllers/documents.controller.js). In particular, uploads and
-// downloads are encrypted/decrypted by the server in memory during a
-// signed-in session - so this page never says "the server can't read your
-// files", "end-to-end" or "zero-knowledge", and it keeps the list of what
-// Warden does not protect against (pages/public/limits.js) in view.
+// Copy rule for this page: every claim has to match what the code actually does (see server/utils/crypto.js,
+// controllers/auth.controller.js and controllers/documents.controller.js). Uploads and downloads are encrypted and
+// decrypted by the server in memory during a signed-in session, so this page never says "the server can't read your
+// files", never says "end-to-end" except to deny it, and keeps the list of what Warden does not protect against in view
+// (pages/public/limits.js). src/utils/claims.test.js reads these files.
+//
+// Everything below the hero is a separate chunk (HomeBelow), loaded as soon as this page renders, so the first screen
+// stays small: the hero, the encryption demo and the facts strip are all that ships with the main bundle.
 
-const COMPARISON = [
-  {
-    question: 'Who can read your stored files?',
-    drive: 'The provider can - it manages the encryption keys.',
-    warden: 'Not from the stored data alone: opening it takes your password or recovery key.',
-  },
-  {
-    question: 'While you are signed in',
-    drive: 'The provider can read what you open; it holds the keys.',
-    warden: 'The Warden server unlocks your key for each request and decrypts files for you, so you are trusting it. This is not end-to-end encryption.',
-  },
-  {
-    question: 'What sits in the database?',
-    drive: 'Your files, encrypted with keys the provider holds.',
-    warden: 'Encrypted files and previews, and two locked copies of your vault key. File and folder names are plain text.',
-  },
-  {
-    question: 'If the database leaks',
-    drive: 'Depends on how the provider guards its keys.',
-    warden: 'Ciphertext and locked keys, useless without your password or recovery key.',
-  },
-  {
-    question: 'If you forget your password',
-    drive: 'Reset by email; your files are untouched.',
-    warden: 'An emailed code starts the reset; your recovery key keeps everything. Without the key, the reset erases the vault and starts a new, empty one.',
-  },
+const HomeBelow = lazy(() => import('./HomeBelow.jsx'));
+
+const INDEX = [
+  { id: 'how-it-works', label: 'How it works' },
+  { id: 'protected', label: 'Protected, and not' },
+  { id: 'features', label: 'Features' },
+  { id: 'sharing', label: 'Sharing' },
+  { id: 'faq', label: 'Questions' },
+  { id: 'about', label: 'About' },
+  { id: 'contact', label: 'Contact' },
 ];
 
-const RECOVERY = [
-  {
-    icon: 'key',
-    title: 'Recovery key',
-    body: 'Sixteen characters shown once, when you sign up. After an emailed code, it unlocks your vault so you can set a new password and keep everything. It can also reset the password on its own, with no email.',
-  },
-  {
-    icon: 'mail',
-    title: 'Emailed code, no recovery key',
-    body: 'The code proves the inbox is yours, not the vault. Without the recovery key the reset erases the vault and you start a new, empty one; the old files stay unreadable.',
-  },
-];
-
-const FAQ_ITEMS = [
-  {
-    question: 'Will reloading the page sign me out?',
-    answer: (
-      <>
-        <p>
-          No. Your sign-in token is kept in that tab&apos;s sessionStorage, so a reload keeps you signed in; closing the tab (or the browser) ends
-          it. Signed in sessions end after 30 minutes without activity, and after 12 hours at most. A second tab you open picks the session up from the first. Your
-          password and your unlocked vault key are never stored in the browser.
-        </p>
-        <p>
-          The trade-off: script that ran inside the page could read the token. That is why Warden loads no third-party script, ships a strict
-          Content-Security-Policy, and why a token alone cannot do anything the signed-in person could not (sensitive actions still ask for an
-          emailed code).
-        </p>
-      </>
-    ),
-  },
-  {
-    question: 'What does Warden record about my activity?',
-    answer: (
-      <p>
-        For 30 days, a log of what happened on your account: sign-ins, which files were opened, downloaded or shared, and when, from which of your
-        browsers and which country. It never holds file names, the contents, other people&apos;s emails, or IP addresses. You can read it on
-        Devices &amp; activity, sign any browser out from there, and check it: the check detects edits and gaps. It cannot
-        detect the removal of the newest entries by someone who can write to the database.
-      </p>
-    ),
-  },
-  {
-    question: 'What if I forget my password?',
-    answer: (
-      <>
-        <p>
-          Choose &quot;Forgot password&quot; and we email a 6-digit code. After you enter it, give your recovery
-          key and a new password: your documents stay exactly as they were.
-        </p>
-        <p>
-          If you can&apos;t get the email, &quot;Try another way&quot; resets with the recovery key alone.
-          Without the recovery key, you can still get back into your account, but the reset erases your vault
-          (files, folders, Trash, shares, devices and activity) and starts a new, empty one with a new recovery key.
-          Nobody, including us, can decrypt the old one.
-        </p>
-      </>
-    ),
-  },
-  {
-    question: 'Can Warden staff read my files?',
-    answer: (
-      <>
-        <p>
-          Not from what&apos;s stored. Files sit in the database encrypted, and the key that opens them is stored
-          locked by your password and by your recovery key.
-        </p>
-        <p>
-          But this is not end-to-end encryption. While you&apos;re signed in, the server unlocks your key for each
-          request and encrypts uploads and decrypts downloads for you, so anyone who controls the running server
-          could read what you open during that time. File and folder names are stored as plain text.
-        </p>
-      </>
-    ),
-  },
-  {
-    question: 'What file sizes are supported?',
-    answer: (
-      <p>
-        Up to {MAX_FILE_SIZE_MB} MB per file. Warden is built for scans, PDFs and photos of documents, not video
-        or large archives.
-      </p>
-    ),
-  },
-  {
-    question: 'Is it free?',
-    answer: (
-      <p>
-        Yes. Warden is a student capstone project with no paid plans. It&apos;s provided as-is, so keep your own
-        copies of anything you can&apos;t afford to lose.
-      </p>
-    ),
-  },
-  {
-    question: "What doesn't Warden protect against?",
-    answer: (
-      <p>
-        A compromised server while you&apos;re signed in, losing both your password and recovery key (the vault
-        can&apos;t be recovered), a compromised or shared device, weak or reused passwords, and anyone who has a
-        full share link. The full list is in{' '}
-        <Link to="/#limits" className={site.textLink}>
-          About
-        </Link>
-        .
-      </p>
-    ),
-  },
-  {
-    question: 'Can I protect a share link?',
-    answer: (
-      <p>
-        Yes, with any of three optional settings: a password, a limit of 1 to 100 downloads (after which the share is
-        deleted), or restricting it to one email address that must enter a code we email. They control who our server
-        will give the encrypted files to. The key is generated when you create the link and placed after the # in the
-        address, so it isn&apos;t sent to our server when someone opens the link. The server does handle the key while it
-        creates the link. A password adds a lock on that key, made in your browser, so the password itself never
-        reaches us. The link itself is still a secret, and none of this makes Warden end-to-end encrypted. You can
-        change or stop any share from Shared in the vault, but we can&apos;t show you a link again: we don&apos;t keep it.
-      </p>
-    ),
-  },
-  {
-    question: 'What is Emergency Access?',
-    answer: (
-      <>
-        <p>
-          An optional safety net for when you can&apos;t be reached. You name one person you trust, choose a waiting period (3, 7 or 14
-          days) and what they may see (everything, or only some folders). They get an Emergency Kit: half of a key. If they ever ask for
-          access, we email you when the request is made, and the request is refused if that email cannot be sent. The wait is counted from
-          that email, and you can deny it until the wait ends. If you don&apos;t, they can open a read-only session that lasts a few hours
-          (never more than 4), and everything they do appears in your activity log.
-        </p>
-        <p>
-          It is not end-to-end encryption: Warden encrypts files on its server. A stolen kit alone, or a copy of our database alone, can&apos;t
-          open your vault, but a kit together with a leak of our database could, and someone running the server together with your contact
-          could skip the wait. The folder limit is enforced by our server, not by cryptography.{' '}
-          <Link to="/emergency" className={site.textLink}>
-            If you were named as someone&apos;s contact, start here.
-          </Link>
-        </p>
-      </>
-    ),
-  },
-  {
-    question: 'How much can I store?',
-    answer: (
-      <p>
-        A single file can be up to 4 MB, and each account has 25 MB in total (the server operator can change this). The
-        total includes everything in Trash until it is removed. Uploads that would go over the limit are refused with a
-        clear message, and emptying Trash or deleting files frees the space. Share links have their own limits: 20 MB
-        per link, 60 MB across active links, and 20 active links.
-      </p>
-    ),
-  },
-  {
-    question: 'What happens when I delete a file?',
-    answer: (
-      <p>
-        It moves to Trash, still encrypted, for 30 days, and is then permanently removed along with its preview. You
-        can restore it, delete it permanently, or empty the Trash sooner. Any share link that included it stops working
-        right away. Previews are decrypted for you on the server over HTTPS, so this is not end-to-end encryption.
-      </p>
-    ),
-  },
-  {
-    question: 'Can I get all my files out?',
-    answer: (
-      <p>
-        Yes. Choose Export in the vault and download everything as one .zip, with your folders and original file names.
-        It is built in your browser from the same downloads you could make one by one. The zip is not encrypted:
-        anyone who gets it can open it, so keep it somewhere safe. Trash, share links and previews are not included.
-        You can also import a zip back, through the normal upload (the same storage limit and 4 MB per file).
-      </p>
-    ),
-  },
-  {
-    question: 'Can I delete my account?',
-    answer: (
-      <p>
-        Yes, yourself. Open Account in the vault, choose Delete account, then enter your password, a code we email you,
-        and your email address. Your documents, folders, share links, devices, the activity log and the account are permanently
-        deleted and can&apos;t be recovered. It can&apos;t reach files you downloaded or exported yourself,
-        or emails already sent.
-      </p>
-    ),
-  },
-  {
-    question: 'Where is my data stored?',
-    answer: (
-      <p>
-        In a MongoDB Atlas database. What&apos;s stored is your email, a password hash, your encrypted files and
-        their encrypted preview images, the locked copies of your vault key, and basic file details such as names,
-        folders and dates.
-      </p>
-    ),
-  },
+// Each one matches the code: crypto.js, auth.controller.js, sessionStore.js, utils/trash.js, accountCreate.js.
+const FACTS = [
+  { big: 'AES-256-GCM', small: 'for every file' },
+  { big: 'scrypt', small: 'for your password' },
+  { big: '6-digit code', small: 'emailed at login' },
+  { big: '30 minutes', small: 'idle timeout, 12 hours at most' },
+  { big: '30 days', small: 'in Trash before removal' },
+  { big: 'Recovery key', small: 'shown once' },
 ];
 
 function HomePage() {
   usePageMeta(
     null,
-    'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. A student project, provided as-is.'
+    'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. File names and sizes are visible to the server, and it is not end-to-end encrypted. A student project, provided as-is.'
   );
   const signedIn = Boolean(useSessionToken());
   // Only when the server says sign-up needs an invite code; a failed lookup just shows nothing here.
@@ -273,39 +66,49 @@ function HomePage() {
     </Link>
   );
 
+  const bottomCta = (
+    <>
+      {primaryCta}
+      {!signedIn && (
+        <Link to="/login" className={`${site.textLink} ${site.tapLink}`}>
+          I already have one
+        </Link>
+      )}
+    </>
+  );
+
   return (
     <>
       {accountDeleted && (
-        <div className={site.container} style={{ paddingTop: 24 }}>
+        <div className={styles.wrap} style={{ paddingTop: 16 }}>
           <div className={forms.notice} role="status">
             <Icon name="check" />
             <p>
-              <strong>Your account has been deleted.</strong> Your documents and account data were permanently
-              removed from Warden, and we emailed you a confirmation.
+              <strong>Your account has been deleted.</strong> Your documents and account data were permanently removed from Warden,
+              and we emailed you a confirmation.
             </p>
           </div>
         </div>
       )}
 
       {/* ---- Hero ---- */}
-      <section className={styles.hero}>
-        <div className={`${site.container} ${styles.heroGrid}`}>
+      <section className={styles.hero} aria-labelledby="home-title">
+        <div className={`${styles.wrap} ${styles.heroGrid}`}>
           <div className={styles.heroCopy}>
             <p className={styles.kicker}>Encrypted document vault</p>
-            <h1 className={styles.heroTitle}>
+            <h1 id="home-title" className={styles.heroTitle}>
               A vault for the documents you can&apos;t afford to lose, or leak.
             </h1>
             <p className={styles.heroLede}>
-              Warden stores your IDs, contracts and records encrypted, with a key locked by your password and your
-              recovery key. The database holds only ciphertext and locked keys. It is not end-to-end encrypted; the
-              limits are listed below.
+              Your files are stored as ciphertext, and the key is locked by your password and your recovery key. The server can still see
+              file names and sizes, and it is not end-to-end encrypted. The limits are listed below.
             </p>
             <div className={styles.heroActions}>
               {primaryCta}
-              <a href="#how-it-works" className={`${site.button} ${site.ghost}`}>
+              <Link to="/#how-it-works" className={`${site.button} ${site.ghost}`}>
                 See how it works
                 <Icon name="arrowDown" size={18} />
-              </a>
+              </Link>
             </div>
             {inviteOnly && (
               <p className={styles.inviteNote}>
@@ -313,161 +116,31 @@ function HomePage() {
                 {config.requestAccessText || 'Ask the person who runs this Warden for an invite code.'}
               </p>
             )}
-            <ul className={styles.heroFacts}>
-              <li>AES-256-GCM per file</li>
-              <li>Recovery key shown once</li>
-              <li>Free, student-built</li>
-            </ul>
+            <p className={styles.free}>Free, student-built. A class project, not audited by a third party.</p>
           </div>
-          <div className={styles.heroVisual}>
-            <VaultMock />
+          <div className={styles.heroDemo}>
+            <EncryptionDemo />
           </div>
         </div>
       </section>
 
-      {/* ---- How it works ---- */}
-      <section id="how-it-works" className={`${site.section} ${site.sectionRule}`} aria-labelledby="how-title">
-        <div className={site.container}>
-          <Reveal>
-            <p className={site.marker}>
-              <span className={site.markerNumber}>01</span> How it works
-            </p>
-            <h2 id="how-title" className={site.sectionTitle}>
-              Four steps between your file and the database.
-            </h2>
-            <p className={site.lede}>
-              Pick a step to see what happens to the keys. Nothing here is a metaphor; it&apos;s what the code
-              does.
-            </p>
-          </Reveal>
-          <Reveal>
-            <StepExplorer />
-          </Reveal>
-        </div>
+      {/* ---- Facts strip ---- */}
+      <section className={styles.factsBand} aria-label="Facts">
+        <ul className={`${styles.wrap} ${styles.facts}`}>
+          {FACTS.map((fact) => (
+            <li key={fact.big} className={styles.fact}>
+              <span className={styles.factBig}>{fact.big}</span>
+              <span className={styles.factSmall}>{fact.small}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
-      {/* ---- Comparison ---- */}
-      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="diff-title">
-        <div className={`${site.container} ${styles.splitHeading}`}>
-          <Reveal>
-            <p className={site.marker}>
-              <span className={site.markerNumber}>02</span> What&apos;s different
-            </p>
-            <h2 id="diff-title" className={site.sectionTitle}>
-              Warden next to a typical cloud drive.
-            </h2>
-          </Reveal>
-          <Reveal className={styles.tableWrap}>
-            <table className={styles.table}>
-              <caption className={site.srOnly}>Warden compared with a typical cloud drive</caption>
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span className={site.srOnly}>Question</span>
-                  </th>
-                  <th scope="col">Typical cloud drive</th>
-                  <th scope="col" className={styles.wardenCol}>
-                    Warden
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.question}>
-                    <th scope="row">{row.question}</th>
-                    <td data-label="Typical cloud drive">{row.drive}</td>
-                    <td data-label="Warden" className={styles.wardenCol}>
-                      {row.warden}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className={styles.footnote}>
-              To be exact: this is not end-to-end encryption. While you&apos;re signed in, the server unlocks your
-              key for each request and encrypts uploads and decrypts downloads for you. The comparison is about
-              what&apos;s stored, and the{' '}
-              <Link to="/#limits" className={site.textLink}>
-                limits are listed here
-              </Link>
-              .
-            </p>
-          </Reveal>
-        </div>
-      </section>
+      <PageIndex items={INDEX} />
 
-      {/* ---- Ways back in ---- */}
-      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="recovery-title">
-        <div className={site.container}>
-          <Reveal>
-            <p className={site.marker}>
-              <span className={site.markerNumber}>03</span> Ways to get back in
-            </p>
-            <h2 id="recovery-title" className={site.sectionTitle}>
-              Forgetting your password doesn&apos;t have to cost you your files.
-            </h2>
-          </Reveal>
-          <Reveal as="ol" className={styles.recoveryList}>
-            {RECOVERY.map((item) => (
-              <li key={item.title} className={styles.recoveryItem}>
-                <Icon name={item.icon} size={22} className={styles.recoveryIcon} />
-                <h3 className={styles.recoveryTitle}>{item.title}</h3>
-                <p className={styles.recoveryBody}>{item.body}</p>
-              </li>
-            ))}
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ---- FAQ ---- */}
-      <section className={`${site.section} ${site.sectionRule}`} aria-labelledby="faq-title">
-        <div className={`${site.container} ${styles.faqGrid}`}>
-          <Reveal>
-            <p className={site.marker}>
-              <span className={site.markerNumber}>04</span> Questions
-            </p>
-            <h2 id="faq-title" className={site.sectionTitle}>
-              Straight answers.
-            </h2>
-            <p className={site.lede}>
-              Named as someone&apos;s trusted contact?{' '}
-              <Link to="/emergency" className={site.textLink}>
-                Emergency access
-              </Link>
-              . Something else missing?{' '}
-              <Link to="/#contact" className={site.textLink}>
-                Ask us
-              </Link>
-              .
-            </p>
-          </Reveal>
-          <Reveal>
-            <Faq items={FAQ_ITEMS} />
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ---- Closing CTA ---- */}
-      <section className={styles.ctaBand} aria-labelledby="cta-title">
-        <div className={`${site.container} ${styles.ctaInner}`}>
-          <h2 id="cta-title" className={styles.ctaTitle}>
-            Set up your vault in about a minute.
-          </h2>
-          <div className={styles.ctaActions}>
-            {primaryCta}
-            {!signedIn && (
-              <Link to="/login" className={site.textLink}>
-                I already have one
-              </Link>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ---- One page, three parts: Home -> About -> Contact. The header
-          links and the old /about and /contact routes scroll to these. ---- */}
-      <AboutSection />
-      <ContactSection />
+      <Suspense fallback={<div className={styles.placeholder} aria-hidden="true" />}>
+        <HomeBelow cta={bottomCta} />
+      </Suspense>
     </>
   );
 }

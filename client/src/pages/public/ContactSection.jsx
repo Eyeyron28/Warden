@@ -79,7 +79,7 @@ function ContactSection() {
           <div>
             <dt>Email</dt>
             <dd>
-              <a href={`mailto:${CONTACT_EMAIL}`} className={site.textLink}>
+              <a href={`mailto:${CONTACT_EMAIL}`} className={`${site.textLink} ${site.tapLink}`}>
                 {CONTACT_EMAIL}
               </a>
             </dd>

@@ -1,7 +1,7 @@
 .bar {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;

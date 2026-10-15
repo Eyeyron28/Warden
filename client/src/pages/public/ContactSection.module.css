@@ -1,19 +1,19 @@
 .layout {
   display: grid;
   gap: var(--space-6);
-  padding-block: clamp(var(--space-6), 7vw, 6rem) clamp(var(--space-7), 8vw, 7rem);
+  padding-block: clamp(20px, 2.6vw, 32px);
 }
 
 .title {
-  font-size: var(--fs-3xl);
-  letter-spacing: -0.025em;
+  font-size: clamp(1.4rem, 1.1rem + 1.3vw, 2rem);
+  letter-spacing: -0.015em;
 }
 
 .lede {
   max-width: 44ch;
   margin-top: var(--space-4);
-  font-size: var(--fs-lg);
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: 1.5;
   color: var(--color-text-muted);
 }
 
