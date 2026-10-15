@@ -5,6 +5,8 @@ const { validatePassword } = require('../utils/passwordPolicy');
 const { domainCanReceiveMail } = require('../utils/emailDomain');
 const { otpTtlMinutes } = require('../utils/otpConfig');
 const { consumeBudget } = require('../middleware/rateLimit');
+const { bulkMailOpen } = require('../utils/mailBudget');
+const { PRIVACY_POLICY_VERSION } = require('../utils/policyVersion');
 const { recordDuration, padLikeReal } = require('../utils/sendTiming');
 const { buildAccountFields, isDuplicateKey } = require('../utils/accountCreate');
 const {
@@ -37,6 +39,8 @@ const { issueLoginSession } = require('./auth.controller');
 const START_MESSAGE = 'If this address can be used, we sent a 6-digit code to it.';
 const VERIFY_FAILED = 'That code didn’t work. Check it or ask for a new one.';
 const NO_MAIL_DOMAIN = 'That email domain can’t receive mail. Check for a typo.';
+// The one answer when today's bulk mail budget is used up (utils/mailBudget.js): the same for every address.
+const SIGNUP_BUSY = 'Sign-up is busy right now. Please try again later.';
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -82,6 +86,10 @@ const signupStart = asyncHandler(async (req, res) => {
   // Depends only on the typed domain, so it reveals nothing about any account.
   if (!(await domainCanReceiveMail(address))) throw httpError(400, NO_MAIL_DOMAIN, { code: 'EMAIL_DOMAIN_NO_MAIL' });
 
+  // Today's sign-up mail budget is spent: refuse BEFORE looking anything up about the address, so the answer is the same
+  // for an address with an account and one without (no enumeration), and keep what is left for login codes.
+  if (!(await bulkMailOpen())) throw httpError(503, SIGNUP_BUSY, { expose: true });
+
   if (!(await spendAddressBudget(address))) throw tooMany();
 
   const startedAt = Date.now();
@@ -95,7 +103,8 @@ const signupStart = asyncHandler(async (req, res) => {
   }
 
   // A failed send is not reported (the existing-address path hides its own); the person can ask for the code again.
-  await issueSignupCode(address);
+  // What was agreed to travels with the pending code and is written to the account only if the code is entered.
+  await issueSignupCode(address, { acceptedAt: new Date(), policyVersion: PRIVACY_POLICY_VERSION });
   recordDuration('signup-start', Date.now() - startedAt);
   res.status(200).json(neutralAnswer());
 });
@@ -113,6 +122,8 @@ const signupVerify = asyncHandler(async (req, res) => {
   // Counted first, atomically; one generic failure for wrong, expired, used, out of tries, or no pending code at all.
   const checked = await checkSignupCode(address, code);
   if (!checked.ok) throw verifyFailed();
+  // A pending code without a consent record (one started before consent was recorded) cannot make an account: start again.
+  if (!checked.consent?.acceptedAt || !checked.consent?.policyVersion) throw verifyFailed();
   if (!(await consumeSignupCode(checked.id))) throw verifyFailed();
 
   // Only now does anything exist: the user, the vault key and the recovery key.
@@ -120,7 +131,7 @@ const signupVerify = asyncHandler(async (req, res) => {
   let user;
   try {
     if (await User.findOne({ email: address })) throw verifyFailed();
-    user = await User.create({ email: address, emailVerified: true, ...fields });
+    user = await User.create({ email: address, emailVerified: true, consent: { acceptedAt: checked.consent.acceptedAt, policyVersion: checked.consent.policyVersion }, ...fields });
   } catch (error) {
     // Two verifies for the same address at once, or an account made in the meantime: the loser gets the generic failure.
     if (isDuplicateKey(error)) throw verifyFailed();
@@ -158,4 +169,4 @@ const goneSignup = (req, res) => {
   });
 };
 
-module.exports = { signupStart, signupVerify, signupResend, goneSignup, START_MESSAGE, VERIFY_FAILED, NO_MAIL_DOMAIN };
+module.exports = { signupStart, signupVerify, signupResend, goneSignup, START_MESSAGE, VERIFY_FAILED, NO_MAIL_DOMAIN, SIGNUP_BUSY };

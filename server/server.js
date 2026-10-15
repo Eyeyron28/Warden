@@ -13,6 +13,7 @@ const { isDatabaseReachable } = require('./config/db');
 const { assertProductionConfig } = require('./utils/productionConfig');
 const corsOptions = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const { requestContext } = require('./utils/requestContext');
 const { assertPublicAppUrlConfig, describePublicAppUrl } = require('./utils/publicAppUrl');
 const { assertOtpConfig, otpEnabled, otpTtlMinutes } = require('./utils/otpConfig');
 
@@ -92,6 +93,8 @@ app.set('trust proxy', trustProxyHops());
 // requests CORS goes on to reject carry them. Helmet only sets response
 // headers - it doesn't touch the CORS handshake below. No origin or IP is
 // configured here: nothing needs one.
+// A request id for every request, so log lines written below it can be matched (utils/requestContext.js).
+app.use(requestContext);
 app.use(helmet());
 app.use(cors(corsOptions));
 // Vercel caps request AND response bodies at 4.5MB. Documents are sent as

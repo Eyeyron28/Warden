@@ -13,6 +13,8 @@
  * here nor refused.
  */
 
+const { logSecurity } = require('../utils/securityLog');
+
 const ID = '[0-9a-f]{24}';
 
 const ALLOWLIST = Object.freeze([
@@ -43,7 +45,10 @@ function forbidden() {
 /** Throws a 403 unless this request is on the allowlist. Call only for emergency sessions. */
 function assertEmergencyAllowed(req) {
   const fullPath = `${req.baseUrl || ''}${req.path || ''}`;
-  if (!matchAllowlist(req.method, fullPath)) throw forbidden();
+  if (!matchAllowlist(req.method, fullPath)) {
+    logSecurity('emergency_refused', { bucket: 'allowlist' });
+    throw forbidden();
+  }
 }
 
 module.exports = { ALLOWLIST, matchAllowlist, assertEmergencyAllowed };

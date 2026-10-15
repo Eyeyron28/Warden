@@ -4,6 +4,7 @@ const ReminderLog = require('../models/ReminderLog');
 const { LIVE } = require('./storage');
 const { THRESHOLDS, daysUntil, dueThreshold, thresholdsCovered } = require('./docExpiry');
 const { sendEmail } = require('./email');
+const { bulkMailOpen } = require('./mailBudget');
 const { dropReminders } = require('./reminderCleanup');
 const { templates } = require('./emailTemplates');
 
@@ -79,9 +80,17 @@ async function runReminders({ now = new Date(), deadlineMs = DEADLINE_MS, maxEma
   const userIds = await Document.distinct('userId', filter);
 
   const pruned = await pruneOrphans().catch(() => 0);
-  const result = { pruned, users: 0, emails: 0, files: 0, failed: 0, skippedOptOut: 0, remaining: false };
-  for (const userId of userIds) {
+  const result = { pruned, users: 0, emails: 0, files: 0, failed: 0, skippedOptOut: 0, skippedMailCap: 0, remaining: false };
+  for (const [index, userId] of userIds.entries()) {
     if (Date.now() - started > deadlineMs || result.emails >= maxEmails) {
+      result.remaining = true;
+      break;
+    }
+    // The day's bulk mail budget is used up (utils/mailBudget.js): stop here, claim nothing, and say how many accounts waited.
+    // They are tried again by the next run; login codes keep the rest of the day's budget.
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await bulkMailOpen())) {
+      result.skippedMailCap = userIds.length - index;
       result.remaining = true;
       break;
     }
@@ -111,7 +120,7 @@ async function runReminders({ now = new Date(), deadlineMs = DEADLINE_MS, maxEma
       await ReminderLog.deleteMany({ userId, $or: claimed.map((item) => ({ fileId: item.fileId, threshold: item.threshold })) });
     }
   }
-  console.log(`Reminders: ${result.users} accounts checked, ${result.emails} emails, ${result.files} documents, ${result.failed} failed, ${result.pruned} stale rows removed${result.remaining ? ', more next run' : ''}.`);
+  console.log(`Reminders: ${result.users} accounts checked, ${result.emails} emails, ${result.files} documents, ${result.failed} failed, ${result.pruned} stale rows removed${result.skippedMailCap ? `, ${result.skippedMailCap} accounts skipped (daily mail budget)` : ''}${result.remaining ? ', more next run' : ''}.`);
   return result;
 }
 

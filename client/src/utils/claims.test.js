@@ -24,6 +24,7 @@ const HOME_FILES = [
 const PAGES = [
   ...HOME_FILES,
   'pages/public/PrivacyPage.jsx',
+  'components/site/retention.js',
   'pages/public/AboutSection.jsx',
   'pages/public/TermsPage.jsx',
   'pages/public/limits.js',

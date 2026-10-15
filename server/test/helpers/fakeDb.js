@@ -284,6 +284,17 @@ function installRateLimit() {
       counts.set(id, (counts.get(id) || 0) + 1);
       return counts.get(id) <= max;
     },
+    consumeBudgetCount: async ({ name, key, max }) => {
+      const id = `${name}:${key}`;
+      counts.set(id, (counts.get(id) || 0) + 1);
+      return { allowed: counts.get(id) <= max, count: counts.get(id) };
+    },
+    reserveCapped: async ({ name, key, max }) => {
+      const id = `${name}:${key}`;
+      if ((counts.get(id) || 0) >= max) return false;
+      counts.set(id, (counts.get(id) || 0) + 1);
+      return true;
+    },
     isBudgetExhausted: async ({ name, key, max }) => (counts.get(`${name}:${key}`) || 0) >= max,
     budgetRetryAfterSeconds: async ({ name, key, max }) => ((counts.get(`${name}:${key}`) || 0) >= max ? 900 : 0),
   }));

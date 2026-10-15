@@ -13,7 +13,8 @@ const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { sendEmail, normalizeRecipient } = require('../utils/email');
 const { otpEnabled } = require('../utils/otpConfig');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
-const { reserveLoginAttempt, clearLoginFailures } = require('../utils/loginLimiter');
+const { reserveLoginAttempt, clearLoginFailures, LOGIN_ATTEMPT_LIMIT } = require('../utils/loginLimiter');
+const { logSecurity } = require('../utils/securityLog');
 const { recordDuration, padLikeReal } = require('../utils/sendTiming');
 
 const EMAIL_VERIFICATION_TOKEN_BYTES = 32;
@@ -291,6 +292,10 @@ const unlock = asyncHandler(async (req, res) => {
   // The attempt is counted FIRST, for any address typed: one atomic update that also says whether this attempt may be
   // checked at all (utils/loginLimiter.js). A real and an unknown address take exactly the same road from here.
   const gate = await reserveLoginAttempt(normalizedEmail);
+  // The attempt that switches the lock on (granted and locked at once) is the one worth a log line; the address is only hashed.
+  const noteLockout = () => {
+    if (gate.locked && gate.granted) logSecurity('lockout', { bucket: 'login', count: LOGIN_ATTEMPT_LIMIT, subject: normalizedEmail });
+  };
   const user = await User.findOne({ email: normalizedEmail });
   const failedLogin = async () =>
     recordEvent(req, 'login_failed', { userId: user._id, deviceId: (await deviceFromCookie(req, user._id))?._id || null });
@@ -306,12 +311,14 @@ const unlock = asyncHandler(async (req, res) => {
     // fixed dummy salt/hash - the result is discarded, only the timing
     // matters.
     verifyPassword(password, DUMMY_SALT, DUMMY_HASH);
+    noteLockout();
     throw gate.locked ? lockoutError(gate.lockedUntil) : genericLoginError();
   }
 
   if (!verifyPassword(password, user.salt, user.passwordHash)) {
     // A wrong password: one `login_failed` event, then the same answer an unknown address gets.
     await failedLogin();
+    noteLockout();
     throw gate.locked ? lockoutError(gate.lockedUntil) : genericLoginError();
   }
   await clearLoginFailures(normalizedEmail);

@@ -19,7 +19,7 @@ const { connectThrowaway, disconnectThrowaway, mongoose } = require('./helpers/r
 
 const MODELS_DIR = path.join(__dirname, '..', 'models');
 const modelFiles = fs.readdirSync(MODELS_DIR).filter((file) => file.endsWith('.js'));
-for (const file of modelFiles) require(path.join(MODELS_DIR, file)); // eslint-disable-line global-require, import/no-dynamic-require
+for (const file of modelFiles) require(path.join(MODELS_DIR, file)); // eslint-disable-line global-require
 
 const { migrateIndexes, indexSignature } = require('../utils/migrateIndexes');
 

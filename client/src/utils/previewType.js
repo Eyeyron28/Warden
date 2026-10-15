@@ -53,7 +53,7 @@ function sniffText(bytes) {
   } catch {
     return 'none';
   }
-  const head = new TextDecoder('utf-8').decode(sample.subarray(0, 4096)).replace(/^﻿/, '').toLowerCase();
+  const head = new TextDecoder('utf-8').decode(sample.subarray(0, 4096)).replace(/^\uFEFF/, '').toLowerCase();
   // A file that IS a web page or an SVG starts like one (or plainly contains <html / <svg).
   // Text that merely mentions a tag, such as a markdown note about <script>, is still
   // just text: it is shown as characters and nothing in it can run.

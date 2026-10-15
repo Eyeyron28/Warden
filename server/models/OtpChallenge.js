@@ -32,6 +32,8 @@ const otpChallengeSchema = new mongoose.Schema({
   // password-reset screen behaves the same for every address. Never emailed and
   // never able to succeed (see utils/otpChallenge.js).
   decoy: { type: Boolean, default: false },
+  // A 'signup' code carries what the person agreed to (utils/policyVersion.js); it is copied to the account when the code is entered.
+  consent: { type: new mongoose.Schema({ acceptedAt: Date, policyVersion: String }, { _id: false }), default: undefined },
   codeHash: { type: String, required: true }, // hex HMAC-SHA-256
   salt: { type: String, required: true }, // hex, the HMAC key
   attempts: { type: Number, default: 0 }, // wrong-or-right guesses so far

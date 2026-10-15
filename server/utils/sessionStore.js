@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Session = require('../models/Session');
 const { wrapKey, unwrapKey } = require('./crypto');
 const { revokeAllTrustedDevices } = require('./trustedDevice');
+const { logSecurity } = require('./securityLog');
 
 /**
  * DB-backed session store, replacing the old in-memory Map. A single
@@ -206,7 +207,9 @@ async function destroySessionsForDevice(userId, deviceId) {
  */
 async function destroyOtherSessions(userId, keepSessionIdHash) {
   const result = await Session.deleteMany({ userId, sessionIdHash: { $ne: keepSessionIdHash } });
-  return result?.deletedCount ?? 0;
+  const count = result?.deletedCount ?? 0;
+  if (count > 0) logSecurity('sessions_revoked', { bucket: 'sign-out-others', count });
+  return count;
 }
 
 /**
@@ -229,7 +232,8 @@ async function destroyEmergencySessions(userId) {
  * @param {import('mongoose').Types.ObjectId | string} userId
  */
 async function destroyAllSessionsForUser(userId) {
-  await Session.deleteMany({ userId });
+  const gone = await Session.deleteMany({ userId });
+  if ((gone?.deletedCount ?? 0) > 0) logSecurity('sessions_revoked', { bucket: 'reset', count: gone.deletedCount });
   // Trusted browsers go with the sessions: a password reset or vault wipe must
   // not leave a device that still skips the emailed code.
   await revokeAllTrustedDevices(userId);

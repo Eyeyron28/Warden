@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const User = require('../../models/User');
+const { logSecurity } = require('../securityLog');
 const Folder = require('../../models/Folder');
 const Session = require('../../models/Session');
 const OtpChallenge = require('../../models/OtpChallenge');
@@ -314,6 +315,7 @@ async function ownerDeny(req, requestId) {
   );
   if (!denied) throw httpError(409, 'This request can no longer be denied. If a session already started, turn emergency access off.');
   await audit(req, req.userId, 'emergency_denied', { targetId: denied._id });
+  logSecurity('emergency_denied', { bucket: 'owner' });
   const user = await User.findById(req.userId).select('email');
   if (user) sendEmail({ to: user.email, ...templates.emergencyOwnerDenied({ when: now }) }).catch(() => false);
   return { denied: true };
@@ -458,6 +460,7 @@ async function submitRequest({ ownerEmail, contactEmail, code, kit, req }) {
     notified = false;
   }
   if (!notified) {
+    logSecurity('emergency_refused', { bucket: 'owner-notice-not-sent' });
     await EmergencyRequest.deleteOne({ _id: request._id });
     throw httpError(503, 'We could not process your request right now. Please try again later.');
   }
@@ -573,6 +576,7 @@ async function denyByToken(token) {
   );
   if (!denied) return { denied: false };
   await audit(null, denied.userId, 'emergency_denied', { targetId: denied._id });
+  logSecurity('emergency_denied', { bucket: 'email-link' });
   const user = await User.findById(denied.userId).select('email');
   if (user) sendEmail({ to: user.email, ...templates.emergencyOwnerDenied({ when: now }) }).catch(() => false);
   return { denied: true };

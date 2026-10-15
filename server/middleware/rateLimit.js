@@ -54,6 +54,39 @@ async function consumeBudget({ name, key, max, windowMs }) {
   return doc.count <= max;
 }
 
+/** Like consumeBudget, but also says how many this window has used (so a caller can log "3 wrong passwords"). */
+async function consumeBudgetCount({ name, key, max, windowMs }) {
+  const doc = await incrementWindow(name, key, windowMs);
+  return { allowed: doc.count <= max, count: doc.count };
+}
+
+/**
+ * Takes one unit of a budget ONLY while the window's count is still below `max`: one atomic conditional update, and a
+ * refused attempt changes nothing (consumeBudget would count it). Used where a refused request must not eat the room kept
+ * for others, such as the daily mail counter (utils/mailBudget.js). Returns true when the unit was taken.
+ */
+async function reserveCapped({ name, key, max, windowMs }) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const doc = await RateLimit.findOneAndUpdate(
+        { bucket: name, key, count: { $lt: max } },
+        { $inc: { count: 1 }, $setOnInsert: { windowExpiresAt: new Date(Date.now() + windowMs) } },
+        { upsert: true, new: true }
+      );
+      return Boolean(doc);
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      // The row exists: either it is at its cap (the filter missed and the upsert hit the unique key), or two first
+      // requests raced to create it. Look once; at the cap means refused, otherwise try again.
+      // eslint-disable-next-line no-await-in-loop
+      const row = await RateLimit.findOne({ bucket: name, key }).lean();
+      if (row && row.count >= max) return false;
+    }
+  }
+  return false;
+}
+
 /**
  * Whether a budget is already used up, WITHOUT spending anything: true when the
  * current window holds `max` or more. Lets a caller block further attempts
@@ -97,6 +130,10 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
       if (doc.count > max) {
         const error = new Error('Too many requests. Please try again shortly.');
         error.status = 429;
+        // For the security log (middleware/errorHandler.js): which limiter, how many, and what it counts by (hashed there).
+        error.bucket = name;
+        error.count = doc.count;
+        error.subject = key;
         return next(error);
       }
 
@@ -109,5 +146,7 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 
 module.exports = createRateLimiter;
 module.exports.consumeBudget = consumeBudget;
+module.exports.consumeBudgetCount = consumeBudgetCount;
+module.exports.reserveCapped = reserveCapped;
 module.exports.isBudgetExhausted = isBudgetExhausted;
 module.exports.budgetRetryAfterSeconds = budgetRetryAfterSeconds;

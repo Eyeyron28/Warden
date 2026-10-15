@@ -3,7 +3,8 @@
 import { Link } from 'react-router-dom';
 
 import LegalPage from '../../components/site/LegalPage.jsx';
-import { CONTACT_EMAIL, PROJECT } from '../../config.js';
+import RetentionTable from '../../components/site/RetentionTable.jsx';
+import { CONTACT_EMAIL, PRIVACY_POLICY, PROJECT } from '../../config.js';
 import { LIMITS } from './limits.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 
@@ -22,6 +23,11 @@ export const SECTIONS = [
             account deletion), and to tell you when your password was changed. No account is made until you enter the sign-up code: until
             then we keep only a salted hash of that code, tied to a keyed hash of the address (not the address, and never your password), for
             a few minutes, and then it is deleted.
+          </li>
+          <li>
+            <strong>Your agreement.</strong> When you create an account we keep the time you agreed to the Terms and this policy, and
+            the version of this policy you agreed to (shown at the top of the page). Accounts created before this record existed have
+            none, and we do not pretend otherwise.
           </li>
           <li>
             <strong>A password hash</strong> (scrypt, salted). We never store your password itself.
@@ -103,7 +109,8 @@ export const SECTIONS = [
           <li>
             <strong>Basic logs and limits</strong>: short-lived records of request counts per IP address and per
             email (to slow down password guessing), sign-in sessions that end after 30 minutes without activity and after
-            12 hours at most, and ordinary server logs (which hold error text and a request number, never email addresses).
+            12 hours at most, and ordinary server logs (which hold error text, a request number and security events such as a lockout or a refused request, as counts
+            and short hashes, never email addresses).
           </li>
         </ul>
       </>
@@ -178,15 +185,15 @@ export const SECTIONS = [
     id: 'keeping',
     title: 'How long we keep it',
     content: (
-      <p>
-        Your account and documents are kept until you delete them or delete your account. When you delete a file or
-        folder it moves to Trash, where it stays encrypted for 30 days and is then permanently removed, including its
-        preview image. You can restore it, delete it permanently sooner, or empty the Trash at any time. Share links
-        that include a file stop working the moment it is moved to Trash and are not brought back by restoring it.
-        Sign-in sessions,
-        sign-up codes, verification links and rate-limit records expire on their own, within minutes to a day, and are removed
-        immediately if you delete your account.
-      </p>
+      <>
+        <p>
+          Your account and documents are kept until you delete them or delete your account. When you delete a file or folder it moves
+          to Trash, where you can restore it, delete it permanently sooner, or empty the Trash at any time. Share links that include a
+          file stop working the moment it is moved to Trash and are not brought back by restoring it. Everything below that ends by
+          itself does so without anyone having to do anything.
+        </p>
+        <RetentionTable />
+      </>
     ),
   },
   {
@@ -223,12 +230,39 @@ export const SECTIONS = [
     id: 'your-rights',
     title: 'Your rights (Data Privacy Act of 2012)',
     content: (
-      <p>
-        Under the Philippine Data Privacy Act of 2012 (Republic Act No. 10173), you have the right to be informed
-        about how your personal data is processed, to access it, to correct it, to object to its processing, and
-        to have it erased or blocked. To exercise any of these, contact us at{' '}
-        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
-      </p>
+      <>
+        <p>
+          Under the Philippine Data Privacy Act of 2012 (Republic Act No. 10173) you have rights over your personal data. Here is how
+          each one works in Warden:
+        </p>
+        <ul>
+          <li>
+            <strong>Access.</strong> See your data in the vault and in Devices &amp; activity, and download every file with Export.
+          </li>
+          <li>
+            <strong>Correction.</strong> Rename files and folders, change expiry dates, and change your password and your reminder
+            setting. The email address of an account cannot be changed in the app; write to us if it is wrong.
+          </li>
+          <li>
+            <strong>Erasure.</strong> Delete account, on the Account page, removes everything we hold, as described above.
+          </li>
+          <li>
+            <strong>Objection and withdrawing consent.</strong> Deleting your account withdraws your consent, and we then delete your
+            data. Without deleting it you can turn off reminder emails, remove trusted browsers, and stop any share link.
+          </li>
+          <li>
+            <strong>Data portability.</strong> Export gives you a zip of your files with your folders and original file names.
+          </li>
+          <li>
+            <strong>Complaints.</strong> You can complain to the National Privacy Commission of the Philippines (privacy.gov.ph).
+          </li>
+        </ul>
+        <p>
+          To use any of these, or to ask about your data, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from the
+          address on your account, or use the contact form on the home page. That mailbox is the project&apos;s contact; it is not a
+          named person.
+        </p>
+      </>
     ),
   },
   {
@@ -248,7 +282,7 @@ function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy"
-      updated="October 2026"
+      updated={`${PRIVACY_POLICY.date} (policy version ${PRIVACY_POLICY.version})`}
       intro={
         <p>
           Warden is an academic project ({PROJECT.program} {PROJECT.course}, {PROJECT.group}, {PROJECT.school}),

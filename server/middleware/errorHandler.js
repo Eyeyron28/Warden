@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 
 const { scrubForLog } = require('../utils/logSafe');
+const { logSecurity } = require('../utils/securityLog');
+const { currentRequestId } = require('../utils/requestContext');
 
 // Consistent JSON error format for all routes.
 // Usage: pass errors to next(err), or let thrown errors in async handlers bubble up.
@@ -28,7 +30,9 @@ const errorHandler = (err, req, res, next) => {
   // naming a collection and a value, a stack, a path) can never reach the caller. The only exception is an error the
   // app itself raised with `expose` set, whose text was written for the user (e.g. "We couldn't send the code email").
   const hidden = status >= 500 && !err.expose;
-  const requestId = status >= 500 ? crypto.randomBytes(6).toString('hex') : undefined;
+  const requestId = status >= 500 ? currentRequestId() || crypto.randomBytes(6).toString('hex') : undefined;
+  // Every 429, by limiter (a request counted past its limit). The caller is only ever logged as a keyed hash.
+  if (status === 429) logSecurity('rate_limited', { bucket: err.bucket || 'other', count: err.count, subject: err.subject });
   if (hidden) {
     console.error(`[request ${requestId}] ${status} ${scrubForLog(err.name)}: ${scrubForLog(err.message)}${err.code ? ` (code ${scrubForLog(err.code)})` : ''}`);
   }

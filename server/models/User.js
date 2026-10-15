@@ -36,6 +36,14 @@ const userSchema = new mongoose.Schema(
       required: false,
     },
 
+    // When the person agreed to the Terms and the Privacy policy, and which version of the policy it was (utils/policyVersion.js).
+    // Written once, when the account is created from a verified sign-up code. Accounts made before this existed have none, and
+    // nothing claims otherwise.
+    consent: {
+      type: new mongoose.Schema({ acceptedAt: { type: Date, required: true }, policyVersion: { type: String, required: true } }, { _id: false }),
+      default: undefined,
+    },
+
     // Hash of the master password (never the password itself).
     passwordHash: {
       type: String,

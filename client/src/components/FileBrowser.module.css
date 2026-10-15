@@ -1,6 +1,9 @@
 /* ---- Shared by My files, Photos and Trash ---- */
 
 .list {
+  /* The row layout (with its extra columns, or without) is chosen by how wide THIS list is, not by the window: beside the
+     sidebar the list can be far narrower than the window, and a table with four fixed columns must not push the page sideways. */
+  container-type: inline-size;
   --check-w: 40px;
   --icon-w: 40px;
   margin: 0;
@@ -220,16 +223,32 @@
   }
 }
 
-@media (min-width: 640px) {
-  .row {
+/* A list with up to three extra columns (My files) turns into a table from 640px of its own width; one with four or more
+   (Trash) needs 820px. */
+@container (min-width: 640px) {
+  .row:not(.manyCols) {
     grid-template-columns: var(--cols-wide);
   }
 
-  .cell {
+  .row:not(.manyCols) .cell {
     display: block;
   }
 
-  .mobileMeta {
+  .row:not(.manyCols) .mobileMeta {
+    display: none;
+  }
+}
+
+@container (min-width: 820px) {
+  .row.manyCols {
+    grid-template-columns: var(--cols-wide);
+  }
+
+  .row.manyCols .cell {
+    display: block;
+  }
+
+  .row.manyCols .mobileMeta {
     display: none;
   }
 }

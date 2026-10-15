@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { reserveMail } = require('./mailBudget');
 
 const { isProduction } = require('./runtimeEnv');
 const { scrubForLog, shortHash } = require('./logSafe');
@@ -158,7 +159,7 @@ function normalizeRecipient(raw) {
  * @param {{ to: string, subject: string, text: string, html?: string }} params
  * @returns {Promise<boolean>} whether the email was handed off (or logged)
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, mailClass }) {
   // Every message is built by utils/emailTemplates.js, which always provides both parts.
   if (typeof subject !== 'string' || typeof text !== 'string' || typeof html !== 'string') {
     console.error('Refusing to send email: it must come from utils/emailTemplates.js (subject, text and html).');
@@ -187,6 +188,10 @@ async function sendEmail({ to, subject, text, html }) {
     );
     return true;
   }
+
+  // Today's budget (utils/mailBudget.js): bulk mail stops at its share of the cap, priority mail at the cap itself. Not asked
+  // in development without SMTP, where nothing is really sent.
+  if (!(await reserveMail(mailClass === 'bulk' ? 'bulk' : 'priority'))) return false;
 
   try {
     await getTransporter().sendMail({

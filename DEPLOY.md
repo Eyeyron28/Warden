@@ -64,6 +64,8 @@ Add these under **Settings, Environment Variables** for **Production**. Mark eve
 | `EMERGENCY_CLAIM_DAYS` | no | Optional, 1 to 30 (default 7). How long after the Emergency Access waiting period ends the contact can still start a session. |
 | `EMERGENCY_DEMO_MODE` | no | **Demo only. Leave it unset.** `true` also allows a 2-minute waiting period (used by `server/scripts/emergency-demo.js`); the server warns at start-up if it is on in production. |
 | `AUDIT_RETENTION_DAYS` | no | Optional. How long activity entries are kept (default 30). |
+| `MAIL_DAILY_CAP` | no | Optional, a whole number from 1 to 100000 (default **300**). The most emails the whole deployment sends per UTC day. A free Gmail account allows a few hundred a day, so the default keeps a margin. See "The daily mail budget" below. |
+| `MAIL_BULK_SHARE` | no | Optional, above 0 up to 1 (default **0.5**). The share of `MAIL_DAILY_CAP` that sign-up codes, "someone tried to sign up" notices, expiry reminders, new-device notices and share codes may use. Login codes and other priority mail may use the rest. |
 | `SESSION_ABSOLUTE_HOURS` | no | Optional, 1 to 168 (default **12**). The longest a sign-in can last however busy it is. The 30-minute idle timeout always applies as well. A value outside the range stops a production start. |
 | `CORS_ORIGINS` | no | Not needed: the app and API share one origin, and `PUBLIC_APP_URL` is allowed automatically. |
 
@@ -215,3 +217,39 @@ The session token is kept in the browser tab's sessionStorage so a reload keeps 
 ## Database indexes (performance)
 
 Mongoose `autoIndex` is off, so the server no longer builds indexes on every cold start. At startup `server/utils/migrateIndexes.js` builds the models' indexes once, recorded by a hash marker (`indexes-<hash>`) in the database; a cold start with an unchanged schema skips it. Changing an index in a model changes the hash and triggers one rebuild. The old `userId_1_deletedAt_1` index on documents is left in existing databases (harmless; drop it manually if wanted).
+
+## The daily mail budget
+
+Free Gmail sends only a few hundred emails a day, and with `SIGNUP_MODE=open` anyone can ask for sign-up codes. So the server keeps **one counter per UTC day** in the database (the `ratelimits` collection, shared by every serverless instance) and splits the day's budget in two:
+
+- **Priority mail** goes on until the whole `MAIL_DAILY_CAP` is used: sign-in codes, codes for sensitive actions (deleting the account, Emergency Access), password-reset codes, and security notices (a changed password, Emergency Access notices).
+- **Bulk mail** stops at `MAIL_DAILY_CAP x MAIL_BULK_SHARE` (150 a day by default): sign-up codes, "someone tried to sign up" notices, expiry reminders, new-device and trusted-browser notices, and share-link codes.
+
+When the bulk share is used up:
+
+- `POST /api/auth/signup/start` answers **503** "Sign-up is busy right now. Please try again later." for everyone, before it looks the address up, so the answer never says whether an address has an account.
+- Notices and share codes are dropped without an error, and the daily reminder job stops, sends nothing more, and reports how many accounts it skipped (the next day's run picks them up).
+- One line is written to the log the first time each day that a budget stops a send, with counts only (see "Security events in the log").
+
+You do not need to set either variable. Raise `MAIL_DAILY_CAP` only if you move to a provider that allows more. `/signup/start` is also limited to **10 requests an hour per connection** (an IPv6 address by its /64) and 5 codes an hour per address.
+
+## Security events in the log
+
+The server writes one JSON line per security event, with no email address, token, code or IP address. Read them in Vercel: **Project, Logs** (filter on `"type"` or on a type name such as `lockout`). A line looks like:
+
+```
+{"type":"lockout","bucket":"login","count":3,"requestId":"3a5657ff0f14","time":"2026-10-15T03:11:44.127Z","subject":"af6e4ca8"}
+```
+
+| `type` | What it means | `bucket` | `count` |
+|---|---|---|---|
+| `lockout` | A login address reached its limit and is locked for 5 minutes | `login` | the attempt limit (3) |
+| `code_failures` | 3 or more wrong guesses on one emailed code | what the code is for (`signup`, `login`, `share-email`, ...) | guesses so far |
+| `rate_limited` | A request was refused with 429 | the limiter's name, e.g. `signup-ip` | requests this window |
+| `sessions_revoked` | Sessions ended by a password reset or "sign out everywhere else" | `reset` or `sign-out-others` | sessions ended |
+| `emergency_denied` | The owner denied an Emergency Access request | `owner` or `email-link` | none |
+| `emergency_refused` | An emergency session tried something it may not, or a request was refused because the owner could not be told | `allowlist` or `owner-notice-not-sent` | none |
+| `share_password_failures` | 3 or more wrong passwords on one share link in a window | `share-password` | failures so far |
+| `mail_cap` | The daily mail budget stopped a send | `bulk` or `priority` | the limit that was reached |
+
+`requestId` matches the `[request ...]` line that a failed request (HTTP 500 and up) writes, so the two can be read together. `subject` is a short keyed hash (an HMAC under `AUDIT_HMAC_KEY`): two lines about the same address or link carry the same value, and it cannot be turned back into the address. During a flood only the first few lines per minute for each type and bucket are written, then every 25th.

@@ -296,7 +296,7 @@ function FileBrowser({
   return (
     <ul className={styles.list} data-any-selected={anySelected || undefined} style={gridVars} aria-label={label}>
       {showListHeader && (
-        <li className={`${styles.row} ${styles.headRow}`}>
+        <li className={`${styles.row} ${styles.headRow} ${columns.length > 3 ? styles.manyCols : ''}`}>
           <span className={styles.headCheckCell}>
             {selectable ? (
               <SelectAllCheckbox header={selection.header} onChange={() => (selection.header === 'all' ? selection.clear() : selection.selectAll())} />
@@ -313,7 +313,7 @@ function FileBrowser({
         </li>
       )}
       {shownItems.map((item) => (
-        <li key={item.key} className={styles.row} {...common(item)}>
+        <li key={item.key} className={`${styles.row} ${columns.length > 3 ? styles.manyCols : ''}`} {...common(item)}>
           {checkbox(item)}
           <span className={styles.leadIcon}>
             <ItemIcon item={item} size={28} />

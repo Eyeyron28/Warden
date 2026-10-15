@@ -4,6 +4,7 @@ const ShareAccess = require('../models/ShareAccess');
 const OtpChallenge = require('../models/OtpChallenge');
 const User = require('../models/User');
 const { sendEmail } = require('./email');
+const { logSecurity } = require('./securityLog');
 const { templates } = require('./emailTemplates');
 const { consumeBudget } = require('../middleware/rateLimit');
 const { otpTtlMinutes } = require('./otpConfig');
@@ -166,6 +167,7 @@ async function verifyShareCode(share, access, code) {
   if (!challenge) throw failure();
 
   if (!codeMatches(challenge.salt, challenge.codeHash, code)) {
+    if (challenge.attempts >= 3) logSecurity('code_failures', { bucket: 'share-email', count: challenge.attempts, subject: String(challenge._id) });
     if (challenge.attempts >= limits.SHARE_CODE_MAX_ATTEMPTS) await OtpChallenge.deleteOne({ _id: challenge._id });
     throw failure();
   }

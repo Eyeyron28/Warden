@@ -4,7 +4,8 @@ const Share = require('../models/Share');
 const SharedFile = require('../models/SharedFile');
 const ShareAccess = require('../models/ShareAccess');
 const { SHARE_ID_RE, FILE_ID_RE } = require('../utils/shareCrypto');
-const { consumeBudget, isBudgetExhausted } = require('../middleware/rateLimit');
+const { consumeBudgetCount, isBudgetExhausted } = require('../middleware/rateLimit');
+const { logSecurity } = require('../utils/securityLog');
 const { removeShares } = require('../utils/shareCleanup');
 const gate = require('../utils/shareGate');
 const limits = require('../utils/shareLimits');
@@ -143,6 +144,12 @@ const unlockPassword = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  // A wrong password counts against the link; from the third one in a window it is also a line in the security log.
+  const wrongPassword = async () => {
+    const { count } = await consumeBudgetCount({ ...budget, windowMs: limits.PASSWORD_WINDOW_MS });
+    if (count >= 3) logSecurity('share_password_failures', { bucket: 'share-password', count, subject: share.shareId });
+  };
+
   const wrong = () => {
     const error = new Error('That password is incorrect.');
     error.status = 401;
@@ -150,14 +157,14 @@ const unlockPassword = asyncHandler(async (req, res) => {
   };
   const verifier = req.body?.verifier;
   if (typeof verifier !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(verifier) || verifier.length > 64) {
-    await consumeBudget({ ...budget, windowMs: limits.PASSWORD_WINDOW_MS });
+    await wrongPassword();
     throw wrong();
   }
   const bytes = Buffer.from(verifier, 'base64');
   const given = Buffer.from(gate.sha256(bytes), 'hex');
   const stored = Buffer.from(share.passwordVerifierHash, 'hex');
   if (bytes.length !== 32 || given.length !== stored.length || !crypto.timingSafeEqual(given, stored)) {
-    await consumeBudget({ ...budget, windowMs: limits.PASSWORD_WINDOW_MS });
+    await wrongPassword();
     throw wrong();
   }
 

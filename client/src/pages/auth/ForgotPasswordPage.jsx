@@ -12,7 +12,6 @@ import {
   resetPasswordWithRecoveryKeyOnly,
   verifyPasswordResetCode,
 } from '../../services/authService.js';
-import { setToken } from '../../services/session.js';
 import { STEPS, backStep, describeResetFailure, recoveryKeyProblem } from '../../utils/passwordReset.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 import AuthLayout from './AuthLayout.jsx';

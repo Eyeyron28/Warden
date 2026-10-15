@@ -1,5 +1,6 @@
 const OtpChallenge = require('../models/OtpChallenge');
 const { sendEmail } = require('./email');
+const { logSecurity } = require('./securityLog');
 const { templates } = require('./emailTemplates');
 const { consumeBudget } = require('../middleware/rateLimit');
 const { otpTtlMinutes } = require('./otpConfig');
@@ -175,6 +176,8 @@ async function consumeChallenge({ challengeToken, code, purpose, userId }) {
   }
 
   if (!codeMatches(challenge.salt, challenge.codeHash, code)) {
+    // 3 or more wrong guesses on one code: a burst worth a line (what it was for, how many, and a hash of its id).
+    if (challenge.attempts >= 3) logSecurity('code_failures', { bucket: challenge.purpose, count: challenge.attempts, subject: String(challenge._id) });
     if (challenge.attempts >= MAX_ATTEMPTS) await OtpChallenge.deleteOne({ _id: challenge._id });
     throw failure();
   }

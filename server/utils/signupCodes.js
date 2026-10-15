@@ -6,6 +6,7 @@ const { templates } = require('./emailTemplates');
 const { otpTtlMinutes } = require('./otpConfig');
 const { hmacKey } = require('./auditConfig');
 const { generateCode, newSalt, hashCode, codeMatches } = require('./otp');
+const { logSecurity } = require('./securityLog');
 
 /**
  * The emailed code that proves an address BEFORE an account exists for it.
@@ -24,7 +25,7 @@ const RESEND_GAP_MS = 60 * 1000;
 const subjectKeyFor = (email) => crypto.createHmac('sha256', hmacKey()).update(`warden-signup:${String(email).trim().toLowerCase()}`).digest('hex');
 
 /** Creates (or replaces) the pending code for this address and emails it. Returns whether the mail was handed over. */
-async function issueSignupCode(email) {
+async function issueSignupCode(email, consent = null) {
   const subjectKey = subjectKeyFor(email);
   const ttlMinutes = otpTtlMinutes();
   const code = generateCode();
@@ -41,6 +42,8 @@ async function issueSignupCode(email) {
         attempts: 0,
         resendCount: 0,
         decoy: false,
+        // What the person agreed to, recorded here and written to the new account only if the code is entered.
+        ...(consent ? { consent } : {}),
       },
     },
     { upsert: true, new: true }
@@ -101,10 +104,11 @@ async function checkSignupCode(email, code) {
     return { ok: false, id: null };
   }
   if (!codeMatches(challenge.salt, challenge.codeHash, code)) {
+    if (challenge.attempts >= 3) logSecurity('code_failures', { bucket: 'signup', count: challenge.attempts, subject: String(challenge._id) });
     if (challenge.attempts >= MAX_ATTEMPTS) await OtpChallenge.deleteOne({ _id: challenge._id });
     return { ok: false, id: null };
   }
-  return { ok: true, id: challenge._id };
+  return { ok: true, id: challenge._id, consent: challenge.consent || null };
 }
 
 /** Uses up a code that checkSignupCode accepted. Only one caller can ever get true for a given code. */

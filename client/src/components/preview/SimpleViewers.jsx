@@ -43,12 +43,12 @@ export function MediaViewer({ bytes, mime, kind, name, onFail }) {
   }, [bytes, mime]);
   if (!url) return null;
   return kind === 'video' ? (
-    // eslint-disable-next-line jsx-a11y/media-has-caption
+    // (a person's own file has no caption track to offer)
     <video className={styles.video} src={url} controls playsInline preload="metadata" onError={onFail} aria-label={name} />
   ) : (
     <div className={styles.audioWrap}>
       <FileTypeIcon filename={name} size={64} />
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      {/* a person's own file has no caption track to offer */}
       <audio className={styles.audio} src={url} controls preload="metadata" onError={onFail} aria-label={name} />
     </div>
   );

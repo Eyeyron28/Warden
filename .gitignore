@@ -2,7 +2,8 @@ node_modules/
 .env
 .env.local
 certs/
-test-results/
+test-results/*
+!test-results/*.md
 dist/
 dist-ssr/
 build/

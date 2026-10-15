@@ -535,4 +535,42 @@ const templates = {
     }),
 };
 
-module.exports = { renderEmail, templates, esc, formatManilaTime, placeLabel, appLink, BRAND, FOOTER_AUTOMATED, FOOTER_PROJECT, NEVER_SHARE, IGNORE_IF_NOT_YOU };
+// Which daily budget a message belongs to (utils/mailBudget.js). Priority: anything a person needs to sign in, to confirm a
+// sensitive action or to reset a password, and security notices about their account (a changed password, Emergency Access).
+// Bulk: sign-up codes, "someone tried to sign up", reminders, new-device notices and share codes: they stop first when the
+// day's budget runs short, so they can never block a login code.
+const MAIL_CLASS = Object.freeze({
+  signInCode: 'priority',
+  deleteAccountCode: 'priority',
+  passwordResetCode: 'priority',
+  passwordChanged: 'priority',
+  accountDeleted: 'priority',
+  emergencyContactRequestCode: 'priority',
+  emergencyContactReceipt: 'priority',
+  emergencyContactAvailable: 'priority',
+  emergencyContactSessionCode: 'priority',
+  emergencyContactKitChanged: 'priority',
+  emergencyOwnerSetupCode: 'priority',
+  emergencyOwnerRequestReceived: 'priority',
+  emergencyOwnerReminder: 'priority',
+  emergencyOwnerDenied: 'priority',
+  emergencyOwnerReleased: 'priority',
+  emergencyOwnerSessionStarted: 'priority',
+  emergencyOwnerSetupChanged: 'priority',
+  signupCode: 'bulk',
+  signupAttempt: 'bulk',
+  verifyEmailResend: 'bulk',
+  expiringDocuments: 'bulk',
+  newDevice: 'bulk',
+  trustedBrowser: 'bulk',
+  shareCode: 'bulk',
+});
+for (const name of Object.keys(templates)) {
+  const build = templates[name];
+  const wrapped = (...args) => ({ ...build(...args), mailClass: MAIL_CLASS[name] || 'priority' });
+  // Keep the template's own source text (a test reads which templates take a `code`).
+  wrapped.toString = () => build.toString();
+  templates[name] = wrapped;
+}
+
+module.exports = { MAIL_CLASS, renderEmail, templates, esc, formatManilaTime, placeLabel, appLink, BRAND, FOOTER_AUTOMATED, FOOTER_PROJECT, NEVER_SHARE, IGNORE_IF_NOT_YOU };
