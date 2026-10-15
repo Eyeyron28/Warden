@@ -21,20 +21,22 @@ const words = (file) => strip(read(file)).replace(/&apos;|&#39;|’/g, "'").repl
 test('the policy version on the page is the one the server records with a new account', () => {
   const server = require('../../../server/utils/policyVersion.js');
   assert.equal(PRIVACY_POLICY.version, server.PRIVACY_POLICY_VERSION);
-  assert.match(PRIVACY_POLICY.version, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(PRIVACY_POLICY.version, /^\d{4}-\d{2}-\d{2}(\.\d+)?$/, 'a date, plus .2, .3 ... for a second text on the same day');
   // the date shown is the same day as the version
-  const [year, month, day] = PRIVACY_POLICY.version.split('-').map(Number);
+  const [year, month, day] = PRIVACY_POLICY.version.split('.')[0].split('-').map(Number);
   assert.equal(PRIVACY_POLICY.date, `${day} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month - 1]} ${year}`);
   assert.match(strip(read('pages/public/PrivacyPage.jsx')), /\$\{PRIVACY_POLICY\.date\} \(policy version \$\{PRIVACY_POLICY\.version\}\)/);
 });
 
 // If this fails you changed what the privacy page says. Bump PRIVACY_POLICY_VERSION in server/utils/policyVersion.js and
 // PRIVACY_POLICY in client/src/config.js (version and date), then put the new fingerprint here (it is printed by the failure).
-const POLICY_TEXT_FINGERPRINT = '04414ce4b4cbc86eab9f35ca40c2e8de3921f1fde7d754b406d6a19c03e687a9';
+const POLICY_TEXT_FINGERPRINT = '71fb1d9759186367597512d74021eaa8e2216171560652eecca6180b3e627852';
 
 function policyFingerprint() {
   const files = ['pages/public/PrivacyPage.jsx', 'pages/public/limits.js', 'components/site/retention.js'];
-  const text = files.map((file) => strip(read(file)).replace(/\s+/g, '')).join('|');
+  // The contact address is shown on the page too, so it is part of what the version stands for.
+  const contact = /CONTACT_EMAIL = '([^']+)'/.exec(read('config.js'))[1];
+  const text = [...files.map((file) => strip(read(file)).replace(/\s+/g, '')), contact].join('|');
   return crypto.createHash('sha256').update(text).digest('hex');
 }
 
@@ -53,7 +55,7 @@ test('the page lists each right and how it works here, and the complaint route, 
   assert.doesNotMatch(strip(read('pages/public/PrivacyPage.jsx')), /href=["'{`]?https?:\/\/(www\.)?privacy\.gov\.ph/, 'named, not linked');
   // The contact is the mailbox the site already shows; nobody is named.
   assert.match(text, /that mailbox is the project's contact; it is not a named person/i);
-  assert.match(strip(read('config.js')), /CONTACT_EMAIL = 'wardenadmin\.noreply@gmail\.com'/);
+  assert.match(strip(read('config.js')), /CONTACT_EMAIL = 'wardenvaultapp@gmail\.com'/);
 });
 
 test('the page says new accounts record the agreement and older accounts have none', () => {

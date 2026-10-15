@@ -8,6 +8,6 @@
  * The version is written to a new account as `consent: { acceptedAt, policyVersion }` (controllers/signup.controller.js).
  * Accounts created before this existed have no `consent` field.
  */
-const PRIVACY_POLICY_VERSION = '2026-10-15';
+const PRIVACY_POLICY_VERSION = '2026-10-15.2'; // the 2nd text of 15 October 2026 (the contact address changed); existing consents keep their own version
 
 module.exports = { PRIVACY_POLICY_VERSION };
