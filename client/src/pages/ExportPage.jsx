@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useShell } from '../components/ShellContext.js';
-import { createFolder, fetchDocumentBytes, listDocuments, listFolders, uploadDocument } from '../services/documentsService.js';
+import { fetchDocumentBytes, listDocuments, listFolders } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { reportClientEvent } from '../services/securityService.js';
 import { buildExportZip, exportFileName } from '../utils/zipExport.js';
-import { IMPORT_LIMITS, inspectZip, runImport } from '../utils/zipImport.js';
+import { IMPORT_LIMITS, inspectZip } from '../utils/zipImport.js';
+import { BLOCKED_MESSAGE, importJob, useImportJob } from '../services/importJob.js';
+import { filesLink } from '../utils/importCard.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './ExportPage.module.css';
@@ -30,6 +31,52 @@ function saveBlob(blob, filename) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** The last import's report: kept in memory until the next import, a reload or a sign-out (not only while the card is up). */
+function ImportReport({ job }) {
+  const imported = job.results.filter((item) => item.status === 'imported');
+  const problems = [
+    ...job.results.filter((item) => item.status !== 'imported').map((item) => ({ path: item.path, reason: item.reason || 'Not imported' })),
+    ...job.ignored,
+    ...job.skipped,
+  ];
+  const renamed = imported.filter((item) => item.savedAs);
+  const heading =
+    job.status === 'cancelled' ? 'Import cancelled. ' : job.status === 'stopped' ? 'Import stopped. ' : job.status === 'failed' ? 'Import failed. ' : '';
+  return (
+    <div className={styles.summary} role="status" data-testid="import-report">
+      {job.status === 'stopped' || job.status === 'failed' ? (
+        <p>{heading}{job.message}</p>
+      ) : (
+        <p>
+          {heading}
+          {plural(job.uploaded, 'file')} imported{problems.length ? `, ${plural(problems.length, 'problem')}` : ''}.
+          {job.message ? ` ${job.message}` : ''}{' '}
+          <Link to={filesLink(job.destination)}>Open {job.destination ? `"${job.destination}"` : 'My files'}</Link>
+        </p>
+      )}
+      {renamed.length > 0 && (
+        <p className={styles.small}>
+          {plural(renamed.length, 'file')} {renamed.length === 1 ? 'was' : 'were'} saved with a number added to the name, because a file with that name already existed.
+        </p>
+      )}
+      <FailureList items={problems} title="Not imported" />
+      {imported.length > 0 && (
+        <details className={styles.failures}>
+          <summary>Imported ({imported.length})</summary>
+          <ul>
+            {imported.slice(0, 200).map((item, index) => (
+              <li key={`${item.path}-${index}`}>
+                <strong>{item.path}</strong>{item.savedAs ? ` - saved as "${item.savedAs}"` : ''}
+              </li>
+            ))}
+            {imported.length > 200 && <li>and {imported.length - 200} more</li>}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
 }
 
 function FailureList({ items, title }) {
@@ -57,14 +104,12 @@ function FailureList({ items, title }) {
  */
 function ExportPage() {
   usePageMeta('Export', 'Download all your files as a zip, or import a zip.');
-  const { showToast, refreshSidebar } = useShell();
 
   // ---- export ----
   const [exportState, setExportState] = useState({ phase: 'idle' }); // idle | running | done | cancelled | error
   const exportAbort = useRef(null);
 
   const guardExport = useSingleFlight(); // Export and Import each start once per press, even for two clicks in the same tick
-  const guardImport = useSingleFlight();
   const startExport = async () => {
     const controller = new AbortController();
     exportAbort.current = controller;
@@ -100,59 +145,53 @@ function ExportPage() {
   };
 
   // ---- import ----
-  const [importState, setImportState] = useState({ phase: 'idle' }); // idle | checked | running | done | error
-  const importAbort = useRef(null);
+  // The import itself is an app-level job (services/importJob.js): it keeps running when this page is left, and the card at the
+  // bottom right follows it. This page only chooses the zip, starts the job, and shows whatever the job reports.
+  const job = useImportJob();
+  const [chosen, setChosen] = useState({ phase: 'idle' }); // idle | checked | error
+  const [blocked, setBlocked] = useState('');
   const zipBytes = useRef(null);
   const fileInput = useRef(null);
+  const running = job.status === 'running';
 
   const chooseZip = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    setBlocked('');
+    if (importJob.isRunning()) {
+      setBlocked(BLOCKED_MESSAGE);
+      return;
+    }
     if (file.size > IMPORT_LIMITS.maxArchiveBytes) {
-      setImportState({ phase: 'error', message: 'That zip is too large to import here.' });
+      setChosen({ phase: 'error', message: 'That zip is too large to import here.' });
       return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const plan = inspectZip(bytes);
     if (!plan.ok) {
       zipBytes.current = null;
-      setImportState({ phase: 'error', message: plan.message });
+      setChosen({ phase: 'error', message: plan.message });
       return;
     }
     zipBytes.current = bytes;
-    setImportState({ phase: 'checked', name: file.name, plan });
+    setChosen({ phase: 'checked', name: file.name, plan });
   };
 
-  const startImport = async () => {
-    const plan = importState.plan;
-    const controller = new AbortController();
-    importAbort.current = controller;
-    setImportState({ phase: 'running', name: importState.name, plan, done: 0, total: plan.files.length, current: '' });
-    try {
-      const { default: JSZip } = await import('jszip');
-      const result = await runImport({
-        bytes: zipBytes.current,
-        plan,
-        JSZip,
-        signal: controller.signal,
-        uploadFile: (file, folder) => uploadDocument({ file, folder }),
-        createFolder,
-        onProgress: (p) => setImportState((current) => (current.phase === 'running' ? { ...current, ...p } : current)),
-      });
-      zipBytes.current = null;
-      refreshSidebar();
-      if (result.uploaded > 0) reportClientEvent('import');
-      setImportState({ phase: 'done', name: importState.name, plan, ...result });
-      if (result.uploaded > 0) showToast?.(`Imported ${plural(result.uploaded, 'file')}.`);
-    } catch (err) {
-      zipBytes.current = null;
-      if (!isSessionExpired(err)) setImportState({ phase: 'error', message: extractErrorMessage(err, 'That zip could not be imported.') });
+  const startImport = () => {
+    const started = importJob.start({ name: chosen.name, bytes: zipBytes.current, plan: chosen.plan });
+    if (!started.ok) {
+      setBlocked(started.message);
+      return;
     }
+    // The job owns the zip now; this page lets go of it.
+    zipBytes.current = null;
+    setBlocked('');
+    setChosen({ phase: 'idle' });
   };
 
   const e = exportState;
-  const i = importState;
+  const i = chosen;
   const percent = (done, total) => (total ? Math.round((done / total) * 100) : 0);
 
   return (
@@ -208,10 +247,12 @@ function ExportPage() {
         <h2 id="import-title" className={styles.heading}>Import a .zip</h2>
         <p className={styles.text}>
           Adds the files in a zip to your vault, keeping its folders. Each file goes through the normal upload: your storage
-          limit, up to 4 MB per file, and the usual naming rules. The zip is opened here in your browser; nothing is unpacked on disk.
+          limit, up to 4 MB per file, and the usual naming rules (a name already in use gets a number added). The zip is opened here in
+          your browser; nothing is unpacked on disk. The import keeps running if you open another page, and a card at the bottom right
+          shows its progress. It is not undone if you stop it: files already imported stay in your vault.
         </p>
 
-        {(i.phase === 'idle' || i.phase === 'error' || i.phase === 'checked' || i.phase === 'done') && (
+        {!running && (
           <>
             <input ref={fileInput} type="file" accept=".zip,application/zip" className={styles.hidden} onChange={chooseZip} aria-label="Choose a .zip to import" />
             <button type="button" className={i.phase === 'checked' ? styles.secondary : styles.primary} onClick={() => fileInput.current?.click()}>
@@ -220,45 +261,39 @@ function ExportPage() {
           </>
         )}
 
+        {blocked && <p className={styles.error} role="alert">{blocked}</p>}
         {i.phase === 'error' && <p className={styles.error} role="alert">{i.message}</p>}
 
-        {i.phase === 'checked' && (
+        {i.phase === 'checked' && !running && (
           <div className={styles.summary} role="status">
             <p>
               <strong>{i.name}</strong>: {plural(i.plan.files.length, 'file')} ({formatBytes(i.plan.files.reduce((n, f) => n + f.size, 0))}) in {plural(i.plan.folders.length, 'folder')}.
             </p>
             <FailureList items={i.plan.ignored} title="Ignored" />
             <FailureList items={i.plan.skipped} title="Will be skipped" />
-            <button type="button" className={styles.primary} onClick={() => guardImport(startImport)} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
+            <button type="button" className={styles.primary} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
               Import {plural(i.plan.files.length, 'file')}
             </button>
           </div>
         )}
 
-        {i.phase === 'running' && (
-          <div className={styles.progressBlock} role="status" aria-live="polite">
+        {running && (
+          <div className={styles.progressBlock} data-testid="import-progress">
             <p className={styles.text}>
-              Uploading {Math.min(i.done + 1, i.total)} of {i.total}
-              {i.current ? ` - ${i.current}` : ''}
+              Importing <strong>{job.fileName}</strong>: {job.phase === 'reading' ? 'reading the zip…' : job.phase === 'validating' ? 'checking the zip…' : `${job.done} of ${plural(job.total, 'file')}`}
+              {job.current ? ` - ${job.current}` : ''}
             </p>
-            <progress className={styles.bar} max={i.total || 1} value={i.done || 0} aria-label="Import progress" />
-            <button type="button" className={styles.secondary} onClick={() => importAbort.current?.abort()}>
-              Cancel
+            <progress className={styles.bar} max={job.total || 1} value={job.done || 0} aria-label="Import progress" />
+            <p className={styles.small}>
+              {percent(job.done || 0, job.total || 0)}% - {formatBytes(job.bytesDone)} of {formatBytes(job.bytesTotal)}. You can leave this page: the import keeps going.
+            </p>
+            <button type="button" className={styles.secondary} onClick={() => importJob.cancel()}>
+              Cancel (stops after the current file)
             </button>
           </div>
         )}
 
-        {i.phase === 'done' && (
-          <div className={styles.summary} role="status">
-            <p>
-              {i.cancelled ? 'Import cancelled. ' : ''}
-              {plural(i.uploaded, 'file')} imported{i.failures.length ? `, ${plural(i.failures.length, 'problem')}` : ''}.
-              {' '}
-              <Link to="/files">Open My files</Link>
-            </p>
-            <FailureList items={[...i.failures, ...i.plan.ignored, ...i.plan.skipped]} title="Not imported" />
-          </div>
-        )}
+        {!running && job.status !== 'idle' && <ImportReport job={job} />}
       </section>
     </div>
   );

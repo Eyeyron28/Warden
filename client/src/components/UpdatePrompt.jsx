@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import styles from './UpdatePrompt.module.css';
 
@@ -13,6 +13,7 @@ import styles from './UpdatePrompt.module.css';
  */
 function UpdatePrompt() {
   const [ready, setReady] = useState(false);
+  const bar = useRef(null);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
@@ -41,9 +42,24 @@ function UpdatePrompt() {
     return () => document.documentElement.classList.remove('update-bar-open');
   }, [ready]);
 
+  // Its height is published as --update-bar-h, so anything else that sits at the bottom (the import card) stacks above it whatever
+  // height the bar has when its text wraps on a narrow screen.
+  useEffect(() => {
+    if (!ready || !bar.current) return undefined;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty('--update-bar-h', `${Math.ceil(bar.current?.getBoundingClientRect().height ?? 0)}px`);
+    publish();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+    observer?.observe(bar.current);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty('--update-bar-h');
+    };
+  }, [ready]);
+
   if (!ready) return null;
   return (
-    <div className={styles.bar} role="status">
+    <div className={styles.bar} role="status" ref={bar}>
       <span>A new version of Warden is available.</span>
       <button type="button" className={styles.button} onClick={() => window.location.reload()}>
         Reload

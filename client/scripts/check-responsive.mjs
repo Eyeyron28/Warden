@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 import { chromium } from 'playwright-core';
+import JSZip from 'jszip';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
@@ -395,7 +396,7 @@ try {
       throw new Error(`menu item "${item}" could not be clicked; menu items: ${items.join(' | ')}; viewport height ${page.viewportSize().height}`);
     }
   };
-  for (const size of DIALOG_SIZES) {
+  for (const size of process.env.ONLY_IMPORT ? [] : DIALOG_SIZES) {
     for (const [kind, longName] of [['ascii', LONG_ASCII], ['unicode', LONG_UNICODE]]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
@@ -515,6 +516,148 @@ try {
       }
       await context.close();
     }
+  }
+
+  // ---------- the import card (running, finished; a 255-character zip name; with the "new version" bar up) ----------
+  // The card sits at the bottom right (a phone: across the width). It must be inside the screen, not make the page scroll sideways,
+  // not overlap another fixed or sticky element, and stack above the update bar.
+  {
+    const zipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'warden-resp-zip-'));
+    const longZipName = `${'quarterly_backup_'.repeat(20).slice(0, 251)}.zip`;
+    const zip = new JSZip();
+    for (let i = 1; i <= 6; i += 1) zip.file(`Imported/note-${i}.txt`, `note ${i} `.repeat(20));
+    // In memory, under its 255-character name (a path that long is past what Windows allows on disk).
+    const longZip = { name: longZipName, mimeType: 'application/zip', buffer: Buffer.from(await zip.generateAsync({ type: 'uint8array' })) };
+    for (const size of WIDTHS) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__WARDEN_TEST__ = { importCardMs: 60000 };
+      }, token);
+      await context.route('**/api/documents', async (route) => {
+        if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      try {
+        await page.goto(base + '/export', { waitUntil: 'networkidle' });
+        await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(longZip);
+        await page.getByRole('button', { name: /^Import 6 files$/ }).click();
+        const card = page.getByTestId('import-card');
+        await card.waitFor();
+        await page.waitForTimeout(400);
+        const inspectCard = async (state) => {
+          const found = [];
+          const info = await page.evaluate(() => {
+            const el = document.querySelector('[data-testid="import-card"]');
+            const r = el.getBoundingClientRect();
+            const doc = document.documentElement;
+            const fixedThings = [...document.querySelectorAll('body *')].filter((node) => {
+              if (el.contains(node) || node.contains(el)) return false;
+              const cs = getComputedStyle(node);
+              const rect = node.getBoundingClientRect();
+              return (cs.position === 'fixed' || cs.position === 'sticky') && rect.width > 0 && rect.height > 0 && cs.visibility !== 'hidden';
+            });
+            const overlaps = fixedThings.filter((node) => {
+              const b = node.getBoundingClientRect();
+              return Math.min(r.right, b.right) - Math.max(r.left, b.left) > 2 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 2;
+            }).map((node) => `${node.tagName.toLowerCase()}.${String(node.className).slice(0, 30)}`);
+            const wide = [...el.querySelectorAll('*')].filter((node) => node.getBoundingClientRect().right > r.right + 1 || node.getBoundingClientRect().left < r.left - 1).map((node) => String(node.className).slice(0, 24));
+            const updateBar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
+            const barRect = updateBar ? updateBar.getBoundingClientRect() : null;
+            const buttons = [...el.querySelectorAll('button')].filter((node) => node.getBoundingClientRect().width > 0).map((node) => Math.round(node.getBoundingClientRect().height));
+            return { r: { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }, hScroll: doc.scrollWidth > doc.clientWidth + 1, overlaps, wide, barTop: barRect ? barRect.top : null, scrollW: el.scrollWidth > el.clientWidth + 1, minButton: buttons.length ? Math.min(...buttons) : null, titleTip: el.querySelector('[title]')?.getAttribute('title')?.length ?? 0 };
+          });
+          if (info.r.x < -1 || info.r.y < -1 || info.r.right > size.width + 1 || info.r.bottom > size.height + 1) found.push(`outside the screen ${JSON.stringify(info.r)}`);
+          if (info.hScroll) found.push('the page scrolls sideways');
+          if (info.scrollW) found.push('the card has content wider than itself');
+          if (info.wide.length) found.push(`parts stick out of the card: ${info.wide.slice(0, 3).join(', ')}`);
+          if (info.overlaps.length) found.push(`overlaps: ${info.overlaps.join(', ')}`);
+          if (info.barTop !== null && info.r.bottom > info.barTop - 8) found.push(`too close to the update bar (card bottom ${Math.round(info.r.bottom)}, bar top ${Math.round(info.barTop)})`);
+          if (info.minButton !== null && info.minButton < 43) found.push(`a button in the card is ${info.minButton}px tall`);
+          if (!(info.titleTip > 200)) found.push('the 255-character name is not available as a tooltip');
+          if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `import-card-${state}-${process.env.THEME || 'light'}-${size.name}.png`) });
+          return found;
+        };
+        record('Import card (running)', await inspectCard('running'));
+
+      } catch (error) {
+        record('Import card (running)', [`could not be checked: ${String(error.message).split('\n')[0]}`]);
+      }
+      await context.close();
+    }
+
+    // Finished, and with the update bar: a context that has a service worker controller before the import starts.
+    for (const size of WIDTHS) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__WARDEN_TEST__ = { importCardMs: 60000 };
+      }, token);
+      await context.route('**/api/documents', async (route) => {
+        if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(20000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      try {
+        await page.goto(base + '/export', { waitUntil: 'networkidle' });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 8000 }).catch(() => {});
+        await page.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
+        const barShown = await page.getByText('A new version of Warden is available.').isVisible().catch(() => false);
+        await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(longZip);
+        await page.getByRole('button', { name: /^Import 6 files$/ }).click();
+        const card = page.getByTestId('import-card');
+        await card.waitFor();
+        await page.waitForTimeout(300);
+        {
+          const running = await page.evaluate(() => {
+            const el = document.querySelector('[data-testid="import-card"]');
+            const r = el.getBoundingClientRect();
+            const bar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
+            const b = bar ? bar.getBoundingClientRect() : null;
+            return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, barTop: b ? b.top : null, kind: el.getAttribute('data-kind') };
+          });
+          const runningProblems = [];
+          if (running.kind !== 'running') runningProblems.push(`expected the running state, saw ${running.kind}`);
+          if (running.barTop !== null && running.r.bottom > running.barTop - 8) runningProblems.push('the running card is too close to the "new version" bar');
+          if (running.r.right > size.width + 1 || running.r.bottom > size.height + 1) runningProblems.push('the running card is outside the screen');
+          record('Import card (running, with the update bar)', runningProblems);
+        }
+        await page.getByText(/Imported 6 files/).first().waitFor({ timeout: 30000 });
+        await page.waitForTimeout(300);
+        const found = [];
+        const info = await page.evaluate(() => {
+          const el = document.querySelector('[data-testid="import-card"]');
+          const r = el.getBoundingClientRect();
+          const bar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
+          const b = bar ? bar.getBoundingClientRect() : null;
+          return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, hScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, bar: b ? { top: b.top, left: b.left, right: b.right, bottom: b.bottom } : null, kind: el.getAttribute('data-kind'), dismiss: Boolean(el.querySelector('[data-action="dismiss"], button[aria-label="Dismiss"]')) };
+        });
+        if (info.kind !== 'done') found.push(`expected the done state, saw ${info.kind}`);
+        if (!info.dismiss) found.push('no close button on the finished card');
+        if (info.r.x < -1 || info.r.right > size.width + 1 || info.r.bottom > size.height + 1) found.push(`outside the screen ${JSON.stringify(info.r)}`);
+        if (info.hScroll) found.push('the page scrolls sideways');
+        if (info.bar) {
+          const overlap = Math.min(info.r.bottom, info.bar.bottom) - Math.max(info.r.y, info.bar.top) > 1 && Math.min(info.r.right, info.bar.right) - Math.max(info.r.x, info.bar.left) > 1;
+          if (overlap) found.push(`overlaps the "new version" bar (card ${Math.round(info.r.y)}-${Math.round(info.r.bottom)}, bar top ${Math.round(info.bar.top)})`);
+          if (info.r.bottom > info.bar.top - 8) found.push('no gap between the card and the "new version" bar');
+        } else if (barShown === false) {
+          found.push('the "new version" bar could not be shown in this run, so the stacking was not tested');
+        }
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `import-card-done-${process.env.THEME || 'light'}-${size.name}.png`) });
+        void card;
+        record('Import card (finished, with the update bar)', found);
+      } catch (error) {
+        record('Import card (finished, with the update bar)', [`could not be checked: ${String(error.message).split('\n')[0]}`]);
+      }
+      await context.close();
+    }
+    fs.rmSync(zipDir, { recursive: true, force: true });
   }
 } finally {
   await browser?.close();

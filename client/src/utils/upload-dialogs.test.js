@@ -182,7 +182,9 @@ test('every submit that creates something is guarded: Upload, Scan, new version,
   assert.match(strip(read('pages/FilesPage.jsx')), /if \(uploadAbort\.current\) return;/);
   assert.match(strip(read('components/scan/ScanDialog.jsx')), /if \(saving\.current\) return;\s*saving\.current = true;/);
   assert.match(strip(read('components/DetailsVersions.jsx')), /onChange=\{\(event\) => run\(\(\) => choose\(event\)\)\}/);
-  assert.match(strip(read('pages/ExportPage.jsx')), /guardImport\(startImport\)/);
+  // an import is one app-level job, and starting a second while one runs is refused by the job itself
+  assert.match(strip(read('pages/ExportPage.jsx')), /importJob\.start\(\{/);
+  assert.match(strip(read('services/importJob.js')), /if \(state\.status === 'running'\) return \{ ok: false, message: BLOCKED_MESSAGE \};/);
   assert.match(strip(read('pages/ExportPage.jsx')), /guardExport\(startExport\)/);
   for (const file of ['components/NewFolderModal.jsx', 'components/RenameFolderModal.jsx', 'components/EditDocumentModal.jsx']) {
     assert.match(strip(read(file)), /run\(\(\) => handleSubmit\(event\)\)/, file);

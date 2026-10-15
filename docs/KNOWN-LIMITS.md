@@ -29,6 +29,9 @@ deadline. Both advisories cover every 6.x release, so no patch or minor update i
    - `FilesPage.jsx` and `FolderTree.jsx`: `` `/files?path=${encodeURIComponent(path)}` ``, which always starts with the fixed text
      `/files`.
    - `OverviewPage.jsx` and `DriveList.jsx` (the Starred and Recent lists): `openLink(doc)`, the same fixed `/files?path=` start.
+   - `ExportPage.jsx` (the import report): `filesLink(job.destination)`, the same helper.
+   - `ImportCard.jsx` (the import card): `navigate(view.target)`, where `utils/importCard.js` returns only `/export` or `filesLink()`, which
+     is `/files` with an encoded `?path=`.
    - `VaultHealthCard.jsx`: `item.actionPath`, fixed paths written by the server in `server/utils/vaultHealth.js`.
    - `SiteHeader.jsx`, `EmergencyShell.jsx`: constant lists, and `emergencyRedirect()` returns one of the app's own fixed paths.
 3. `client/src/utils/router-advisory.test.js` fails when a new computed navigation target appears that is not on that reviewed list,
@@ -60,6 +63,26 @@ upgrade is a major version, so the routing code (`App.jsx`, `main.jsx`) and the 
   that send no key are not protected against being sent twice.
 - Previews are drawn after an upload has been saved (the upload no longer waits for pdf.js). If the browser is closed in that moment the
   file has no preview until "Background previews" or opening the file makes one.
+
+## Zip import as a background job
+
+The import runs as an app-level job (`client/src/services/importJob.js`), not inside the Import page, so changing page does not touch
+it. The card at the bottom right (`components/ImportCard.jsx`) follows it on every signed-in page.
+
+- **It is not atomic.** Every file is its own upload. Cancelling, a stop because the session ended, a closed tab or a failure part-way
+  leaves the files already imported in the vault; nothing is rolled back. The Import page and the card say so.
+- **It lives in this tab's memory only.** A reload or a closed tab ends it (the browser warns while one runs, with its own generic
+  "leave this page?" text, which a page cannot customise). The zip's bytes and the per-file report are never written to localStorage,
+  sessionStorage, IndexedDB or a cache; the zip bytes are dropped as soon as the job ends, and the report is dropped on sign-out,
+  Lock vault, a session that ended, another account signing in, a reload, or the next import.
+- **The session:** every upload slides the 30-minute idle timer (`server/utils/sessionStore.js`), so a busy import does not idle out. The
+  12-hour absolute limit (SESSION_ABSOLUTE_HOURS) still applies: an import that outlasts it stops cleanly, keeps what was imported and
+  says so on the card (with no file names).
+- **One at a time, one tab.** A second import in the same tab is refused. Two tabs each have their own job and their own memory; nothing
+  coordinates them, and each upload counts toward the same storage quota.
+- **Not tested:** a run that crosses the 12-hour session limit, closing a real tab (the warning was verified through a reload; browsers
+  show their own wording and some mobile browsers show none), and sign-out from another device while an import runs in a tab (the
+  server's 401 stops the job the same way an expiry does, covered by a unit test but not a second browser).
 
 ## Private notes and version history
 

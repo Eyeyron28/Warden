@@ -15,6 +15,7 @@ import {
 
 import Modal from '../components/Modal.jsx';
 import { clearToken } from '../services/session.js';
+import { importJob } from '../services/importJob.js';
 import {
   forgetTrustedDevice,
   getActivity,
@@ -123,6 +124,18 @@ function DevicesPage() {
             : `Signed out ${result.devices} other device${result.devices === 1 ? '' : 's'}${forgetToo ? ' and removed their trust' : ''}.`
         );
       } else if (confirm.kind === 'device') {
+        // Signing THIS device out ends the session an import may be using: ask first (the device list itself stays as it was).
+        if (confirm.device.current && importJob.isRunning()) {
+          const proceeded = await importJob.requestSignOut(async () => {
+            const result = await signOutDevice(confirm.device.id);
+            if (result.self) {
+              clearToken();
+              navigate('/login', { replace: true });
+            }
+          });
+          if (!proceeded) setConfirm(null);
+          return;
+        }
         const result = await signOutDevice(confirm.device.id);
         if (result.self) {
           clearToken();

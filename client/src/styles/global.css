@@ -128,6 +128,15 @@ html.update-bar-open body {
   padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
+/* The import card (components/ImportCard.jsx) is up too: room for it as well, and for both when both are. */
+html.import-card-open body {
+  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+}
+
+html.update-bar-open.import-card-open body {
+  padding-bottom: calc(176px + env(safe-area-inset-bottom));
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;

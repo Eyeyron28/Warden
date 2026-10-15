@@ -205,7 +205,7 @@ it('a zip import uploads every file through the same route, so imported duplicat
   // The import (client/src/utils/zipImport.js) sends each file to POST /api/documents: the route is the one place that names files.
   const fs = require('node:fs');
   const path = require('node:path');
-  const page = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'pages', 'ExportPage.jsx'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'services', 'importRuntime.js'), 'utf8');
   assert.match(page, /uploadFile: \(file, folder\) => uploadDocument\(\{ file, folder \}/, 'the import hands every file to the normal upload');
   const a = await account('names.import@example.com');
   await upload(a, 'scan.pdf', { folder: 'Imported' });

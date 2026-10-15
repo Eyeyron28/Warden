@@ -8,6 +8,7 @@ import ToastRegion from './Toast.jsx';
 import { PageSkeleton } from './Skeletons.jsx';
 import RouteErrorBoundary from './RouteErrorBoundary.jsx';
 import { ShellContext } from './ShellContext.js';
+import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { useMediaQuery } from '../utils/useMediaQuery.js';
 import styles from './AppLayout.module.css';
 
@@ -49,6 +50,12 @@ function AppLayout({ onLocked }) {
 
   const showToast = useCallback((message) => setToast({ id: Date.now(), message }), []);
   const refreshSidebar = useCallback(() => setSidebarVersion((version) => version + 1), []);
+
+  // A background import finished (or files moved elsewhere): the folder tree in the sidebar is read again.
+  useEffect(() => {
+    window.addEventListener(DOCUMENTS_CHANGED, refreshSidebar);
+    return () => window.removeEventListener(DOCUMENTS_CHANGED, refreshSidebar);
+  }, [refreshSidebar]);
 
   const shell = useMemo(
     () => ({ searchTerm, setSearchTerm, showToast, refreshSidebar }),

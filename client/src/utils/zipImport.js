@@ -137,9 +137,12 @@ export function looksLikeZipBomb(bytes, limits = IMPORT_LIMITS) {
  * quota, the 4 MB cap and the naming rules and creates the folder); `createFolder(path)` makes the
  * empty ones. Quota exhaustion stops the rest (everything after it would fail the same way).
  *
+ * `onResult({ path, status, reason?, size, savedAs? })` is called once per file as it finishes ('imported' or 'failed'), so a
+ * caller can keep a per-file report; `savedAs` is the final name when the server added a counter to it.
+ *
  * @returns {Promise<{ uploaded: number, failures: Array<{ path: string, reason: string }>, cancelled: boolean, quotaHit: boolean }>}
  */
-export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, signal, onProgress = () => {}, concurrency = IMPORT_CONCURRENCY, limits = IMPORT_LIMITS }) {
+export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, signal, onProgress = () => {}, onResult = () => {}, concurrency = IMPORT_CONCURRENCY, limits = IMPORT_LIMITS }) {
   const zip = await JSZip.loadAsync(bytes);
   const failures = [];
   let uploaded = 0;
@@ -180,19 +183,26 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
         const data = await entry.async('uint8array'); // JSZip fails if this differs from the declared size
         if (data.length > limits.maxFileBytes) throw new Error('Larger than the 4 MB a file can be');
         if (/\.zip$/i.test(item.name) && looksLikeZipBomb(data, limits)) {
-          failures.push({ path: shown, reason: 'A zip inside the zip that looks like a decompression bomb, skipped' });
+          const reason = 'A zip inside the zip that looks like a decompression bomb, skipped';
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else {
           // eslint-disable-next-line no-await-in-loop
-          await uploadFile(new File([data], item.name), item.dir);
+          const stored = await uploadFile(new File([data], item.name), item.dir);
           uploaded += 1;
+          onResult({ path: shown, status: 'imported', size: item.size, ...(stored?.nameChanged ? { savedAs: stored.filename } : {}) });
         }
       } catch (error) {
         const code = error?.response?.data?.error?.code;
         if (error?.response?.status === 413 && code === 'STORAGE_QUOTA') {
           quotaHit = true;
-          failures.push({ path: shown, reason: 'Your storage is full (the rest were not tried)' });
+          const reason = 'Your storage is full (the rest were not tried)';
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else {
-          failures.push({ path: shown, reason: error?.response?.data?.error?.message || error?.message || 'Could not be uploaded' });
+          const reason = error?.response?.data?.error?.message || error?.message || 'Could not be uploaded';
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'failed', reason, size: item.size, sessionEnded: error?.response?.status === 401 });
         }
       }
       done += 1;

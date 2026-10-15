@@ -10,6 +10,7 @@ import { adoptTokenFromOtherTabs, clearToken, expireSession, getToken } from './
 import { getMe } from './services/authService.js';
 import { JUST_ASKED_MS } from './services/dataCache.js';
 import { checkStoredSession } from './services/sessionCheck.js';
+import { importJob } from './services/importJob.js';
 import { useSessionToken } from './utils/useSessionToken.js';
 import { getEmergencyMode, setModeFromMe, subscribeEmergencyMode, wasEmergencyTab } from './services/emergencyMode.js';
 
@@ -97,16 +98,21 @@ function useSessionCheck() {
 }
 
 function App() {
-  const handleLocked = useCallback(async () => {
-    try {
-      await logoutVault();
-    } catch {
-      // Locking the vault should never get the user stuck - worst case is
-      // an orphaned server-side session that expires naturally in 30 min.
-    } finally {
-      clearToken();
-    }
-  }, []);
+  // "Lock vault": with an import running it asks first (An import is running. Stop it and sign out?).
+  const handleLocked = useCallback(
+    () =>
+      importJob.requestSignOut(async () => {
+        try {
+          await logoutVault();
+        } catch {
+          // Locking the vault should never get the user stuck - worst case is
+          // an orphaned server-side session that expires naturally in 30 min.
+        } finally {
+          clearToken();
+        }
+      }),
+    []
+  );
 
   return (
     <Suspense fallback={null}>

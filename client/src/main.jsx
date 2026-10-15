@@ -14,6 +14,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import './styles/global.css';
 import App from './App.jsx';
 import UpdatePrompt from './components/UpdatePrompt.jsx';
+import ImportHost from './components/ImportHost.jsx';
 import { prefetchFirstScreen } from './services/prefetch.js';
 
 // A stored session on a signed-in page: the first screen's requests start now, beside the session check.
@@ -24,6 +25,8 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <App />
       <UpdatePrompt />
+      {/* The import job's card and sign-out question: above the routes, so no page change can remove them. */}
+      <ImportHost />
     </BrowserRouter>
   </StrictMode>
 );

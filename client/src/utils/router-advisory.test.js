@@ -41,6 +41,8 @@ const REVIEWED = new Map([
   ['components/VaultHealthCard.jsx', ['{item.actionPath}']], // fixed paths written by the server (utils/vaultHealth.js)
   ['pages/OverviewPage.jsx', ['{openLink(doc)}']], // always "/files?path=" + encodeURIComponent(...): a fixed start
   ['components/DriveList.jsx', ['{openLink(doc)}']], // the same helper, in the Starred and Recent lists
+  ['pages/ExportPage.jsx', ['{filesLink(job.destination)}']], // filesLink(): "/files" + an encoded ?path= (utils/importCard.js)
+  ['components/ImportCard.jsx', ['view.target']], // utils/importCard.js: only '/export' or filesLink() ("/files" + an encoded ?path=)
   ['pages/auth/LoginPage.jsx', ['returnPathFrom(location', '{returnPathFrom(location)}']], // goes through safeRedirectPath (utils/safeRedirect.js)
   // `path ? "/files?path=" + encodeURIComponent(path) : '/files'`: both branches start with the fixed text "/files".
   ['components/FolderTree.jsx', ['path ? `/files?path=${encodeURIComponent(path']],
