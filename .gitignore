@@ -13,3 +13,5 @@ Thumbs.db
 .playwright-mcp/
 
 *.pem
+# harmless demo files made by scripts/make-demo-samples.mjs
+demo-samples/

@@ -196,3 +196,37 @@ test('no file of the project holds the antivirus test string whole (Windows Defe
 test('a buffer that is not a Buffer is an error for the caller to handle (the upload path then saves the file unchecked)', () => {
   assert.throws(() => scanBuffer({ name: 'a.txt', buffer: 'not a buffer' }), /needs a Buffer/);
 });
+
+// ---------- the docs and the demo samples ----------
+
+test('docs/QUARANTINE.md: the rules table matches the code, the honest limits are there, and the forbidden words are not', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'QUARANTINE.md'), 'utf8');
+  for (const [code, row] of Object.entries(REASONS)) {
+    assert.ok(doc.includes(`\`${code}\``), `${code} is described`);
+    if (row.weight > 0) assert.match(doc, new RegExp(`\`${code}\` \\| ${row.weight}\\b`), `${code} has weight ${row.weight}`);
+  }
+  assert.ok(doc.includes(`at or above **${SUSPICIOUS_THRESHOLD}**`));
+  for (const needle of ['not an antivirus', 'encrypted archives', 'runs no code', 'before this\nfeature existed were not scanned'.replace('\n', ' ')]) assert.ok(doc.replace(/\s+/g, ' ').includes(needle), needle);
+  assert.doesNotMatch(doc, /sandbox|\bAI\b/i);
+  const limits = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'KNOWN-LIMITS.md'), 'utf8');
+  assert.match(limits, /## Quarantine \(the upload scanner\)/);
+  assert.doesNotMatch(limits.slice(limits.indexOf('## Quarantine')), /sandbox/i);
+});
+
+test('make-demo-samples writes only harmless files that the rules hold, and never the antivirus test file', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'make-demo-samples.mjs'), 'utf8');
+  assert.doesNotMatch(script, /EICAR|X5O!P/);
+  assert.doesNotMatch(script, /sandbox|\bAI\b/i);
+  const { spawnSync } = require('node:child_process');
+  const run = spawnSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'make-demo-samples.mjs')], { encoding: 'utf8', cwd: path.join(__dirname, '..', '..') });
+  assert.equal(run.status, 0, run.stderr);
+  const folder = path.join(__dirname, '..', '..', 'demo-samples');
+  const files = fs.readdirSync(folder);
+  assert.ok(files.length >= 3);
+  for (const name of files) {
+    const buffer = fs.readFileSync(path.join(folder, name));
+    assert.ok(!buffer.includes(S.testSignature()), `${name} is not the test file`);
+    assert.equal(scan(name, buffer).verdict, 'suspicious', `${name} is held`);
+  }
+  assert.match(fs.readFileSync(path.join(__dirname, '..', '..', '.gitignore'), 'utf8'), /^demo-samples\/$/m);
+});

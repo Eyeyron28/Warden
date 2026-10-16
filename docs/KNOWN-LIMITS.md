@@ -114,6 +114,21 @@ Not covered:
 - Restoring a version does not bring back share links that were stopped, and does not change ones that are active (a share holds its
   own encrypted copy of what was shared).
 
+## Quarantine (the upload scanner)
+
+Every upload is checked by a few simple rules (`server/utils/fileScanner.js`; full description in `docs/QUARANTINE.md`). A file that
+looks risky is saved encrypted but held out of every list, preview, download, share and export until its owner releases it; a
+program in disguise or the standard antivirus test string is refused. Limits, stated plainly:
+
+- It is **simple rules, not an antivirus**: it cannot tell what a file does, so some harmful files pass and some harmless ones are held.
+- It **cannot inspect encrypted archives** (it holds them), and it only reads a zip's list of names and sizes.
+- It runs **no code at all**, so it cannot observe a file's behaviour; it only searches the bytes it is given (the first and last 1 MB
+  of a large file).
+- It scans **only what the server receives**: the allowed types and sizes (up to 4 MB per file).
+- Files uploaded **before this feature existed were not scanned**; Details shows them as "Not scanned".
+- A held file is stored and counts toward the storage quota until its owner deletes it.
+- If the scanner itself fails, the file is saved unchecked (and one security-log line is written): a scanner bug never costs a file.
+
 ## Lint
 
 `npm run lint` exists in `client` and `server` (ESLint, recommended rules only, no style rules). Both exit 0. The remaining
