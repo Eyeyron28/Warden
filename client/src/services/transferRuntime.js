@@ -7,17 +7,17 @@ import { quarantineCount } from './quarantineCount.js';
 // Quarantine: a refused upload (nothing saved) is worded for the tray; a held one moves the sidebar badge.
 const refusal = (error) => {
   const code = error?.response?.data?.error?.code;
-  if (code !== 'FILE_BLOCKED' && code !== 'VERSION_REFUSED') return error;
+  if (code !== 'FILE_BLOCKED' && code !== 'VERSION_REFUSED' && code !== 'USE_IMPORT') return error; // (USE_IMPORT: a zip by its bytes)
   const reasons = error.response.data.error.reasons;
-  error.described = { message: 'Not saved', code: 'refused', retryable: false, refused: true, reasons: Array.isArray(reasons) ? reasons.map((r) => r.code) : [], version: code === 'VERSION_REFUSED' };
+  error.described = { message: 'Not saved', code: 'refused', retryable: false, refused: true, reasons: Array.isArray(reasons) ? reasons : [], version: code === 'VERSION_REFUSED' };
   return error;
 };
 const watched = (send) => async (...args) => {
   try {
     const data = await send(...args);
     if (data?.held) {
-      // the reason codes, for the tray row
-      data.held = (data.reasons || []).map((r) => r.code);
+      // the reasons, for the tray row
+      data.held = data.reasons || []; // { code, text }: the server's plain sentences, for the tooltip
       quarantineCount.bump(1);
     }
     return data;

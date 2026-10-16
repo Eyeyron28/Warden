@@ -145,6 +145,8 @@ const uploadAnswer = (document, extra = {}) => ({
   id: document._id,
   // A held file is saved but isolated: the answer says so, with the reasons (codes and their plain sentences).
   ...(isHeld(document) ? { held: true, reasons: describeReasons(document.scan?.reasons) } : {}),
+  // clean | suspicious | unchecked (the scanner could not run); null for a file saved before scanning existed. The tray says "checked" or "not checked".
+  scan: document.scan?.verdict ?? null,
   filename: document.filename,
   folder: document.folder,
   expiryDate: document.docExpiresAt,

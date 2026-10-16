@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import Module, { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -106,6 +107,42 @@ const pdfWith = (marker) => Buffer.from(`%PDF-1.4\n1 0 obj\n<< /Type /Catalog /P
 const riskyPdf = () => pdfWith('/JavaScript');
 const testSignature = () => Buffer.from(['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-', 'ANTIVIRUS-TEST-FILE!', '$H+H*'].join(''));
 const sample = (name, buffer, mimeType = 'application/octet-stream') => ({ name, mimeType, buffer });
+// A tiny stored-method zip, built in memory (a docx is a zip with [Content_Types].xml in it).
+function zipOf(entries) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(entries)) {
+    const nameBytes = Buffer.from(name);
+    const data = Buffer.from(text);
+    const crc = zlib.crc32(data) >>> 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBytes, data);
+    centrals.push(central, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(entries).length, 8);
+  end.writeUInt16LE(Object.keys(entries).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
 
 async function postFile(token, name, buffer) {
   const form = new FormData();
@@ -163,7 +200,30 @@ try {
 
   // ---- a clean file is unaffected ----
   await uploadVia(sample('clean-note.txt', Buffer.from('an ordinary note')));
-  await rows.first().getByText(/^Sealed$/).waitFor({ timeout: 10000 });
+  await rows.first().getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
+  // ---- the status icon explains itself: hover, keyboard, Escape ----
+  const icon = rows.first().getByTestId('status-icon');
+  const tipBox = page.getByTestId('status-tip');
+  await icon.hover();
+  await page.waitForTimeout(100);
+  check((await tipBox.count()) === 0, 'the tooltip is not there before about 200 ms of hovering');
+  await tipBox.waitFor({ timeout: 2000 });
+  check(/^Sealed: encrypted with your vault key and saved\. Warden's simple rules found nothing risky\. This is not a full antivirus\.$/.test(await tipBox.innerText()), 'hovering a sealed row\'s lock shows what Sealed means');
+  const tipRect = await tipBox.boundingBox();
+  check(tipRect.x >= 0 && tipRect.x + tipRect.width <= 1280 && tipRect.y >= 0 && tipRect.y + tipRect.height <= 860, 'and it stays inside the screen');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-sealed-1280.png') });
+  await page.mouse.move(10, 10);
+  await tipBox.waitFor({ state: 'detached', timeout: 2000 });
+  check(true, 'it hides when the mouse leaves');
+  await icon.focus();
+  await tipBox.waitFor({ timeout: 2000 });
+  check(/Sealed: encrypted/.test(await tipBox.innerText()), 'keyboard focus shows it too');
+  check((await icon.getAttribute('aria-describedby')) === (await tipBox.getAttribute('id')) && (await tipBox.getAttribute('role')) === 'tooltip', 'role="tooltip", described by the icon');
+  check(/Sealed: encrypted/.test((await icon.getAttribute('aria-label')) || ''), 'the icon has an accessible name with the same words');
+  await page.keyboard.press('Escape');
+  await tipBox.waitFor({ state: 'detached', timeout: 2000 });
+  check((await tray.getAttribute('data-minimized')) !== 'true', 'Escape hides the tooltip (and does not also minimize the tray)');
+  check(/· checked/.test(await rows.first().innerText()), 'the row says "Sealed · checked", so the lock is not the only message');
   check(/1 file sealed/.test(await page.getByTestId('tray-title').innerText()), 'a clean file is sealed as before ("1 file sealed")');
   check((await docs()).some((d) => d.filename === 'clean-note.txt'), 'and it is in the vault');
   check((await heldList()).count === 0, 'nothing is held');
@@ -177,6 +237,15 @@ try {
   check(/held for review/.test(await page.getByTestId('tray-title').innerText()), 'the tray title says so');
   check((await rows.first().getByRole('button', { name: /^Open Quarantine/ }).count()) === 1, 'and offers a way to Quarantine');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quarantine-tray-held-1280.png') });
+  const heldIcon = rows.first().getByTestId('status-icon');
+  await heldIcon.hover();
+  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
+  const heldTip = await page.getByTestId('status-tip').innerText();
+  check(/^Held for review: Warden's rules found something risky\. Reasons: This PDF contains active content/.test(heldTip) && /Open Quarantine to decide\.$/.test(heldTip), 'a held row\'s tooltip gives the reasons in plain sentences');
+  check(!/PDF_ACTIVE/.test(heldTip), 'never the raw code');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-held-1280.png') });
+  await page.mouse.move(10, 10);
+
   await page.waitForTimeout(TRAY_MS + 1000);
   check(await tray.isVisible(), 'a held file keeps the tray open (it needs a decision)');
   const badge = page.getByTestId('quarantine-badge');
@@ -271,9 +340,77 @@ try {
   check((await rows.first().getAttribute('data-ring')) === 'refused', 'with the red ring');
   check((await rows.first().getByRole('button', { name: /^Retry/ }).count()) === 0, 'and no Retry');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quarantine-tray-refused-1280.png') });
+  await rows.first().getByTestId('status-icon').hover();
+  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
+  check(/^Not saved: This file carries the standard antivirus test signature\.$/.test(await page.getByTestId('status-tip').innerText()), 'a not-saved row\'s tooltip gives the server\'s sentence');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-refused-1280.png') });
+  await page.mouse.move(10, 10);
+
   check((await countAll()) === before, 'nothing was stored');
   check(!(await docs()).some((d) => d.filename === 'notes.txt') && (await heldList()).count === 0, 'it is in no list and not in Quarantine');
   await closeTray();
+
+  // ---- zips only through Export / Import; a docx is a zip inside and still uploads ----
+  const openUploadDialog = async () => {
+    await page.getByRole('button', { name: 'New' }).click();
+    await page.getByRole('menuitem', { name: /Upload file/ }).click();
+    const opened = page.getByRole('dialog', { name: 'Upload file' });
+    await opened.waitFor();
+    return opened;
+  };
+  const zipDialog = await openUploadDialog();
+  await zipDialog.locator('input[type=file]').setInputFiles([sample('archive.zip', zipOf({ 'a.txt': 'hello' })), sample('plain.txt', Buffer.from('fine'))]);
+  const zipRow = zipDialog.locator('[data-testid="upload-row"][data-error="true"]');
+  await zipRow.waitFor({ timeout: 3000 });
+  check(/Zips go through Export \/ Import/.test(await zipRow.innerText()), 'a .zip in the dialog gets the row error "Zips go through Export / Import"');
+  check((await zipRow.getByRole('button', { name: 'Open Export / Import' }).count()) === 1, 'with an "Open Export / Import" button');
+  check(await zipDialog.getByRole('button', { name: /^Encrypt & upload$/ }).isEnabled(), 'the other file is not blocked');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'upload-zip-row-1280.png') });
+  await zipRow.getByRole('button', { name: 'Open Export / Import' }).click();
+  await page.waitForURL((url) => url.pathname === '/export', { timeout: 5000 });
+  check(true, 'the button opens Export / Import (and closes the dialog)');
+  // a zip that is only a zip by its bytes is refused by the server (renamed), and the tray says Not saved
+  await page.goto(`${base}/files`);
+  await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
+  const beforeZip = await countAll();
+  await uploadVia(sample('archive.bin', zipOf({ 'a.txt': 'hello', 'b.txt': 'world' })));
+  await rows.first().getByText(/Not saved/).waitFor({ timeout: 10000 });
+  await rows.first().getByTestId('status-icon').hover();
+  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
+  check(/^Not saved: Zip files go through Export \/ Import, so every file inside is checked\.$/.test(await page.getByTestId('status-tip').innerText()), 'a renamed zip is refused by the server: "Not saved" with its sentence');
+  check((await countAll()) === beforeZip, 'nothing was stored');
+  await page.mouse.move(10, 10);
+  await closeTray();
+  const docx = zipOf({ '[Content_Types].xml': '<Types/>', 'word/document.xml': '<w:document/>' });
+  await uploadVia(sample('letter.docx', docx));
+  await rows.first().getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
+  check((await docs()).some((d) => d.filename === 'letter.docx'), 'a docx built at run time uploads and is sealed');
+  await closeTray();
+
+  // ---- touch: a tap on the icon toggles a popover; a tap elsewhere closes it (a phone-sized screen) ----
+  const phone = await browser.newContext({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await phone.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+  const mobile = await phone.newPage();
+  await mobile.goto(`${base}/files`);
+  await mobile.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
+  await mobile.getByRole('button', { name: 'New' }).tap();
+  await mobile.getByRole('menuitem', { name: /Upload file/ }).tap();
+  const mDialog = mobile.getByRole('dialog', { name: 'Upload file' });
+  await mDialog.locator('input[type=file]').setInputFiles(sample('phone-note.txt', Buffer.from('from a phone')));
+  await mDialog.getByRole('button', { name: /^Encrypt/ }).tap();
+  const mRow = mobile.getByTestId('transfer-row').first();
+  await mRow.getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
+  await mRow.getByTestId('status-icon').tap();
+  const mTip = mobile.getByTestId('status-tip');
+  await mTip.waitFor({ timeout: 2000 });
+  const mBox = await mTip.boundingBox();
+  check(/Sealed: encrypted/.test(await mTip.innerText()), 'a tap on the icon opens the popover');
+  check(mBox.x >= 0 && mBox.x + mBox.width <= 360 && mBox.y >= 0, `and it fits at 360 px (${Math.round(mBox.x)}..${Math.round(mBox.x + mBox.width)})`);
+  if (SHOTS) await mobile.screenshot({ path: path.join(SHOTS, 'tooltip-touch-360.png') });
+  await mobile.getByRole('heading', { name: /Files/ }).first().tap({ force: true }).catch(() => {});
+  await mTip.waitFor({ state: 'detached', timeout: 2000 });
+  check(true, 'a tap elsewhere closes it');
+  await phone.close();
 
   // ---- the scan does not slow an upload down ----
   const scanner = requireServer('./utils/fileScanner');

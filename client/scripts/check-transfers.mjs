@@ -152,6 +152,15 @@ try {
   const rows = page.getByTestId('transfer-row');
   const nav = (name) => page.getByRole('link', { name, exact: true }).first();
   const file = (name, size = 4000) => ({ name, mimeType: 'text/plain', buffer: Buffer.from('x'.repeat(size)) });
+  const tipOf = async (row) => {
+    await row.getByTestId('status-icon').hover();
+    const box = page.getByTestId('status-tip');
+    await box.waitFor({ timeout: 2000 });
+    const text = await box.innerText();
+    await page.mouse.move(5, 5);
+    await box.waitFor({ state: 'detached', timeout: 2000 });
+    return text;
+  };
   const openUpload = async () => {
     await page.getByRole('button', { name: 'New' }).click();
     await page.getByRole('menuitem', { name: /Upload file/ }).click();
@@ -175,6 +184,7 @@ try {
   check((await rows.count()) === 1, 'one click: one row in the tray');
   check(/Sealing 1 file/.test(await page.getByTestId('tray-title').innerText()), 'the title says "Sealing 1 file"');
   check(gate.posts === 1, 'one request');
+  check(/^(Sending this file to your vault\.|Encrypting and saving\. Almost done\.)$/.test(await tipOf(rows.first())), 'hovering a running row icon says what is happening');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tray-sending-1280.png') });
   check(!(await tray.evaluate((el) => el.contains(document.activeElement))), 'the tray did not take the focus');
 
@@ -214,6 +224,7 @@ try {
   await rows.first().getByRole('button', { name: /^Cancel/ }).click();
   await rows.first().getByText(/Canceled/).first().waitFor({ timeout: 5000 });
   check(/Canceled\. Nothing was saved\./.test(await rows.first().innerText()), 'Cancel while sending says "Canceled. Nothing was saved."');
+  check((await tipOf(rows.first())) === 'Canceled. Nothing was saved.', 'and so does its tooltip');
   await release();
   await page.waitForTimeout(800);
   check((await named(/^gamma/)).length === 0, 'and nothing was saved');
@@ -241,6 +252,7 @@ try {
   await dialog.getByRole('button', { name: /Encrypt/ }).click();
   await rows.first().getByRole('button', { name: /^Retry/ }).waitFor({ timeout: 8000 });
   check(/Network error/.test(await rows.first().innerText()), 'a failed upload says "Network error"');
+  check((await tipOf(rows.first())) === 'Could not finish: Network error. You can try again.', 'its tooltip says what happened and that it can be tried again');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tray-failed-1280.png') });
   check((await named(/^delta/)).length === 0, 'nothing was saved by the failed try');
   await page.waitForTimeout(TRAY_MS + 1000);
@@ -266,6 +278,7 @@ try {
   await page.waitForTimeout(500);
   check(gate.held.length === 2 && gate.posts === 2, `two files travel at once (${gate.posts} requests), the third waits`);
   check((await rows.filter({ hasText: 'Waiting' }).count()) === 1, 'the third row says "Waiting"');
+  check((await tipOf(rows.filter({ hasText: 'Waiting' }).first())) === 'Waiting its turn. Warden sends two files at a time.', 'and its tooltip explains the wait');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tray-waiting-1280.png') });
   await release();
   await waitHeld(1);

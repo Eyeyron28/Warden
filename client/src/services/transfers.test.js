@@ -386,7 +386,9 @@ test('rows: waiting, sending in bytes, sealing, sealed with Show in folder, fail
   const sealed = m(row({ phase: 'sealed', bytesDone: 1000, destination: 'Taxes' }));
   assert.equal(sealed.ring, RING.SEALED);
   assert.equal(sealed.actions.show, '/files?path=Taxes');
-  assert.equal(m(row({ phase: 'sealed', savedAs: 'a (1).pdf' })).line, 'Sealed as "a (1).pdf"');
+  assert.equal(m(row({ phase: 'sealed', savedAs: 'a (1).pdf' })).line, 'Sealed as "a (1).pdf" · checked');
+  assert.equal(m(row({ phase: 'sealed', unchecked: true })).line, 'Sealed · not checked');
+  assert.equal(m(row({ phase: 'sealed' })).line, 'Sealed · checked');
   const failed = m(row({ phase: 'failed', error: { message: 'Network error', retryable: true } }));
   assert.equal(failed.ring, RING.FAILED);
   assert.equal(failed.line, 'Network error');

@@ -1,4 +1,4 @@
-import { describeCard, filesLink } from './importCard.js';
+import { describeCard, filesLink, skippedCount } from './importCard.js';
 import { formatBytes } from './listing.js';
 
 /**
@@ -25,13 +25,59 @@ const SHORT_REASON = Object.freeze({
   PLAIN_ZIP: 'zips go through Export / Import',
   ARCHIVE_UNINSPECTABLE: 'archive Warden cannot look inside',
 });
+/** A reason is a code, or { code, text } with the server's plain sentence (from the shared table). */
+const codeOf = (reason) => (typeof reason === 'string' ? reason : reason?.code);
+const endSentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+/** The server's sentences for these reasons, joined ("never raw codes"; a bare code falls back to its short words). */
+export const reasonSentences = (reasons) =>
+  (reasons || [])
+    .map((reason) => (typeof reason === 'string' ? SHORT_REASON[reason] && `${SHORT_REASON[reason][0].toUpperCase()}${SHORT_REASON[reason].slice(1)}` : reason?.text))
+    .filter(Boolean)
+    .map(endSentence)
+    .join(' ');
 export const shortReasons = (codes) => {
-  const words = (codes || []).map((code) => SHORT_REASON[code]).filter(Boolean);
+  const words = (codes || []).map((code) => SHORT_REASON[codeOf(code)]).filter(Boolean);
   if (words.length === 0) return '';
   return words.length === 1 ? words[0] : `${words[0]} and ${words.length - 1} more`;
 };
 
+/** What the status icon explains on hover, focus or tap. Plain words; the file's name is already in the row, its content never is. */
+export const TIPS = Object.freeze({
+  waiting: 'Waiting its turn. Warden sends two files at a time.',
+  sending: 'Sending this file to your vault.',
+  sealing: 'Encrypting and saving. Almost done.',
+  sealed: "Sealed: encrypted with your vault key and saved. Warden's simple rules found nothing risky. This is not a full antivirus.",
+  unchecked: 'Sealed and saved. This file could not be checked.',
+  canceled: 'Canceled. Nothing was saved.',
+  importRunning: 'Opening the zip and sending each file inside, two at a time. Every file is checked on its own.',
+  importDone: "Imported: each file inside the zip was checked on its own. Warden's simple rules are not a full antivirus.",
+});
+
+function tipOfTransfer(t) {
+  switch (t.phase) {
+    case 'waiting':
+    case 'sending':
+    case 'sealing':
+      return TIPS[t.phase];
+    case 'sealed':
+      if (t.held) return `Held for review: Warden's rules found something risky. Reasons: ${reasonSentences(t.held) || 'see Quarantine.'} Open Quarantine to decide.`;
+      return t.unchecked ? TIPS.unchecked : TIPS.sealed;
+    case 'canceled':
+      return t.error?.maybeSaved ? t.error.message : TIPS.canceled;
+    default:
+      if (t.error?.refused) {
+        return `Not saved: ${t.error.version ? 'this new version looks risky, so the current version is kept.' : reasonSentences(t.error.reasons) || 'the file was refused.'}`;
+      }
+      return `Could not finish: ${String(t.error?.message || 'something went wrong').replace(/[.\s]+$/, '')}.${t.error?.retryable ? ' You can try again.' : ''}`;
+  }
+}
+
 function rowOfTransfer(t) {
+  const row = rowOfTransferLine(t);
+  return { ...row, tip: tipOfTransfer(t) };
+}
+
+function rowOfTransferLine(t) {
   const common = { id: `t${t.id}`, source: 'transfer', transferId: t.id, kind: t.kind, name: t.name, size: t.size, phase: t.phase, working: WORKING.has(t.phase) };
   const percent = t.size ? Math.min(100, Math.floor((t.bytesDone / t.size) * 100)) : t.phase === 'sealing' ? 100 : 0;
   switch (t.phase) {
@@ -49,7 +95,7 @@ function rowOfTransfer(t) {
       }
       return {
         ...common,
-        line: t.savedAs ? `Sealed as "${t.savedAs}"` : t.kind === 'newVersion' ? 'New version sealed' : 'Sealed',
+        line: `${t.savedAs ? `Sealed as "${t.savedAs}"` : t.kind === 'newVersion' ? 'New version sealed' : 'Sealed'} · ${t.unchecked ? 'not checked' : 'checked'}`,
         ring: RING.SEALED,
         percent: 100,
         actions: { cancel: false, retry: false, dismiss: true, show: filesLink(t.destination) },
@@ -59,7 +105,7 @@ function rowOfTransfer(t) {
     default:
       if (t.error?.refused) {
         const why = t.error.version ? 'looks risky, the current version is kept' : shortReasons(t.error.reasons);
-        const zip = t.error.reasons?.includes('PLAIN_ZIP');
+        const zip = (t.error.reasons || []).some((r) => codeOf(r) === 'PLAIN_ZIP');
         return { ...common, failed: true, refused: true, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: zip ? '/export' : null }, ...(zip ? { showLabel: 'Open Export / Import' } : {}) };
       }
       return { ...common, line: t.error?.message || 'Failed', ring: RING.FAILED, percent, failed: true, actions: { cancel: false, retry: Boolean(t.error?.retryable), dismiss: true, show: null } };
@@ -72,14 +118,21 @@ function rowOfImport(job) {
   const common = { id: 'import', source: 'import', kind: 'import', name: job.fileName || 'Import', size: job.bytesTotal, phase: job.status === 'running' ? 'sending' : 'sealed' };
   if (view.kind === 'running') {
     const preparing = job.phase === 'reading' || job.phase === 'validating';
-    return { ...common, working: true, line: view.line, ring: preparing ? RING.PULSE : RING.PROGRESS, percent: view.percent, actions: { cancel: true, retry: false, dismiss: false, show: '/export' }, importFiles: { done: job.done, total: job.total } };
+    return { ...common, tip: TIPS.importRunning, working: true, line: view.line, ring: preparing ? RING.PULSE : RING.PROGRESS, percent: view.percent, actions: { cancel: true, retry: false, dismiss: false, show: '/export' }, importFiles: { done: job.done, total: job.total } };
   }
   const bad = view.kind === 'failed' || view.kind === 'stopped' || view.kind === 'cancelled';
+  // The summary line carries what Quarantine did with the files inside: how many were held and how many were not saved.
+  const results = job.results || [];
+  const heldN = results.filter((r) => r.status === 'held').length;
+  const refusedN = results.filter((r) => r.status === 'refused').length;
+  const otherN = Math.max(0, skippedCount(job) - heldN - refusedN);
+  const counts = `${heldN ? `, ${heldN} held` : ''}${refusedN ? `, ${refusedN} not saved` : ''}${otherN ? `, ${otherN} skipped` : ''}`;
   return {
     ...common,
+    tip: bad ? view.line || 'The import did not finish.' : TIPS.importDone,
     working: false,
     failed: view.kind === 'failed' || view.kind === 'stopped',
-    line: `${view.title}${view.kind === 'warning' || view.kind === 'done' ? '' : `. ${view.line}`}`,
+    line: bad ? `${view.title}. ${view.line}` : `Imported ${plural(job.uploaded, 'file')}${counts} · each file checked`,
     ring: bad ? RING.FAILED : RING.SEALED,
     percent: view.percent,
     warn: view.kind === 'warning',

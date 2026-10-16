@@ -708,6 +708,22 @@ try {
         await card.getByRole('button', { name: /^Retry/ }).first().waitFor({ timeout: 30000 });
         await page.waitForTimeout(600);
         record('Transfer tray (a failure with Retry)', await inspectCard('transfers-failed'));
+        {
+          // the status icon's tooltip, opened by keyboard focus: inside the screen, as wide as the screen allows, readable
+          const tipFound = [];
+          await card.getByTestId('transfer-row').nth(1).getByTestId('status-icon').focus();
+          const tip = page.getByTestId('status-tip');
+          await tip.waitFor({ timeout: 4000 }).catch(() => tipFound.push('the tooltip did not open on focus'));
+          const tipBox = await tip.boundingBox();
+          if (tipBox) {
+            if (tipBox.x < 0 || tipBox.y < 0 || tipBox.x + tipBox.width > size.width + 0.5 || tipBox.y + tipBox.height > size.height + 0.5) tipFound.push(`the tooltip is outside the screen ${JSON.stringify(tipBox)}`);
+            if (tipBox.width > size.width - 14) tipFound.push(`the tooltip is ${Math.round(tipBox.width)}px wide on a ${size.width}px screen`);
+          }
+          if (await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)) tipFound.push('the page scrolls sideways with the tooltip open');
+          if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `tooltip-open-${process.env.THEME || 'light'}-${size.name}.png`) });
+          record('Transfer tray (tooltip open)', tipFound);
+          await page.keyboard.press('Escape');
+        }
         await card.getByRole('button', { name: 'Minimize the transfers' }).click();
         await page.waitForTimeout(200);
         record('Transfer tray (minimized)', await inspectCard('transfers-minimized'));
@@ -785,12 +801,13 @@ try {
       const bodies = [
         Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction 2 0 R /JavaScript 3 0 R >>\nendobj\n%%EOF\n'),
         Buffer.from('just words, not a program'),
-        Buffer.from('PK\u0003\u0004 plain'),
+        Buffer.from('console.log(1)'),
       ];
       for (const [index, name] of heldNames.entries()) {
         const form = new FormData();
         form.append('file', new Blob([bodies[index]], { type: 'application/octet-stream' }), name);
-        await fetch(`${base}/api/documents`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
+        const seeded = await fetch(`${base}/api/documents`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
+        if (seeded.status !== 201) console.log(`seed ${name.slice(0, 12)}: ${seeded.status} ${(await seeded.text()).slice(0, 160)}`);
       }
     }
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {

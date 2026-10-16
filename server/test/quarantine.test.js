@@ -133,6 +133,7 @@ it('a clean file and an unchecked file are normal; a scanner that throws never f
   const clean = await send(a, 'letter.txt', Buffer.from('dear friend'));
   assert.equal(clean.status, 201);
   assert.equal(clean.body.held, undefined);
+  assert.equal(clean.body.scan, 'clean', 'the answer says it was checked (the tray: "Sealed · checked")');
   assert.equal((await rawDoc(clean.body.id)).scan.verdict, 'clean');
 
   const scanner = require('../utils/fileScanner');
@@ -147,6 +148,7 @@ it('a clean file and an unchecked file are normal; a scanner that throws never f
     const res = await send(a, 'after-bug.txt', Buffer.from('still saved'));
     assert.equal(res.status, 201, res.text);
     assert.equal(res.body.held, undefined);
+    assert.equal(res.body.scan, 'unchecked', 'the answer says it was not checked');
     const stored = await rawDoc(res.body.id);
     assert.equal(stored.scan.verdict, 'unchecked');
     assert.deepEqual(stored.scan.reasons, ['SCAN_ERROR']);

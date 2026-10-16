@@ -10,7 +10,7 @@ export const isZipName = (name) => /\.zip$/i.test(String(name || '').trim());
 export const ZIP_ROW_REASON = 'Zips go through Export / Import';
 export const ZIP_MESSAGE = 'Zip files go through Export / Import, so every file inside is checked. Use Export / Import to add this zip.';
 /** The tray's "Not saved" row for a zip that was not even sent. */
-export const ZIP_REFUSAL = Object.freeze({ message: 'Not saved', code: 'refused', retryable: false, refused: true, reasons: ['PLAIN_ZIP'] });
+export const ZIP_REFUSAL = Object.freeze({ message: 'Not saved', code: 'refused', retryable: false, refused: true, reasons: [{ code: 'PLAIN_ZIP', text: 'Zip files go through Export / Import, so every file inside is checked.' }] });
 export const zipsNotAdded = (n) => `${n} ${n === 1 ? 'zip' : 'zips'} not added: use Export / Import.`;
 
 /** Two files are the same selection entry when name, size and last-modified time all match. */

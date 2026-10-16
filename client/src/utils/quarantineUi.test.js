@@ -205,7 +205,7 @@ test('short reasons: one word-group, "and N more" for several, nothing for an un
 
 test('a refused upload is worded for the tray by the (lazy) runtime; the main code only reads the result', () => {
   const runtime = strip(read('services/transferRuntime.js'));
-  assert.match(runtime, /code !== 'FILE_BLOCKED' && code !== 'VERSION_REFUSED'/);
+  assert.match(runtime, /code !== 'FILE_BLOCKED' && code !== 'VERSION_REFUSED' && code !== 'USE_IMPORT'/);
   assert.match(runtime, /error\.described = \{ message: 'Not saved'/);
   assert.match(runtime, /uploadDocument: watched\(uploadDocument\)/);
   assert.match(runtime, /uploadNewVersion: watched\(uploadNewVersion\)/);

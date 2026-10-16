@@ -175,6 +175,7 @@ export function createTransfersManager(deps) {
         savedAs: data?.nameChanged ? data.filename : null,
         // Quarantine: saved, but held for review (reason codes only).
         held: data?.held,
+        unchecked: data?.scan === 'unchecked',
       });
     } catch (error) {
       if (batch) batch.touched = true; // a canceled or failed request may still have been saved: the lists are read again

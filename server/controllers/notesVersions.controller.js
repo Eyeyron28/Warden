@@ -189,7 +189,7 @@ const uploadVersion = asyncHandler(async (req, res) => {
   await recordEvent(req, 'version_created', { targetId: document._id });
 
   const fresh = await Document.findOne({ _id: document._id, userId: req.userId }).select('-encryptedBlob -thumbCipher');
-  res.status(201).json({ ...toListSummary({ ...fresh.toObject(), size: uploaded.buffer.length }), version: number });
+  res.status(201).json({ ...toListSummary({ ...fresh.toObject(), size: uploaded.buffer.length }), version: number, scan: scanned.verdict });
 });
 
 /** The caller's own previous version of one of their own live files. */

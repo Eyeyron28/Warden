@@ -1,6 +1,7 @@
 import { CaretDown, CaretUp, LockSimple, Prohibit, ShieldWarning, Vault, WarningCircle, X } from '@phosphor-icons/react';
 
 import FileNameLabel from './FileNameLabel.jsx';
+import StatusRing from './StatusRing.jsx';
 import FileTypeIcon from './FileTypeIcon.jsx';
 import { RING } from '../utils/trayModel.js';
 import { STOP_SEALING_PROMPT } from '../services/transfers.js';
@@ -65,7 +66,7 @@ function Row({ row, onAction }) {
           )}
         </span>
       </span>
-      <SealRing ring={row.ring} percent={row.percent} />
+      {row.tip ? <StatusRing ring={row.ring} percent={row.percent} tip={row.tip} /> : <SealRing ring={row.ring} percent={row.percent} />}
     </li>
   );
 }
