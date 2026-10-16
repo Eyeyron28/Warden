@@ -310,7 +310,7 @@ try {
   // ---- the zip import is a row ----
   gate.mode = 'pass';
   const zipFile = await makeZip('backup.zip', 8);
-  await nav('Export').click();
+  await nav('Export / Import').click();
   await page.waitForURL((url) => url.pathname === '/export');
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(zipFile);
   await page.getByRole('button', { name: /^Import 8 files$/ }).click();

@@ -154,9 +154,9 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           <ChartBar size={ICON} weight="regular" aria-hidden="true" />
           {label('Overview')}
         </NavLink>
-        <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export')}>
+        <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export / Import')}>
           <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
-          {label('Export')}
+          {label('Export / Import')}
         </NavLink>
 
         <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices & activity')}>

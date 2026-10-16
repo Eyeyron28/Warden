@@ -198,7 +198,7 @@ try {
   
   // ---- an unclicked finished card goes away by itself; the report stays ----
   const second = await makeZip('second.zip', 6, 'Backup');
-  await nav('Export').click();
+  await nav('Export / Import').click();
   await page.waitForURL((url) => url.pathname === '/export');
   check(await page.getByTestId('import-report').isVisible(), 'the last import\'s report is still on the Import screen after the card was dismissed');
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(second);
@@ -209,7 +209,7 @@ try {
   await card.waitFor({ state: 'detached', timeout: CARD_MS + 8000 });
   const stayed = Date.now() - finishedAt;
   check(stayed >= CARD_MS - 1200 && stayed <= CARD_MS + 3000, `an unclicked finished card disappears after the shortened time (${stayed} ms, set to ${CARD_MS} ms)`);
-  await nav('Export').click();
+  await nav('Export / Import').click();
   check(await page.getByTestId('import-report').isVisible(), 'the report is still there after the card has gone');
   check((await docCount()) === 26, 'the second import added its 6 files (names already in use got a number)');
   const names = (await api('GET', '/api/documents', { token })).body.map((doc) => doc.filename);

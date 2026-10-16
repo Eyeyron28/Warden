@@ -53,7 +53,7 @@ const DIALOG_SIZES = [
   { name: '1366x768', width: 1366, height: 768 },
 ];
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/forgot-password', '/privacy', '/terms', '/emergency'];
-const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent'];
+const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent', '/export'];
 
 // ---------- the real app, locally ----------
 const load = Module._load;
@@ -545,13 +545,13 @@ try {
         await page.goto(base + '/export', { waitUntil: 'networkidle' });
         await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(longZip);
         await page.getByRole('button', { name: /^Import 6 files$/ }).click();
-        const card = page.getByTestId('import-card');
+        const card = page.getByTestId('transfer-tray');
         await card.waitFor();
         await page.waitForTimeout(400);
         const inspectCard = async (state) => {
           const found = [];
           const info = await page.evaluate(() => {
-            const el = document.querySelector('[data-testid="import-card"]');
+            const el = document.querySelector('[data-testid="transfer-tray"]');
             const r = el.getBoundingClientRect();
             const doc = document.documentElement;
             const fixedThings = [...document.querySelectorAll('body *')].filter((node) => {
@@ -577,7 +577,7 @@ try {
           if (info.overlaps.length) found.push(`overlaps: ${info.overlaps.join(', ')}`);
           if (info.barTop !== null && info.r.bottom > info.barTop - 8) found.push(`too close to the update bar (card bottom ${Math.round(info.r.bottom)}, bar top ${Math.round(info.barTop)})`);
           if (info.minButton !== null && info.minButton < 43) found.push(`a button in the card is ${info.minButton}px tall`);
-          if (!(info.titleTip > 200)) found.push('the 255-character name is not available as a tooltip');
+          if (!(info.titleTip > 200) && !/minimized|failed/.test(state)) found.push('the 255-character name is not available as a tooltip');
           if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `import-card-${state}-${process.env.THEME || 'light'}-${size.name}.png`) });
           return found;
         };
@@ -585,6 +585,152 @@ try {
 
       } catch (error) {
         record('Import card (running)', [`could not be checked: ${String(error.message).split('\n')[0]}`]);
+      }
+      await context.close();
+    }
+
+
+    // The tray with uploads: sending, a 255-character name, many rows scrolling, a failure (Retry), and the finished state.
+    for (const size of WIDTHS) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__WARDEN_TEST__ = { importCardMs: 60000 };
+      }, token);
+      const held = [];
+      let hold = true;
+      await context.route('**/api/documents', async (route) => {
+        if (route.request().method() !== 'POST') return route.continue();
+        if (/failing/.test(route.request().postData() || '')) return route.abort('failed');
+        if (hold) return new Promise((resolve) => held.push(() => resolve(route.continue())));
+        return route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      try {
+        await page.goto(base + '/files', { waitUntil: 'networkidle' });
+        await page.getByRole('button', { name: 'New' }).waitFor();
+        const longName = `${'quarterly_scan_'.repeat(20).slice(0, 251)}.txt`;
+        const names = [longName, 'failing-file.txt', ...Array.from({ length: 10 }, (_, n) => `row-${n + 1}.txt`)];
+        const dt = await page.evaluateHandle((list) => {
+          const d = new DataTransfer();
+          for (const n of list) d.items.add(new File([n.includes('failing') ? 'failing' : 'content of ' + n], n, { type: 'text/plain' }));
+          return d;
+        }, names);
+        await page.getByRole('button', { name: 'New' }).dispatchEvent('dragenter', { dataTransfer: dt });
+        await page.getByRole('button', { name: 'New' }).dispatchEvent('drop', { dataTransfer: dt });
+        const card = page.getByTestId('transfer-tray');
+        await card.waitFor();
+        await page.waitForTimeout(500);
+        const inspectCard = async (state) => {
+          const found = [];
+          const info = await page.evaluate(() => {
+            const el = document.querySelector('[data-testid="transfer-tray"]');
+            const r = el.getBoundingClientRect();
+            const doc = document.documentElement;
+            const fixedThings = [...document.querySelectorAll('body *')].filter((node) => {
+              if (el.contains(node) || node.contains(el)) return false;
+              const cs = getComputedStyle(node);
+              const rect = node.getBoundingClientRect();
+              return (cs.position === 'fixed' || cs.position === 'sticky') && rect.width > 0 && rect.height > 0 && cs.visibility !== 'hidden';
+            });
+            const overlaps = fixedThings.filter((node) => {
+              const b = node.getBoundingClientRect();
+              return Math.min(r.right, b.right) - Math.max(r.left, b.left) > 2 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 2;
+            }).map((node) => `${node.tagName.toLowerCase()}.${String(node.className).slice(0, 30)}`);
+            const wide = [...el.querySelectorAll('*')].filter((node) => node.getBoundingClientRect().right > r.right + 1 || node.getBoundingClientRect().left < r.left - 1).map((node) => String(node.className).slice(0, 24));
+            const updateBar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
+            const barRect = updateBar ? updateBar.getBoundingClientRect() : null;
+            const buttons = [...el.querySelectorAll('button')].filter((node) => node.getBoundingClientRect().width > 0).map((node) => Math.round(node.getBoundingClientRect().height));
+            return { r: { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }, hScroll: doc.scrollWidth > doc.clientWidth + 1, overlaps, wide, barTop: barRect ? barRect.top : null, scrollW: el.scrollWidth > el.clientWidth + 1, minButton: buttons.length ? Math.min(...buttons) : null, titleTip: el.querySelector('[title]')?.getAttribute('title')?.length ?? 0 };
+          });
+          if (info.r.x < -1 || info.r.y < -1 || info.r.right > size.width + 1 || info.r.bottom > size.height + 1) found.push(`outside the screen ${JSON.stringify(info.r)}`);
+          if (info.hScroll) found.push('the page scrolls sideways');
+          if (info.scrollW) found.push('the card has content wider than itself');
+          if (info.wide.length) found.push(`parts stick out of the card: ${info.wide.slice(0, 3).join(', ')}`);
+          if (info.overlaps.length) found.push(`overlaps: ${info.overlaps.join(', ')}`);
+          if (info.barTop !== null && info.r.bottom > info.barTop - 8) found.push(`too close to the update bar (card bottom ${Math.round(info.r.bottom)}, bar top ${Math.round(info.barTop)})`);
+          if (info.minButton !== null && info.minButton < 43) found.push(`a button in the card is ${info.minButton}px tall`);
+          if (!(info.titleTip > 200) && !/minimized|failed/.test(state)) found.push('the 255-character name is not available as a tooltip');
+          if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `import-card-${state}-${process.env.THEME || 'light'}-${size.name}.png`) });
+          return found;
+        };
+        record('Transfer tray (sending, 12 rows, 255-character name)', await inspectCard('transfers-sending'));
+        const scrolls = await card.locator('ul').first().evaluate((el) => ({ scrolls: el.scrollHeight > el.clientHeight, tray: el.closest('aside').getBoundingClientRect().height, vh: window.innerHeight }));
+        record('Transfer tray (many rows scroll inside the tray)', scrolls.tray <= scrolls.vh * 0.6 + 2 ? [] : [`the tray is ${Math.round(scrolls.tray)}px of ${scrolls.vh}px`]);
+        hold = false;
+        held.splice(0).forEach((fn) => fn());
+        await card.getByRole('button', { name: /^Retry/ }).first().waitFor({ timeout: 30000 });
+        await page.waitForTimeout(600);
+        record('Transfer tray (a failure with Retry)', await inspectCard('transfers-failed'));
+        await card.getByRole('button', { name: 'Minimize the transfers' }).click();
+        await page.waitForTimeout(200);
+        record('Transfer tray (minimized)', await inspectCard('transfers-minimized'));
+      } catch (error) {
+        record('Transfer tray (uploads)', [`could not be checked: ${String(error.message).split('\n')[0]}`]);
+      }
+      await context.close();
+    }
+
+    // The Export / Import page: two equal cards side by side from 1000 px, stacked below; the drop zone in its states; no sideways scroll.
+    for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__csp = [];
+        document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
+      }, token);
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      try {
+        await page.goto(base + '/export', { waitUntil: 'networkidle' });
+        await page.getByRole('heading', { name: 'Export / Import', level: 1 }).waitFor();
+        const found = [];
+        const layout = await page.evaluate(() => {
+          const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }; };
+          const doc = document.documentElement;
+          return { exp: rect('[data-testid="export-card"]'), imp: rect('[data-testid="import-card-panel"]'), hScroll: doc.scrollWidth > doc.clientWidth + 1, title: document.title, sentence: document.querySelector('h1').nextElementSibling?.textContent };
+        });
+        const wide = size.width >= 1000;
+        const side = Math.abs(layout.exp.y - layout.imp.y) < 2 && layout.imp.x > layout.exp.x + layout.exp.w - 2;
+        if (wide && !side) found.push('the cards are not side by side');
+        if (!wide && side) found.push('the cards should be stacked');
+        if (wide && Math.abs(layout.exp.h - layout.imp.h) > 2) found.push(`the cards are not the same height (${Math.round(layout.exp.h)} and ${Math.round(layout.imp.h)})`);
+        if (wide && Math.abs(layout.exp.w - layout.imp.w) > 2) found.push('the cards are not the same width');
+        if (layout.hScroll) found.push('the page scrolls sideways');
+        if (layout.exp.right > size.width + 1 || layout.imp.right > size.width + 1) found.push('a card runs off the right edge');
+        if (!/Export \/ Import/.test(layout.title)) found.push(`the tab title is "${layout.title}"`);
+        if (layout.sentence !== 'Take your files out as a zip, or bring a zip in.') found.push('the one-sentence header is missing');
+        if (size.width > 400 && (await page.getByRole('link', { name: 'Export / Import', exact: true }).count()) < 1) found.push('no "Export / Import" in the sidebar');
+
+        // the drop zone: drag over, a wrong file, then a real zip
+        const zone = page.getByTestId('import-dropzone');
+        const stateOf = () => zone.getAttribute('data-state');
+        const text = await page.evaluateHandle(() => { const dt = new DataTransfer(); dt.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' })); return dt; });
+        await zone.dispatchEvent('dragenter', { dataTransfer: text });
+        if ((await stateOf()) !== 'dragover') found.push('the drop zone does not highlight on drag over');
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `export-import-dragover-${process.env.THEME || 'light'}-${size.name}.png`) });
+        await zone.dispatchEvent('drop', { dataTransfer: text });
+        await page.getByRole('alert').filter({ hasText: /Only a \.zip/ }).waitFor({ timeout: 4000 }).catch(() => found.push('a .txt was not refused with a clear message'));
+        if ((await stateOf()) !== 'invalid') found.push(`expected the invalid state, saw ${await stateOf()}`);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `export-import-invalid-${process.env.THEME || 'light'}-${size.name}.png`) });
+        const zipBuffer = Buffer.from(await (async () => { const z = new JSZip(); for (let n = 1; n <= 5; n += 1) z.file(`Taxes/part${n % 2}/note-${n}.txt`, `note ${n}`); return z.generateAsync({ type: 'uint8array' }); })());
+        await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: zipBuffer });
+        await page.getByRole('button', { name: /^Import 5 files$/ }).waitFor({ timeout: 6000 }).catch(() => found.push('a chosen zip has no Import button'));
+        if ((await stateOf()) !== 'chosen') found.push(`expected the chosen state, saw ${await stateOf()}`);
+        const chips = (await page.getByLabel('What is in the zip').innerText().catch(() => '')).replace(/\s+/g, ' ');
+        if (!/5 files/.test(chips) || !/folders/.test(chips)) found.push(`the chips say "${chips}"`);
+        const after = await page.evaluate(() => ({ hScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, btn: document.querySelector('button[class*="big"]')?.getBoundingClientRect().height }));
+        if (after.hScroll) found.push('the page scrolls sideways with a zip chosen');
+        if (!(after.btn >= 48)) found.push(`the Import button is ${after.btn}px tall`);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `export-import-chosen-${process.env.THEME || 'light'}-${size.name}.png`) });
+        const csp = await page.evaluate(() => window.__csp);
+        if (csp.length) found.push(`CSP violations: ${csp.join('; ')}`);
+        record('Export / Import page', found);
+      } catch (error) {
+        record('Export / Import page', [`could not be checked: ${String(error.message).split('\n')[0]}`]);
       }
       await context.close();
     }
@@ -611,16 +757,16 @@ try {
         const barShown = await page.getByText('A new version of Warden is available.').isVisible().catch(() => false);
         await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(longZip);
         await page.getByRole('button', { name: /^Import 6 files$/ }).click();
-        const card = page.getByTestId('import-card');
+        const card = page.getByTestId('transfer-tray');
         await card.waitFor();
         await page.waitForTimeout(300);
         {
           const running = await page.evaluate(() => {
-            const el = document.querySelector('[data-testid="import-card"]');
+            const el = document.querySelector('[data-testid="transfer-tray"]');
             const r = el.getBoundingClientRect();
             const bar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
             const b = bar ? bar.getBoundingClientRect() : null;
-            return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, barTop: b ? b.top : null, kind: el.getAttribute('data-kind') };
+            return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, barTop: b ? b.top : null, kind: el.getAttribute('data-state') };
           });
           const runningProblems = [];
           if (running.kind !== 'running') runningProblems.push(`expected the running state, saw ${running.kind}`);
@@ -628,18 +774,18 @@ try {
           if (running.r.right > size.width + 1 || running.r.bottom > size.height + 1) runningProblems.push('the running card is outside the screen');
           record('Import card (running, with the update bar)', runningProblems);
         }
-        await page.getByText(/Imported 6 files/).first().waitFor({ timeout: 30000 });
+        await page.getByText(/6 files sealed/).first().waitFor({ timeout: 30000 });
         await page.waitForTimeout(300);
         const found = [];
         const info = await page.evaluate(() => {
-          const el = document.querySelector('[data-testid="import-card"]');
+          const el = document.querySelector('[data-testid="transfer-tray"]');
           const r = el.getBoundingClientRect();
           const bar = [...document.querySelectorAll('[role=status]')].find((node) => /new version/i.test(node.textContent || ''));
           const b = bar ? bar.getBoundingClientRect() : null;
-          return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, hScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, bar: b ? { top: b.top, left: b.left, right: b.right, bottom: b.bottom } : null, kind: el.getAttribute('data-kind'), dismiss: Boolean(el.querySelector('[data-action="dismiss"], button[aria-label="Dismiss"]')) };
+          return { r: { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, hScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, bar: b ? { top: b.top, left: b.left, right: b.right, bottom: b.bottom } : null, kind: el.getAttribute('data-state'), dismiss: Boolean(el.querySelector('[data-action="dismiss"]')) };
         });
         if (info.kind !== 'done') found.push(`expected the done state, saw ${info.kind}`);
-        if (!info.dismiss) found.push('no close button on the finished card');
+        if (!info.dismiss) found.push('no Dismiss on the finished import row');
         if (info.r.x < -1 || info.r.right > size.width + 1 || info.r.bottom > size.height + 1) found.push(`outside the screen ${JSON.stringify(info.r)}`);
         if (info.hScroll) found.push('the page scrolls sideways');
         if (info.bar) {
@@ -683,9 +829,10 @@ console.log('\nAPI requests on a cold load of each signed-in page (1280px):');
 for (const row of rows.filter((r) => r.size === '1280' && APP_PAGES.includes(r.route))) console.log(`  ${pad(row.route, 12)} ${row.apiCalls}${process.env.LIST_CALLS ? `  ${row.callList.join(', ')}` : ''}`);
 const dialogKinds = [...new Set(dialogRows.map((r) => r.label))];
 if (dialogKinds.length) {
-  console.log(`\n${pad('long names in dialogs', 34)}${DIALOG_SIZES.map((w) => pad(w.name, 10)).join('')}`);
+  const columns = [...DIALOG_SIZES.map((w) => w.name), ...new Set(dialogRows.map((r) => r.size).filter((name) => !DIALOG_SIZES.some((w) => w.name === name)))];
+  console.log(`\n${pad('long names in dialogs', 34)}${columns.map((name) => pad(name, 10)).join('')}`);
   for (const label of dialogKinds) {
-    console.log(`${pad(label, 34)}${DIALOG_SIZES.map((size) => { const row = dialogRows.find((r) => r.label === label && r.size === size.name); return pad(!row ? '-' : row.problems.length ? 'FAIL' : 'ok', 10); }).join('')}`);
+    console.log(`${pad(label, 34)}${columns.map((name) => { const row = dialogRows.find((r) => r.label === label && r.size === name); return pad(!row ? '-' : row.problems.length ? 'FAIL' : 'ok', 10); }).join('')}`);
   }
   for (const row of dialogRows.filter((r) => r.problems.length)) console.log(`\nFAIL ${row.label} at ${row.size}: ${row.problems.join('; ')}`);
 }

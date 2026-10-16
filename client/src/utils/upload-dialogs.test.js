@@ -174,7 +174,7 @@ test('pressing "Encrypt & upload" twice in the same moment sends ONE request', a
   clearToken();
 });
 
-test('every submit that creates something is guarded: Upload, Scan, new version, Import, Export, New folder, Rename, Edit, Move, Share', () => {
+test('every submit that creates something is guarded: Upload, Scan, new version, Import, Export / Import, New folder, Rename, Edit, Move, Share', () => {
   const form = strip(read('components/UploadForm.jsx'));
   assert.match(form, /if \(!file \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
   assert.match(form, /disabled=\{!file \|\| busy\}/);

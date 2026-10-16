@@ -24,7 +24,7 @@ const FEATURES = [
   { tag: 'Safety', title: 'Vault health score', body: 'A score out of 100 from nine checks, such as open share links, trusted browsers and expired documents. Each one links to where you fix it.' },
   { tag: 'Safety', title: 'Devices and activity', body: 'See every browser signed in and sign any out. A 30-day log shows what happened, and a check detects edits and gaps in it.' },
   { tag: 'Safety', title: 'Recovery key', body: 'Forget your password and keep your files, as long as you saved the recovery key. We cannot recover it for you.' },
-  { tag: 'Yours', title: 'Export and import', body: 'Download everything as one zip built in your browser, and import a zip back through the normal upload.' },
+  { tag: 'Yours', title: 'Export / Import', body: 'Download everything as one zip built in your browser, and import a zip back through the normal upload.' },
   { tag: 'Yours', title: 'Delete it all', body: 'Delete your account yourself. Your files, shares, devices and activity log are removed, and we email you a confirmation.' },
   { tag: 'Yours', title: 'No tracking', body: 'No analytics and no third-party scripts. The page loads only its own files and a strict Content-Security-Policy.' },
 ];

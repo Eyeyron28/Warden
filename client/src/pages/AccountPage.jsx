@@ -167,7 +167,7 @@ function AccountPage() {
               </p>
               <p className={styles.dangerBody}>
                 <strong>Not deleted, because we don&apos;t hold it:</strong> emails we already sent you, files you
-                downloaded (including any zip you made with Export, which is not encrypted).
+                downloaded (including any zip you made with Export / Import, which is not encrypted).
               </p>
               <button
                 type="button"

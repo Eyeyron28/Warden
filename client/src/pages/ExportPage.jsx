@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DownloadSimple, UploadSimple } from '@phosphor-icons/react';
+
+import ImportDropZone, { NOT_A_ZIP, isZipFile } from '../components/ImportDropZone.jsx';
 
 import { fetchDocumentBytes, listDocuments, listFolders } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -103,7 +106,7 @@ function FailureList({ items, title }) {
  * memory, and saved; an import unzips in memory and uploads through the normal upload.
  */
 function ExportPage() {
-  usePageMeta('Export', 'Download all your files as a zip, or import a zip.');
+  usePageMeta('Export / Import', 'Take your files out as a zip, or bring a zip in.');
 
   // ---- export ----
   const [exportState, setExportState] = useState({ phase: 'idle' }); // idle | running | done | cancelled | error
@@ -151,19 +154,21 @@ function ExportPage() {
   const [chosen, setChosen] = useState({ phase: 'idle' }); // idle | checked | error
   const [blocked, setBlocked] = useState('');
   const zipBytes = useRef(null);
-  const fileInput = useRef(null);
   const running = job.status === 'running';
 
-  const chooseZip = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const acceptFile = async (file) => {
     setBlocked('');
     if (importJob.isRunning()) {
       setBlocked(BLOCKED_MESSAGE);
       return;
     }
+    if (!isZipFile(file)) {
+      zipBytes.current = null;
+      setChosen({ phase: 'error', message: NOT_A_ZIP(file.name) });
+      return;
+    }
     if (file.size > IMPORT_LIMITS.maxArchiveBytes) {
+      zipBytes.current = null;
       setChosen({ phase: 'error', message: 'That zip is too large to import here.' });
       return;
     }
@@ -194,107 +199,130 @@ function ExportPage() {
   const i = chosen;
   const percent = (done, total) => (total ? Math.round((done / total) * 100) : 0);
 
+  const zipSize = i.phase === 'checked' ? formatBytes(i.plan.files.reduce((n, f) => n + f.size, 0)) : '';
+
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>Export</h1>
+      <header className={styles.header}>
+        <h1 className={styles.title}>Export / Import</h1>
+        <p className={styles.lead}>Take your files out as a zip, or bring a zip in.</p>
+      </header>
 
-      <section className={styles.card} aria-labelledby="export-title">
-        <h2 id="export-title" className={styles.heading}>Export my files</h2>
-        <p className={styles.text}>
-          Download everything in My files as one .zip, with your folders (empty ones too) and the original file names.
-          Trash, share links, previews, private notes and earlier versions are not included: the zip holds each file as it is now.
-        </p>
-        <p className={styles.warning}>
-          <strong>The zip is not encrypted.</strong> Anyone who gets the file can open it.
-        </p>
-
-        {e.phase !== 'running' && (
-          <button type="button" className={styles.primary} onClick={() => guardExport(startExport)}>
-            Download all my files (.zip)
-          </button>
-        )}
-
-        {e.phase === 'running' && (
-          <div className={styles.progressBlock} role="status" aria-live="polite">
-            <p className={styles.text}>
-              {e.stage || `File ${Math.min(e.done + 1, e.total || 1)} of ${e.total} - ${formatBytes(e.bytes || 0)} so far`}
-              {e.current ? ` - ${e.current}` : ''}
-            </p>
-            <progress className={styles.bar} max={e.total || 1} value={e.done || 0} aria-label="Export progress" />
-            <p className={styles.small}>{plural(e.done || 0, 'file')} of {e.total || 0} ({percent(e.done || 0, e.total || 0)}%)</p>
-            <button type="button" className={styles.secondary} onClick={() => exportAbort.current?.abort()}>
-              Cancel
-            </button>
+      <div className={styles.grid}>
+        <section className={styles.card} aria-labelledby="export-title" data-testid="export-card">
+          <div className={styles.cardHead}>
+            <span className={styles.cardIcon} aria-hidden="true">
+              <DownloadSimple size={24} weight="duotone" />
+            </span>
+            <h2 id="export-title" className={styles.heading}>Export my files</h2>
           </div>
-        )}
+          <ul className={styles.points} aria-label="What the zip holds">
+            <li>Every file in My files, as it is now, with its original name.</li>
+            <li>Your folders, empty ones too.</li>
+            <li>One .zip, built here in your browser.</li>
+          </ul>
+          <p className={styles.small}>Not included: Trash, share links, previews, private notes and earlier versions.</p>
+          <p className={styles.warning}>
+            <strong>The zip is not encrypted.</strong> Anyone who gets the file can open it.
+          </p>
 
-        {e.phase === 'empty' && <p className={styles.text} role="status">There is nothing to export yet.</p>}
-        {e.phase === 'cancelled' && <p className={styles.text} role="status">Export cancelled. Nothing was saved.</p>}
-        {e.phase === 'error' && <p className={styles.error} role="alert">{e.message}</p>}
-        {e.phase === 'done' && (
-          <div className={styles.summary} role="status">
-            <p>
-              <strong>{e.name}</strong> was saved: {plural(e.added, 'file')} ({formatBytes(e.bytes)} of files, {formatBytes(e.zipBytes)} zipped)
-              {e.failures.length ? `, and ${plural(e.failures.length, 'file')} could not be added.` : '.'}
-            </p>
-            <FailureList items={e.failures} title="Not in the zip" />
-            {e.failures.length > 0 && <p className={styles.small}>The zip also contains warden-export-report.txt with this list.</p>}
+          <div className={styles.cardFoot}>
+            {e.phase !== 'running' && (
+              <button type="button" className={styles.primary} onClick={() => guardExport(startExport)}>
+                Download all my files (.zip)
+              </button>
+            )}
+
+            {e.phase === 'running' && (
+              <div className={styles.progressBlock} role="status" aria-live="polite">
+                <p className={styles.text}>
+                  {e.stage || `File ${Math.min(e.done + 1, e.total || 1)} of ${e.total} - ${formatBytes(e.bytes || 0)} so far`}
+                  {e.current ? ` - ${e.current}` : ''}
+                </p>
+                <progress className={styles.bar} max={e.total || 1} value={e.done || 0} aria-label="Export progress" />
+                <p className={styles.small}>{plural(e.done || 0, 'file')} of {e.total || 0} ({percent(e.done || 0, e.total || 0)}%)</p>
+                <button type="button" className={styles.secondary} onClick={() => exportAbort.current?.abort()}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {e.phase === 'empty' && <p className={styles.text} role="status">There is nothing to export yet.</p>}
+            {e.phase === 'cancelled' && <p className={styles.text} role="status">Export cancelled. Nothing was saved.</p>}
+            {e.phase === 'error' && <p className={styles.error} role="alert">{e.message}</p>}
+            {e.phase === 'done' && (
+              <div className={styles.summary} role="status">
+                <p>
+                  <strong>{e.name}</strong> was saved: {plural(e.added, 'file')} ({formatBytes(e.bytes)} of files, {formatBytes(e.zipBytes)} zipped)
+                  {e.failures.length ? `, and ${plural(e.failures.length, 'file')} could not be added.` : '.'}
+                </p>
+                <FailureList items={e.failures} title="Not in the zip" />
+                {e.failures.length > 0 && <p className={styles.small}>The zip also contains warden-export-report.txt with this list.</p>}
+              </div>
+            )}
           </div>
-        )}
-      </section>
+        </section>
 
-      <section className={styles.card} aria-labelledby="import-title">
-        <h2 id="import-title" className={styles.heading}>Import a .zip</h2>
-        <p className={styles.text}>
-          Adds the files in a zip to your vault, keeping its folders. Each file goes through the normal upload: your storage
-          limit, up to 4 MB per file, and the usual naming rules (a name already in use gets a number added). The zip is opened here in
-          your browser; nothing is unpacked on disk. The import keeps running if you open another page, and a card at the bottom right
-          shows its progress. It is not undone if you stop it: files already imported stay in your vault.
-        </p>
+        <section className={styles.card} aria-labelledby="import-title" data-testid="import-card-panel">
+          <div className={styles.cardHead}>
+            <span className={styles.cardIcon} aria-hidden="true">
+              <UploadSimple size={24} weight="duotone" />
+            </span>
+            <h2 id="import-title" className={styles.heading}>Import a .zip</h2>
+          </div>
 
-        {!running && (
-          <>
-            <input ref={fileInput} type="file" accept=".zip,application/zip" className={styles.hidden} onChange={chooseZip} aria-label="Choose a .zip to import" />
-            <button type="button" className={i.phase === 'checked' ? styles.secondary : styles.primary} onClick={() => fileInput.current?.click()}>
-              Choose a .zip…
-            </button>
-          </>
-        )}
+          {!running && (
+            <ImportDropZone
+              onFile={acceptFile}
+              error={i.phase === 'error' ? i.message : ''}
+              chosen={i.phase === 'checked' ? { name: i.name, files: i.plan.files.length, size: zipSize, folders: i.plan.folders.length } : null}
+            >
+              {i.phase === 'checked' && (
+                <>
+                  <FailureList items={i.plan.ignored} title="Ignored" />
+                  <FailureList items={i.plan.skipped} title="Will be skipped" />
+                </>
+              )}
+            </ImportDropZone>
+          )}
 
-        {blocked && <p className={styles.error} role="alert">{blocked}</p>}
-        {i.phase === 'error' && <p className={styles.error} role="alert">{i.message}</p>}
+          {blocked && <p className={styles.error} role="alert">{blocked}</p>}
 
-        {i.phase === 'checked' && !running && (
-          <div className={styles.summary} role="status">
-            <p>
-              <strong>{i.name}</strong>: {plural(i.plan.files.length, 'file')} ({formatBytes(i.plan.files.reduce((n, f) => n + f.size, 0))}) in {plural(i.plan.folders.length, 'folder')}.
-            </p>
-            <FailureList items={i.plan.ignored} title="Ignored" />
-            <FailureList items={i.plan.skipped} title="Will be skipped" />
-            <button type="button" className={styles.primary} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
+          {i.phase === 'checked' && !running && (
+            <button type="button" className={`${styles.primary} ${styles.big}`} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
               Import {plural(i.plan.files.length, 'file')}
             </button>
+          )}
+
+          {running && (
+            <div className={styles.progressBlock} data-testid="import-progress">
+              <p className={styles.text}>
+                Importing <strong>{job.fileName}</strong>: {job.phase === 'reading' ? 'reading the zip…' : job.phase === 'validating' ? 'checking the zip…' : `${job.done} of ${plural(job.total, 'file')}`}
+                {job.current ? ` - ${job.current}` : ''}
+              </p>
+              <progress className={styles.bar} max={job.total || 1} value={job.done || 0} aria-label="Import progress" />
+              <p className={styles.small}>
+                {percent(job.done || 0, job.total || 0)}% - {formatBytes(job.bytesDone)} of {formatBytes(job.bytesTotal)}.
+              </p>
+              <button type="button" className={styles.secondary} onClick={() => importJob.cancel()}>
+                Cancel (stops after the current file)
+              </button>
+            </div>
+          )}
+
+          <ul className={styles.points} aria-label="How an import works">
+            <li>Each file follows the normal upload rules: storage limit, 4 MB per file.</li>
+            <li>A name already in use gets a number added.</li>
+            <li>It keeps running if you change page; progress is in the card at the bottom right. Stopping does not undo files already imported.</li>
+          </ul>
+        </section>
+
+        {!running && job.status !== 'idle' && (
+          <div className={styles.report}>
+            <ImportReport job={job} />
           </div>
         )}
-
-        {running && (
-          <div className={styles.progressBlock} data-testid="import-progress">
-            <p className={styles.text}>
-              Importing <strong>{job.fileName}</strong>: {job.phase === 'reading' ? 'reading the zip…' : job.phase === 'validating' ? 'checking the zip…' : `${job.done} of ${plural(job.total, 'file')}`}
-              {job.current ? ` - ${job.current}` : ''}
-            </p>
-            <progress className={styles.bar} max={job.total || 1} value={job.done || 0} aria-label="Import progress" />
-            <p className={styles.small}>
-              {percent(job.done || 0, job.total || 0)}% - {formatBytes(job.bytesDone)} of {formatBytes(job.bytesTotal)}. You can leave this page: the import keeps going.
-            </p>
-            <button type="button" className={styles.secondary} onClick={() => importJob.cancel()}>
-              Cancel (stops after the current file)
-            </button>
-          </div>
-        )}
-
-        {!running && job.status !== 'idle' && <ImportReport job={job} />}
-      </section>
+      </div>
     </div>
   );
 }

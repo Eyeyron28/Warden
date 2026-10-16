@@ -2,8 +2,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  max-width: 760px;
+  max-width: 1160px;
   padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .title {
@@ -11,19 +17,89 @@
   letter-spacing: -0.01em;
 }
 
+.lead {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* One column on a phone and a tablet; two equal cards side by side from 1000 px. */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+@media (min-width: 1000px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The last import's report sits under the Import card. */
+  .report {
+    grid-column: 2;
+  }
+}
+
+.report {
+  min-width: 0;
+}
+
 .card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-3);
+  gap: var(--space-4);
+  min-width: 0;
   padding: var(--space-5);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-raised);
 }
 
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-wash);
+  color: var(--color-accent);
+}
+
 .heading {
   font-size: var(--fs-lg);
+}
+
+/* The button / progress area stays at the bottom, so both cards end on the same line. */
+.cardFoot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: auto;
+}
+
+.points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 1.25em;
+  max-width: 62ch;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
 }
 
 .text {
@@ -67,6 +143,12 @@
   color: var(--color-bg);
 }
 
+.big {
+  width: 100%;
+  min-height: 52px;
+  font-size: var(--fs-base);
+}
+
 .primary:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -98,6 +180,7 @@
 .failures {
   width: 100%;
   font-size: var(--fs-sm);
+  text-align: left;
 }
 
 .failures summary {
@@ -116,12 +199,11 @@
   color: var(--color-text);
 }
 
-.hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+.report .summary {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-raised);
 }
 
 .text,
@@ -130,4 +212,20 @@
 .error {
   overflow-wrap: anywhere;
   min-width: 0;
+}
+
+@media (max-width: 479px) {
+  .page {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .card {
+    padding: var(--space-4);
+  }
+
+  .primary,
+  .secondary {
+    width: 100%;
+  }
 }

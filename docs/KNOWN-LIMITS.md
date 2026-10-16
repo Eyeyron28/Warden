@@ -97,7 +97,7 @@ What the code guarantees, each with a test (`server/test/notes-versions.test.js`
 
 - A note is plain text, at most 2000 characters, never in a share, never in an Emergency Access answer (not even whether one exists),
   never searched, and never in the activity log (the log records only that one was set, changed or cleared).
-- Notes and earlier versions are **not in the zip export** (it holds each file as it is now), and the Export screen says so.
+- Notes and earlier versions are **not in the zip export** (it holds each file as it is now), and the Export / Import page says so.
 - Up to 3 earlier versions per file, each kept 30 days (a TTL index on `expiresAt`, as for Trash). Version bytes count against the
   account's storage quota; a new version that does not fit is refused with the normal upload error.
 - A file purged from Trash, a version past its date, and an account deletion each remove the version records, which hold their own

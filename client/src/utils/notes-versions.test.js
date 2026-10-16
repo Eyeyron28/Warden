@@ -179,7 +179,7 @@ test('"Upload new version" is in the file menu and the details panel, and notes 
 });
 
 test('the export screen says notes and earlier versions are not in the zip', () => {
-  assert.match(words('pages/ExportPage.jsx'), /private notes and earlier versions are not included/);
+  assert.match(words('pages/ExportPage.jsx'), /Not included: Trash, share links, previews, private notes and earlier versions/);
   // and the zip really is built from the current files only
   const zip = strip(read('utils/zipExport.js'));
   assert.doesNotMatch(zip, /note|version/i);

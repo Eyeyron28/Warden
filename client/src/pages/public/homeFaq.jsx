@@ -198,7 +198,7 @@ export const FAQ_ITEMS = [
     question: 'Can I get all my files out?',
     answer: (
       <p>
-        Yes. Choose Export in the vault and download everything as one .zip, with your folders and original file names.
+        Yes. Choose Export / Import in the vault and download everything as one .zip, with your folders and original file names.
         It is built in your browser from the same downloads you could make one by one. The zip is not encrypted:
         anyone who gets it can open it, so keep it somewhere safe. Trash, share links and previews are not included.
         You can also import a zip back, through the normal upload (the same storage limit and 4 MB per file).
