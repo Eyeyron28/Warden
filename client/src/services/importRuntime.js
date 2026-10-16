@@ -4,6 +4,7 @@ import { reportClientEvent } from './securityService.js';
 import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { inspectZip, runImport } from '../utils/zipImport.js';
 import { uploadSlots } from './uploadSlots.js';
+import { quarantineCount } from './quarantineCount.js';
 
 /**
  * What the import job actually does with the world: the zip code, the upload, the folder creation, and what follows a finished
@@ -18,7 +19,9 @@ export const runtime = {
   uploadFile: async (file, folder) => {
     await uploadSlots.acquire();
     try {
-      return await uploadDocument({ file, folder });
+      const stored = await uploadDocument({ file, folder });
+      if (stored?.held) quarantineCount.bump(1); // held in Quarantine: the sidebar badge follows
+      return stored;
     } finally {
       uploadSlots.release();
     }

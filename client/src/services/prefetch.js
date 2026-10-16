@@ -28,7 +28,7 @@ const FIRST_SCREEN = {
 };
 
 // Every signed-in page: the session check itself (GET /auth/me) also starts now instead of after the page has rendered.
-const APP_PATHS = new Set(['/files', '/photos', '/starred', '/recent', '/shared', '/trash', '/export', '/overview', '/devices', '/account', '/emergency-access']);
+const APP_PATHS = new Set(['/files', '/photos', '/starred', '/recent', '/shared', '/trash', '/export', '/overview', '/devices', '/account', '/emergency-access', '/quarantine']);
 
 export function prefetchFirstScreen(pathname) {
   if (!getToken() || wasEmergencyTab()) return;

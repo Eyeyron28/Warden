@@ -22,5 +22,25 @@ const subscribe = (listener) => {
 /** The map { path: { color, icon } }, re-rendering when it changes. */
 export const useFolderStyles = () => useSyncExternalStore(subscribe, getFolderStyles, getFolderStyles);
 
-// One session never sees another's folders.
-subscribeToken(() => setFolderStyles({}));
+// How many files are held in Quarantine (the sidebar badge). It rides on the same top-level answer, and moves with what this tab does
+// (a held upload, a release, a delete), so it costs no request of its own. In memory only.
+let held = 0;
+export const quarantineCount = {
+  set(next) {
+    const value = Math.max(0, next | 0);
+    if (value === held) return;
+    held = value;
+    listeners.forEach((listener) => listener());
+  },
+  bump(by = 1) {
+    this.set(held + by);
+  },
+};
+const getHeld = () => held;
+export const useQuarantineCount = () => useSyncExternalStore(subscribe, getHeld, getHeld);
+
+// One session never sees another's folders (or held files).
+subscribeToken(() => {
+  setFolderStyles({});
+  quarantineCount.set(0);
+});

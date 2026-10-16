@@ -1,6 +1,7 @@
 import api from './api.js';
 import { fetchCached, peek } from './dataCache.js';
 import { setFolderStyles } from './folderStyles.js';
+import { quarantineCount } from './quarantineCount.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
 import { newUploadKey } from '../utils/uuid.js';
 import { filenameFromDisposition, sanitizeDownloadName } from '../utils/fileNames.js';
@@ -323,6 +324,8 @@ export function listFolderChildren(path = '', options) {
       const { data } = await api.get('/documents/folders/children', { params: { path } });
       // The top-level answer also holds the look of every styled folder (see services/folderStyles.js).
       if (path === '' && data?.styles) setFolderStyles(data.styles);
+      // ... and how many files are held in Quarantine (the sidebar badge).
+      if (path === '') quarantineCount.set(data?.heldCount);
       return data;
     },
     options

@@ -37,6 +37,7 @@ const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage.jsx'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage.jsx'));
+const QuarantinePage = lazy(() => import('./pages/QuarantinePage.jsx'));
 const WasntMePage = lazy(() => import('./pages/auth/WasntMePage.jsx'));
 const EmergencyAccessPage = lazy(() => import('./pages/EmergencyAccessPage.jsx'));
 const EmergencyContactPage = lazy(() => import('./pages/EmergencyContactPage.jsx'));
@@ -165,6 +166,7 @@ function App() {
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/emergency-access" element={<EmergencyAccessPage />} />
+          <Route path="/quarantine" element={<QuarantinePage />} />
         </Route>
         <Route path="/vault" element={<Navigate to="/files" replace />} />
         <Route path="/shares" element={<Navigate to="/shared" replace />} />

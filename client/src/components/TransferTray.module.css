@@ -187,6 +187,10 @@
   color: var(--color-danger);
 }
 
+.statusHeld {
+  color: var(--color-text);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -276,6 +280,15 @@
 
 .ring[data-ring='failed'] .ringArc {
   stroke-dasharray: 5 4;
+}
+
+/* Held in Quarantine: amber, a closed ring with a shield. Not saved (refused): red, a closed ring with a bar. */
+.ring[data-ring='held'] {
+  color: var(--color-warn);
+}
+
+.ring[data-ring='refused'] {
+  color: var(--color-danger);
 }
 
 .lock,

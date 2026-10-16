@@ -53,7 +53,7 @@ const DIALOG_SIZES = [
   { name: '1366x768', width: 1366, height: 768 },
 ];
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/forgot-password', '/privacy', '/terms', '/emergency'];
-const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent', '/export'];
+const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent', '/export', '/quarantine'];
 
 // ---------- the real app, locally ----------
 const load = Module._load;
@@ -735,6 +735,100 @@ try {
       await context.close();
     }
 
+    // Quarantine: the page (a list with a 255-character name, empty, error) and the release dialog, no sideways scroll, big enough buttons.
+    {
+      const heldNames = [`${'quarterly_statement_'.repeat(14).slice(0, 251)}.pdf`, 'invoice.pdf.exe', 'helper-script.js'];
+      const bodies = [
+        Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction 2 0 R /JavaScript 3 0 R >>\nendobj\n%%EOF\n'),
+        Buffer.from('just words, not a program'),
+        Buffer.from('PK\u0003\u0004 plain'),
+      ];
+      for (const [index, name] of heldNames.entries()) {
+        const form = new FormData();
+        form.append('file', new Blob([bodies[index]], { type: 'application/octet-stream' }), name);
+        await fetch(`${base}/api/documents`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
+      }
+    }
+    for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__csp = [];
+        document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
+      }, token);
+      let mode = 'real';
+      await context.route('**/api/quarantine', async (route) => {
+        if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ count: 0, items: [] }) });
+        if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Something went wrong on our side. Please try again.', status: 500 } }) });
+        return route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      const shot = async (state) => { if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `quarantine-${state}-${process.env.THEME || 'light'}-${size.name}.png`) }); };
+      const measure = async (selector) => page.evaluate((sel) => {
+        const doc = document.documentElement;
+        const el = document.querySelector(sel);
+        const r = el ? el.getBoundingClientRect() : null;
+        const buttons = el ? [...el.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().width > 0).map((b) => Math.round(b.getBoundingClientRect().height)) : [];
+        const wideNodes = el ? [...el.querySelectorAll('*')].filter((n) => n.getBoundingClientRect().right > doc.clientWidth + 1) : [];
+        const wide = wideNodes.length;
+        const wideNames = wideNodes.slice(0, 4).map((n) => `${n.tagName.toLowerCase()}.${String(n.className).slice(0, 28)}`).join(', ');
+        return { hScroll: doc.scrollWidth > doc.clientWidth + 1, rect: r && { x: r.x, y: r.y, right: r.right, bottom: r.bottom }, minButton: buttons.length ? Math.min(...buttons) : null, wide, wideNames, vw: doc.clientWidth, vh: window.innerHeight };
+      }, selector);
+      try {
+        await page.goto(base + '/quarantine', { waitUntil: 'networkidle' });
+        await page.getByTestId('quarantine-list').waitFor();
+        const found = [];
+        const info = await measure('main, [data-testid="quarantine-list"]');
+        const rowsCount = await page.getByTestId('quarantine-row').count();
+        if (rowsCount < 3) found.push(`expected 3 held rows, found ${rowsCount}`);
+        if (info.hScroll) found.push('the page scrolls sideways');
+        if (info.wide) found.push(`${info.wide} parts run past the right edge (${info.wideNames})`);
+        if (info.minButton !== null && info.minButton < 43) found.push(`a button is ${info.minButton}px tall`);
+        if (!(await page.locator('[title^="quarterly_statement_"]').first().getAttribute('title'))) found.push('the 255-character name has no tooltip');
+        const nameBox = await page.locator('[title^="quarterly_statement_"]').first().boundingBox();
+        if (nameBox && nameBox.x + nameBox.width > size.width) found.push('the long name runs off the screen');
+        await shot('list');
+        record('Quarantine page (3 held, 255-character name)', found);
+
+        // the release dialog
+        const dialogFound = [];
+        await page.getByRole('button', { name: /^Release quarterly/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Release this file?' });
+        await dialog.waitFor();
+        await page.waitForTimeout(250);
+        const box = await dialog.boundingBox();
+        if (!box || box.x < -1 || box.y < -1 || box.x + box.width > size.width + 1 || box.y + box.height > size.height + 1) dialogFound.push(`the dialog is outside the screen ${JSON.stringify(box)}`);
+        const dInfo = await measure('[data-testid="release-dialog"]');
+        if (dInfo.hScroll) dialogFound.push('the page scrolls sideways with the dialog open');
+        if (dInfo.minButton !== null && dInfo.minButton < 43) dialogFound.push(`a dialog button is ${dInfo.minButton}px tall`);
+        if (!(await dialog.getByRole('button', { name: 'Release file' }).isDisabled())) dialogFound.push('Release is on before the word is typed');
+        await shot('release-dialog');
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'detached' }).catch(() => dialogFound.push('Escape did not close the dialog'));
+        record('Quarantine release dialog', dialogFound);
+
+        // the empty and error states
+        for (const [state, expected, label] of [['empty', 'quarantine-empty', 'Quarantine page (empty)'], ['error', 'quarantine-error', 'Quarantine page (error)']]) {
+          mode = state;
+          await page.goto(base + '/quarantine', { waitUntil: 'networkidle' });
+          const stateFound = [];
+          await page.getByTestId(expected).waitFor({ timeout: 6000 }).catch(() => stateFound.push(`no ${expected}`));
+          const sInfo = await measure('main');
+          if (sInfo.hScroll) stateFound.push('the page scrolls sideways');
+          await shot(state);
+          record(label, stateFound);
+        }
+        mode = 'real';
+        const csp = await page.evaluate(() => window.__csp);
+        if (csp.length) record('Quarantine page (CSP)', [`CSP violations: ${csp.join('; ')}`]);
+      } catch (error) {
+        record('Quarantine page', [`could not be checked: ${String(error.message).replace(/\s+/g, ' ').slice(0, 300)}`]);
+      }
+      await context.close();
+    }
+
     // Finished, and with the update bar: a context that has a service worker controller before the import starts.
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
@@ -828,7 +922,7 @@ try {
         const doc = document.documentElement;
         return { nav: { top: r.top, bottom: r.bottom, right: r.right }, account: { top: account.top, bottom: account.bottom, h: account.height }, groups, items, small, hScroll: doc.scrollWidth > doc.clientWidth + 1, navScroll: nav.scrollWidth > nav.clientWidth + 1, vh: window.innerHeight };
       });
-      const ORDER = ['/files', '/photos', '/recent', '/starred', '/shared', '/overview', '/devices', '/export', '/emergency-access', '/trash', '/account'];
+      const ORDER = ['/files', '/photos', '/recent', '/starred', '/shared', '/overview', '/devices', '/export', '/emergency-access', '/quarantine', '/trash', '/account'];
       const judge = (info, found, where) => {
         if (info.hScroll) found.push(`${where}: the page scrolls sideways`);
         if (info.navScroll) found.push(`${where}: the sidebar scrolls sideways`);

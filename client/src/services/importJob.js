@@ -191,7 +191,7 @@ export function createImportJobManager(deps) {
         },
         onResult: (item) => {
           if (!live) return;
-          live.results.push({ path: item.path, status: item.status, ...(item.reason ? { reason: item.reason } : {}), ...(item.savedAs ? { savedAs: item.savedAs } : {}) });
+          live.results.push({ path: item.path, status: item.status, ...(item.reason ? { reason: item.reason } : {}), ...(item.savedAs ? { savedAs: item.savedAs } : {}), ...(item.reasons ? { reasons: item.reasons } : {}) });
           if (item.status === 'imported') live.bytesDone += item.size || 0;
           // A request the server refused because the session is over: stop here instead of failing every file that is left.
           if (item.sessionEnded && !live.stopReason) {

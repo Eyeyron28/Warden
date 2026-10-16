@@ -146,6 +146,7 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
   const zip = await JSZip.loadAsync(bytes);
   const failures = [];
   let uploaded = 0;
+  let held = 0; // saved, but held in Quarantine (not counted as imported)
   let done = 0;
   let quotaHit = false;
   const total = plan.files.length;
@@ -189,8 +190,13 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
         } else {
           // eslint-disable-next-line no-await-in-loop
           const stored = await uploadFile(new File([data], item.name), item.dir);
-          uploaded += 1;
-          onResult({ path: shown, status: 'imported', size: item.size, ...(stored?.nameChanged ? { savedAs: stored.filename } : {}) });
+          if (stored?.held) {
+            held += 1;
+            onResult({ path: shown, status: 'held', size: item.size, reasons: (stored.reasons || []).map((r) => r.code) });
+          } else {
+            uploaded += 1;
+            onResult({ path: shown, status: 'imported', size: item.size, ...(stored?.nameChanged ? { savedAs: stored.filename } : {}) });
+          }
         }
       } catch (error) {
         const code = error?.response?.data?.error?.code;
@@ -199,6 +205,11 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
           const reason = 'Your storage is full (the rest were not tried)';
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'failed', reason, size: item.size });
+        } else if (code === 'FILE_BLOCKED') {
+          // Quarantine refused it outright: nothing was saved.
+          const reason = 'Not saved: it matches a rule that Warden refuses outright';
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'refused', reason, size: item.size, reasons: (error.response.data.error.reasons || []).map((r) => r.code) });
         } else {
           const reason = error?.response?.data?.error?.message || error?.message || 'Could not be uploaded';
           failures.push({ path: shown, reason });
@@ -216,5 +227,5 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
       failures.push({ path: item.dir ? `${item.dir}/${item.name}` : item.name, reason: 'Not uploaded: your storage is full' });
     }
   }
-  return { uploaded, failures, cancelled: Boolean(signal?.aborted), quotaHit };
+  return { uploaded, held, failures, cancelled: Boolean(signal?.aborted), quotaHit };
 }

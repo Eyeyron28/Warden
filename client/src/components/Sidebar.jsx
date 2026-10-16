@@ -19,10 +19,21 @@ import {
 } from '@phosphor-icons/react';
 
 import FolderTree from './FolderTree.jsx';
+import { useQuarantineCount } from '../services/quarantineCount.js';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Sidebar.module.css';
 
 const ICON = 22;
+
+/** A small shield with a mark, drawn here (a library icon would add more to the main bundle than the whole item needs). */
+function QuarantineIcon() {
+  return (
+    <svg width={ICON} height={ICON} viewBox="0 0 256 256" className={styles.shield} aria-hidden="true">
+      <path d="M128 28 44 60v60c0 50 34 88 84 108 50-20 84-58 84-108V60Z" />
+      <path d="M128 92v52m0 24v4" />
+    </svg>
+  );
+}
 
 /**
  * One labelled group of links (Main, Management, System). In the icon rail the small uppercase label becomes a thin divider, but it
@@ -62,6 +73,7 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
   const [tip, setTip] = useState(null); // { text, top, left }
 
   const rail = collapsed && !drawer;
+  const held = useQuarantineCount();
   const ids = useId().replace(/:/g, '');
 
   useFocusTrap(navRef, drawer && open, { opener: 'activation' });
@@ -74,6 +86,8 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawer, open, onClose]);
+
+  // (The held-files count rides on the top level of the folder tree, which is asked for before the rail can be chosen.)
 
   // A tooltip left behind by a collapse/expand would point at nothing.
   useEffect(() => setTip(null), [rail]);
@@ -185,6 +199,15 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
             <NavLink to="/emergency-access" className={navClass} onClick={closeDrawer} {...tipFor('Emergency Access')}>
               <Lifebuoy size={ICON} weight="regular" aria-hidden="true" />
               {label('Emergency Access')}
+            </NavLink>
+            <NavLink to="/quarantine" className={navClass} onClick={closeDrawer} {...tipFor('Quarantine')}>
+              <QuarantineIcon />
+              {label('Quarantine')}
+              {held > 0 && (
+                <span className={styles.badge} data-testid="quarantine-badge" title={`${held} held`}>
+                  {held}
+                </span>
+              )}
             </NavLink>
             <NavLink to="/trash" className={navClass} onClick={closeDrawer} {...tipFor('Trash')}>
               <Trash size={ICON} weight="regular" aria-hidden="true" />

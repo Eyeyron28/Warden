@@ -173,6 +173,8 @@ export function createTransfersManager(deps) {
         resultId: data?.id ?? row.documentId ?? null,
         destination: row.kind === 'upload' ? folder : folder || row.destination,
         savedAs: data?.nameChanged ? data.filename : null,
+        // Quarantine: saved, but held for review (reason codes only).
+        held: data?.held,
       });
     } catch (error) {
       if (batch) batch.touched = true; // a canceled or failed request may still have been saved: the lists are read again

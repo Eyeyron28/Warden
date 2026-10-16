@@ -10,7 +10,24 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const WORKING = new Set(['waiting', 'sending', 'sealing']);
 
 /** The ring of a row: idle (waiting), progress (bytes sent), pulse (the server is sealing), sealed (a lock), failed. */
-export const RING = Object.freeze({ IDLE: 'idle', PROGRESS: 'progress', PULSE: 'pulse', SEALED: 'sealed', FAILED: 'failed' });
+export const RING = Object.freeze({ IDLE: 'idle', PROGRESS: 'progress', PULSE: 'pulse', SEALED: 'sealed', FAILED: 'failed', HELD: 'held', REFUSED: 'refused' });
+
+/** Short words for the scanner's reason codes (the Quarantine page shows the full sentences, which the server sends). */
+const SHORT_REASON = Object.freeze({
+  TYPE_MISMATCH: 'name and content do not match',
+  DOUBLE_EXTENSION: 'program-like file name',
+  PDF_ACTIVE: 'PDF with active content',
+  OFFICE_MACRO: 'contains macros',
+  ACTIVE_MARKUP: 'contains script code',
+  ARCHIVE_ABUSE: 'unsafe archive',
+  EXECUTABLE_CONTENT: 'it is a program',
+  KNOWN_TEST_SIGNATURE: 'antivirus test file',
+});
+export const shortReasons = (codes) => {
+  const words = (codes || []).map((code) => SHORT_REASON[code]).filter(Boolean);
+  if (words.length === 0) return '';
+  return words.length === 1 ? words[0] : `${words[0]} and ${words.length - 1} more`;
+};
 
 function rowOfTransfer(t) {
   const common = { id: `t${t.id}`, source: 'transfer', transferId: t.id, kind: t.kind, name: t.name, size: t.size, phase: t.phase, working: WORKING.has(t.phase) };
@@ -23,6 +40,11 @@ function rowOfTransfer(t) {
     case 'sealing':
       return { ...common, line: 'Sealing: the server is encrypting and saving', ring: RING.PULSE, percent: 100, actions: { cancel: true, retry: false, dismiss: false, show: null } };
     case 'sealed':
+      if (t.held) {
+        // Saved, but held in Quarantine until the owner decides: amber, with a way to the page.
+        const why = shortReasons(t.held);
+        return { ...common, held: true, line: `Held for review${why ? `: ${why}` : ''}`, ring: RING.HELD, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: '/quarantine' }, showLabel: 'Open Quarantine' };
+      }
       return {
         ...common,
         line: t.savedAs ? `Sealed as "${t.savedAs}"` : t.kind === 'newVersion' ? 'New version sealed' : 'Sealed',
@@ -33,6 +55,10 @@ function rowOfTransfer(t) {
     case 'canceled':
       return { ...common, line: t.error?.message || 'Canceled', ring: RING.FAILED, percent, warn: Boolean(t.error?.maybeSaved), actions: { cancel: false, retry: false, dismiss: true, show: null } };
     default:
+      if (t.error?.refused) {
+        const why = t.error.version ? 'looks risky, the current version is kept' : shortReasons(t.error.reasons);
+        return { ...common, failed: true, refused: true, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: null } };
+      }
       return { ...common, line: t.error?.message || 'Failed', ring: RING.FAILED, percent, failed: true, actions: { cancel: false, retry: Boolean(t.error?.retryable), dismiss: true, show: null } };
   }
 }
@@ -73,12 +99,19 @@ export function buildTray(transfers, job) {
   const importRemaining = importRow?.working ? Math.max(1, importRow.importFiles.total - importRow.importFiles.done) : 0;
   const filesWorking = uploadsWorking + importRemaining;
   const failed = rows.filter((row) => row.failed).length;
-  const sealedUploads = rows.filter((row) => row.source === 'transfer' && row.phase === 'sealed').length;
+  const held = rows.filter((row) => row.held).length;
+  const refused = rows.filter((row) => row.refused).length;
+  const sealedUploads = rows.filter((row) => row.source === 'transfer' && row.phase === 'sealed' && !row.held).length;
   const sealed = sealedUploads + (importRow && !importRow.working && importRow.importDone ? importRow.importDone.uploaded : 0);
 
   let title;
   if (filesWorking > 0) title = importRow?.working && uploadsWorking === 0 ? `Importing ${plural(importRow.importFiles.total, 'file')}` : `Sealing ${plural(filesWorking, 'file')}`;
-  else if (failed > 0 && sealed > 0) title = `Sealed ${sealed}, ${failed} failed`;
+  else if (held > 0 || refused > 0) {
+    // Quarantine outcomes: "Sealed 2, 1 held", "1 file held for review", "1 not saved".
+    const bad = failed - refused;
+    const parts = [sealed > 0 ? `Sealed ${sealed}` : null, held > 0 ? `${held} held` : null, bad > 0 ? `${bad} failed` : null, refused > 0 ? `${refused} not saved` : null].filter(Boolean);
+    title = parts.length === 1 && held > 0 ? `${plural(held, 'file')} held for review` : parts.length === 1 && refused > 0 ? `${refused} not saved` : parts.join(', ');
+  } else if (failed > 0 && sealed > 0) title = `Sealed ${sealed}, ${failed} failed`;
   else if (failed > 0) title = `${failed} failed`;
   else if (sealed > 0) title = `${plural(sealed, 'file')} sealed`;
   else title = rows.length ? 'Canceled' : '';
@@ -97,7 +130,8 @@ export function buildTray(transfers, job) {
     running: working.length > 0,
     anyFailed: failed > 0,
     // the tray closes by itself only when nothing runs and nothing failed
-    autoDismiss: rows.length > 0 && working.length === 0 && failed === 0,
+    // (a held file needs a decision, so it keeps the tray open until it is dismissed, like a failure)
+    autoDismiss: rows.length > 0 && working.length === 0 && failed === 0 && held === 0,
     announce: transfers.announce || job.announce || '',
   };
 }

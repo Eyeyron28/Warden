@@ -7,6 +7,7 @@ import ImportDropZone, { NOT_A_ZIP, isZipFile } from '../components/ImportDropZo
 import { fetchDocumentBytes, listDocuments, listFolders } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { reportClientEvent } from '../services/securityService.js';
+import { listHeld } from '../services/quarantineService.js';
 import { buildExportZip, exportFileName } from '../utils/zipExport.js';
 import { IMPORT_LIMITS, inspectZip } from '../utils/zipImport.js';
 import { BLOCKED_MESSAGE, importJob, useImportJob } from '../services/importJob.js';
@@ -39,8 +40,11 @@ function saveBlob(blob, filename) {
 /** The last import's report: kept in memory until the next import, a reload or a sign-out (not only while the card is up). */
 function ImportReport({ job }) {
   const imported = job.results.filter((item) => item.status === 'imported');
+  // Quarantine: saved but held for review, and refused outright (nothing saved), are counted apart from the problems.
+  const heldItems = job.results.filter((item) => item.status === 'held');
+  const refusedItems = job.results.filter((item) => item.status === 'refused');
   const problems = [
-    ...job.results.filter((item) => item.status !== 'imported').map((item) => ({ path: item.path, reason: item.reason || 'Not imported' })),
+    ...job.results.filter((item) => item.status !== 'imported' && item.status !== 'held' && item.status !== 'refused').map((item) => ({ path: item.path, reason: item.reason || 'Not imported' })),
     ...job.ignored,
     ...job.skipped,
   ];
@@ -54,9 +58,15 @@ function ImportReport({ job }) {
       ) : (
         <p>
           {heading}
-          {plural(job.uploaded, 'file')} imported{problems.length ? `, ${plural(problems.length, 'problem')}` : ''}.
+          {plural(job.uploaded, 'file')} imported{heldItems.length ? `, ${heldItems.length} held in Quarantine` : ''}{refusedItems.length ? `, ${refusedItems.length} not saved` : ''}{problems.length ? `, ${plural(problems.length, 'problem')}` : ''}.
           {job.message ? ` ${job.message}` : ''}{' '}
           <Link to={filesLink(job.destination)}>Open {job.destination ? `"${job.destination}"` : 'My files'}</Link>
+          {heldItems.length > 0 && (
+            <>
+              {' '}
+              <Link to="/quarantine">Review the held files</Link>
+            </>
+          )}
         </p>
       )}
       {renamed.length > 0 && (
@@ -64,6 +74,7 @@ function ImportReport({ job }) {
           {plural(renamed.length, 'file')} {renamed.length === 1 ? 'was' : 'were'} saved with a number added to the name, because a file with that name already existed.
         </p>
       )}
+      <FailureList items={refusedItems.map((item) => ({ path: item.path, reason: item.reason }))} title="Not saved" />
       <FailureList items={problems} title="Not imported" />
       {imported.length > 0 && (
         <details className={styles.failures}>
@@ -118,7 +129,8 @@ function ExportPage() {
     exportAbort.current = controller;
     setExportState({ phase: 'running', done: 0, total: 0, bytes: 0, current: '', stage: 'Listing your files…' });
     try {
-      const [documents, folderPaths] = await Promise.all([listDocuments(), listFolders()]);
+      // (files held in Quarantine are not in the list, so they are not in the zip; the count says how many were left out)
+      const [documents, folderPaths, heldNow] = await Promise.all([listDocuments(), listFolders(), listHeld().then((data) => data.count, () => 0)]);
       if (documents.length === 0 && folderPaths.length <= 1) {
         setExportState({ phase: 'empty' });
         return;
@@ -141,7 +153,7 @@ function ExportPage() {
       const name = exportFileName();
       saveBlob(result.blob, name);
       reportClientEvent('export');
-      setExportState({ phase: 'done', name, added: result.added, bytes: result.bytes, failures: result.failures, zipBytes: result.blob.size });
+      setExportState({ phase: 'done', name, added: result.added, bytes: result.bytes, failures: result.failures, zipBytes: result.blob.size, heldLeftOut: heldNow });
     } catch (err) {
       if (!isSessionExpired(err)) setExportState({ phase: 'error', message: extractErrorMessage(err, 'The export could not be built.') });
     }
@@ -256,6 +268,11 @@ function ExportPage() {
                   <strong>{e.name}</strong> was saved: {plural(e.added, 'file')} ({formatBytes(e.bytes)} of files, {formatBytes(e.zipBytes)} zipped)
                   {e.failures.length ? `, and ${plural(e.failures.length, 'file')} could not be added.` : '.'}
                 </p>
+                {e.heldLeftOut > 0 && (
+                  <p className={styles.small} data-testid="export-held-note">
+                    {plural(e.heldLeftOut, 'file')} held in Quarantine {e.heldLeftOut === 1 ? 'was' : 'were'} left out of the zip.
+                  </p>
+                )}
                 <FailureList items={e.failures} title="Not in the zip" />
                 {e.failures.length > 0 && <p className={styles.small}>The zip also contains warden-export-report.txt with this list.</p>}
               </div>

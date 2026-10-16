@@ -31,10 +31,24 @@ const ACTIVITY = {
   version_created: 'New version uploaded',
   version_restored: 'Earlier version restored',
   version_deleted: 'Earlier version deleted',
+  file_held: 'Held in Quarantine',
+  file_released: 'Released from Quarantine',
 };
 
 const FINGERPRINT_HELP =
   'A short fingerprint of the file: the first 12 characters of its checksum. Two files with the same fingerprint have the same contents. It does not reveal anything about what is inside.';
+
+/** What the upload scan said, in a line: "Clean (rules v1, Oct 9, 2026)", "Not scanned", "Released after review". */
+export function scanLine(scan) {
+  if (!scan) return 'Not scanned';
+  const when = scan.at ? `, ${formatDate(scan.at)}` : '';
+  const rules = scan.version ? `rules v${scan.version}${when}` : when.slice(2);
+  if (scan.state === 'released') return 'Released after review';
+  if (scan.state === 'held') return `Held for review (${rules})`;
+  if (scan.verdict === 'unchecked') return 'Not scanned (the check could not run)';
+  if (scan.verdict === 'suspicious') return `Looked risky (${rules})`;
+  return `Clean (${rules})`;
+}
 
 const kindLabel = (details) => {
   const type = details.type && details.type !== 'none' ? details.type : null;
@@ -167,6 +181,7 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onCl
                   )}
                 </Row>
                 {details.purposes.length > 0 && <Row label="Purpose">{details.purposes.join(', ')}</Row>}
+                <Row label="Scan">{scanLine(details.scan)}</Row>
                 <Row label="Fingerprint">
                   <span className={styles.fingerprint}>
                     <code>{details.fingerprint}</code>

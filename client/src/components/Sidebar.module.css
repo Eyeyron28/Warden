@@ -258,6 +258,47 @@
 }
 
 /* In the icon rail a label is a thin divider (still read out by screen readers). */
+.shield {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.badge {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-warn);
+  color: var(--color-bg);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* In the icon rail the count sits on the corner of the icon. */
+.rail .badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-warn);
+  color: var(--color-bg);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.rail .item {
+  position: relative;
+}
+
 .groupLabelRail {
   position: absolute;
   width: 1px;

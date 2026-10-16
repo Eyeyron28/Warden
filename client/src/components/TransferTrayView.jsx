@@ -1,4 +1,4 @@
-import { CaretDown, CaretUp, LockSimple, Vault, WarningCircle, X } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, LockSimple, Prohibit, ShieldWarning, Vault, WarningCircle, X } from '@phosphor-icons/react';
 
 import FileNameLabel from './FileNameLabel.jsx';
 import FileTypeIcon from './FileTypeIcon.jsx';
@@ -12,7 +12,7 @@ const C = 2 * Math.PI * R;
 
 /** The seal ring: fills as bytes are sent, pulses while the server seals, closes into a lock; a warning ring when it failed. */
 export function SealRing({ ring, percent = 0, small = false }) {
-  const filled = ring === RING.SEALED ? 100 : ring === RING.PULSE ? 100 : ring === RING.PROGRESS ? percent : ring === RING.FAILED ? 100 : 0;
+  const filled = ring === RING.SEALED || ring === RING.HELD || ring === RING.REFUSED ? 100 : ring === RING.PULSE ? 100 : ring === RING.PROGRESS ? percent : ring === RING.FAILED ? 100 : 0;
   return (
     <span className={`${styles.ring} ${small ? styles.ringSmall : ''}`} data-ring={ring} aria-hidden="true">
       <svg viewBox="0 0 36 36" className={styles.ringSvg}>
@@ -21,6 +21,8 @@ export function SealRing({ ring, percent = 0, small = false }) {
       </svg>
       {ring === RING.SEALED && <LockSimple size={small ? 11 : 15} weight="fill" className={styles.lock} />}
       {ring === RING.FAILED && <WarningCircle size={small ? 11 : 15} weight="fill" className={styles.warn} />}
+      {ring === RING.HELD && <ShieldWarning size={small ? 11 : 15} weight="fill" className={styles.warn} />}
+      {ring === RING.REFUSED && <Prohibit size={small ? 11 : 15} weight="fill" className={styles.warn} />}
     </span>
   );
 }
@@ -37,7 +39,7 @@ function Row({ row, onAction }) {
           <FileNameLabel name={row.name} className={styles.rowName} />
           {row.size > 0 && <span className={styles.size}>{formatBytes(row.size)}</span>}
         </span>
-        <span className={`${styles.status} ${row.failed ? styles.statusFailed : ''}`} data-testid="transfer-status">
+        <span className={`${styles.status} ${row.refused ? styles.statusFailed : row.held ? styles.statusHeld : row.failed ? styles.statusFailed : ''}`} data-testid="transfer-status">
           {row.line}
         </span>
         <span className={styles.actions}>
@@ -52,8 +54,8 @@ function Row({ row, onAction }) {
             </button>
           )}
           {row.actions.show && (
-            <button type="button" className={styles.action} data-action="show" data-target={row.actions.show} onClick={() => onAction(row, 'show')} aria-label={row.actions.show === '/export' ? `Show details of ${row.name}` : `Show ${row.name} in its folder`}>
-              {row.actions.show === '/export' ? 'Show details' : 'Show in folder'}
+            <button type="button" className={styles.action} data-action="show" data-target={row.actions.show} onClick={() => onAction(row, 'show')} aria-label={row.actions.show === '/export' ? `Show details of ${row.name}` : row.actions.show === '/quarantine' ? `Open Quarantine for ${row.name}` : `Show ${row.name} in its folder`}>
+              {row.actions.show === '/export' ? 'Show details' : row.showLabel || 'Show in folder'}
             </button>
           )}
           {row.actions.dismiss && (

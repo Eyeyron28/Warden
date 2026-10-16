@@ -12,6 +12,7 @@
     "check:responsive": "node scripts/check-responsive.mjs",
     "check:import": "node scripts/check-import.mjs",
     "check:transfers": "node scripts/check-transfers.mjs",
+    "check:quarantine": "node scripts/check-quarantine.mjs",
     "check:logout": "node scripts/check-logout.mjs"
   },
   "dependencies": {

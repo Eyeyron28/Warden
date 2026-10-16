@@ -49,6 +49,7 @@ const ORDER = [
   ['/devices', 'Devices &amp; activity'],
   ['/export', 'Export / Import'],
   ['/emergency-access', 'Emergency Access'],
+  ['/quarantine', 'Quarantine'],
   ['/trash', 'Trash'],
   ['/account', 'Account'],
 ];
@@ -73,10 +74,10 @@ for (const [label, props] of [
   });
 }
 
-test('Trash is the last item of System, after Emergency Access; Overview, Devices and Export / Import are Management', () => {
+test('Trash is the last item of System, after Emergency Access and Quarantine; Overview, Devices and Export / Import are Management', () => {
   const html = render({});
   const system = html.slice(html.indexOf('data-group="System"'), html.indexOf('data-testid="sidebar-footer"'));
-  assert.deepEqual([...system.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/emergency-access', '/trash']);
+  assert.deepEqual([...system.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/emergency-access', '/quarantine', '/trash']);
   const management = html.slice(html.indexOf('data-group="Management"'), html.indexOf('data-group="System"'));
   assert.deepEqual([...management.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/overview', '/devices', '/export']);
 });

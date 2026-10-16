@@ -46,6 +46,9 @@ export function describeEvent(event) {
     case 'version_created': return `Uploaded a new version of ${file}`;
     case 'version_restored': return `Restored an earlier version of ${file}`;
     case 'version_deleted': return `Deleted an earlier version of ${file}`;
+    case 'file_held': return `Held ${file} in Quarantine`;
+    case 'file_released': return `Released ${file}`;
+    case 'file_refused': return 'Refused an upload';
     case 'emergency_configured': return 'Set up emergency access';
     case 'emergency_kit_regenerated': return 'Replaced the emergency access kit';
     case 'emergency_revoked': return 'Turned off emergency access';

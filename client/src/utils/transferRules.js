@@ -25,6 +25,7 @@ export function validateUpload(file, { usage = null, pendingBytes = 0 } = {}) {
  * retrying, so they have no Retry.
  */
 export function describeTransferError(error) {
+  if (error?.described) return error.described; // Quarantine's refusal, worded by services/transferRuntime.js
   const status = error?.response?.status;
   const code = error?.response?.data?.error?.code;
   const message = String(error?.response?.data?.error?.message || '');
