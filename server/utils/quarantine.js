@@ -61,6 +61,19 @@ function scanFields(result, now = new Date()) {
 
 const codesOf = (reasons) => (Array.isArray(reasons) ? reasons.join(',') : '');
 
+const USE_IMPORT_MESSAGE = 'Zip files go through Export / Import, so every file inside is checked. Use Export / Import to add this zip.';
+
+/** A plain zip is refused before anything is encrypted or stored (422 USE_IMPORT). Audit and security log: the reason code only. */
+async function refuseZip(req) {
+  logSecurity('file_refused', { bucket: 'PLAIN_ZIP' });
+  await recordEvent(req, 'file_refused', { detail: 'PLAIN_ZIP' });
+  const error = new Error(USE_IMPORT_MESSAGE);
+  error.status = 422;
+  error.code = 'USE_IMPORT';
+  error.reasons = describeReasons(['PLAIN_ZIP']);
+  return error;
+}
+
 /** Records a refusal (audit + security log, codes only) and returns the error to throw. */
 async function refuse(req, result) {
   logSecurity('file_refused', { bucket: codesOf(result.reasons) });
@@ -74,4 +87,4 @@ async function noteHeld(req, document, result) {
   await recordEvent(req, 'file_held', { targetId: document._id, detail: codesOf(result.reasons) });
 }
 
-module.exports = { NOT_HELD, isHeld, assertNotHeld, quarantinedError, blockedError, safeScan, scanFields, refuse, noteHeld, codesOf };
+module.exports = { refuseZip, USE_IMPORT_MESSAGE, NOT_HELD, isHeld, assertNotHeld, quarantinedError, blockedError, safeScan, scanFields, refuse, noteHeld, codesOf };

@@ -54,8 +54,8 @@ function Row({ row, onAction }) {
             </button>
           )}
           {row.actions.show && (
-            <button type="button" className={styles.action} data-action="show" data-target={row.actions.show} onClick={() => onAction(row, 'show')} aria-label={row.actions.show === '/export' ? `Show details of ${row.name}` : row.actions.show === '/quarantine' ? `Open Quarantine for ${row.name}` : `Show ${row.name} in its folder`}>
-              {row.actions.show === '/export' ? 'Show details' : row.showLabel || 'Show in folder'}
+            <button type="button" className={styles.action} data-action="show" data-target={row.actions.show} onClick={() => onAction(row, 'show')} aria-label={row.showLabel ? `${row.showLabel} (${row.name})` : row.actions.show === '/export' ? `Show details of ${row.name}` : row.actions.show === '/quarantine' ? `Open Quarantine for ${row.name}` : `Show ${row.name} in its folder`}>
+              {row.showLabel || (row.actions.show === '/export' ? 'Show details' : 'Show in folder')}
             </button>
           )}
           {row.actions.dismiss && (

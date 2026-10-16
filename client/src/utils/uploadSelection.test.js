@@ -230,3 +230,77 @@ test('"Upload new version" stays one file; the limit constant lives with the dia
   assert.doesNotMatch(strip(read('utils/transferRules.js')), /MAX_FILES_PER_UPLOAD/);
   assert.doesNotMatch(strip(read('App.jsx')) + strip(read('services/transfers.js')), /uploadSelection/);
 });
+
+// ---------- zips only through Export / Import ----------
+
+import { ZIP_MESSAGE, ZIP_REFUSAL, ZIP_ROW_REASON, isZipName, zipsNotAdded } from './uploadSelection.js';
+import { buildTray } from './trayModel.js';
+import { createTransfersManager } from '../services/transfers.js';
+import { createSlots } from '../services/uploadSlots.js';
+
+test('a name that ends in .zip (any case) is a zip; a docx, a jar and a name that only contains "zip" are not', () => {
+  for (const name of ['a.zip', 'A.ZIP', 'x.tar.zip', ' spaced.zip ']) assert.equal(isZipName(name), true, name);
+  for (const name of ['a.docx', 'tool.jar', 'zip.txt', 'zipper', 'a.zip.bin', '']) assert.equal(isZipName(name), false, name);
+});
+
+test('selection: a zip row says "Zips go through Export / Import", is skipped, does not block the others, and is flagged for the link button', () => {
+  const { items } = addFiles([], [f('ok.txt'), f('archive.zip', 100), f('also.txt')]);
+  assert.equal(items[1].error, ZIP_ROW_REASON);
+  assert.equal(items[1].zip, true);
+  const s = summarize(items);
+  assert.equal(s.valid.length, 2);
+  assert.equal(s.canUpload, true);
+  assert.equal(submitLabel(s.valid.length), 'Encrypt & upload 2 files');
+  assert.equal(rowError(f('x.zip', 0)), ZIP_ROW_REASON, 'the zip reason wins over "Empty file"');
+});
+
+test('render: a zip row shows the reason in the error style and an "Open Export / Import" button; nothing else is changed', () => {
+  const html = render({ initialFiles: [f('ok.txt'), f('archive.zip', 100)], onOpenImport() {} });
+  assert.match(html, />Zips go through Export \/ Import</);
+  assert.match(html, /data-action="open-import"[^>]*>Open Export \/ Import</);
+  assert.equal((html.match(/data-error="true"/g) || []).length, 1);
+  assert.match(html, /<button type="submit"[^>]*>Encrypt &amp; upload<\/button>/);
+  assert.doesNotMatch(render({ initialFiles: [f('ok.txt')], onOpenImport() {} }), /open-import/);
+});
+
+test('message and wording: "1 zip not added: use Export / Import."; the server message is the one in the prompt', () => {
+  assert.equal(zipsNotAdded(1), '1 zip not added: use Export / Import.');
+  assert.equal(zipsNotAdded(3), '3 zips not added: use Export / Import.');
+  assert.equal(ZIP_MESSAGE, 'Zip files go through Export / Import, so every file inside is checked. Use Export / Import to add this zip.');
+});
+
+test('tray: a zip that was not added is a "Not saved" row with the reason and a way to Export / Import; nothing is sent; it never retries', async () => {
+  let sent = 0;
+  const manager = createTransfersManager({
+    loadRuntime: async () => ({ uploadDocument: async () => { sent += 1; }, uploadNewVersion: async () => { sent += 1; }, onFinished() {} }),
+    slots: createSlots(2),
+    getToken: () => 'T',
+    subscribeToken: () => () => {},
+    window: { addEventListener() {}, removeEventListener() {} },
+  });
+  const [id] = manager.enqueue([{ kind: 'upload', file: f('archive.zip', 100), refused: ZIP_REFUSAL }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  const row = manager.getState().rows.find((r) => r.id === id);
+  assert.equal(row.phase, 'failed');
+  assert.equal(sent, 0, 'nothing was sent');
+  manager.retry(id);
+  assert.equal(manager.getState().rows[0].phase, 'failed', 'no retry');
+  const model = buildTray(manager.getState(), { status: 'idle', results: [], skipped: [], ignored: [] });
+  assert.equal(model.rows[0].line, 'Not saved: zips go through Export / Import');
+  assert.equal(model.rows[0].actions.show, '/export');
+  assert.equal(model.rows[0].showLabel, 'Open Export / Import');
+  assert.equal(model.title, '1 not saved');
+  assert.equal(manager.isRunning(), false);
+  // and the server's refusal for a zip that only looks like something else reads the same way
+  const sentRefusal = { refused: true, reasons: ['PLAIN_ZIP'], retryable: false };
+  assert.equal(buildTray({ rows: [{ id: 2, kind: 'upload', name: 'x.bin', size: 5, phase: 'failed', error: sentRefusal }], announce: '' }, { status: 'idle', results: [], skipped: [], ignored: [] }).rows[0].line, 'Not saved: zips go through Export / Import');
+});
+
+test('the dialog, the page and a new version all apply the rule, and the Export / Import page says why', () => {
+  const page = strip(read('pages/FilesPage.jsx'));
+  assert.match(page, /const zips = everything\.filter\(\(file\) => isZipName\(file\.name\)\);/);
+  assert.match(page, /saySkipped\(rejected, zips\)/);
+  assert.match(page, /if \(isZipName\(file\.name\)\) \{\s*setActionError\(ZIP_MESSAGE\);/, 'a new version from the menu');
+  assert.match(strip(read('components/DetailsVersions.jsx')), /if \(isZipName\(file\.name\)\) \{\s*setState\(\{ busy: false, message: '', error: ZIP_MESSAGE \}\);/);
+  assert.match(strip(read('pages/ExportPage.jsx')), /Zips are opened here so every file inside is checked\./);
+});

@@ -163,6 +163,10 @@ test('every sample, under every kind of name, survives upload, listing, download
       // A sample the scanner would hold or refuse (an .exe, an HTML page with a script...) is Quarantine's business: that is covered by
       // quarantine.test.js. Here it is only checked that it is never lost: refused (nothing stored) or stored under its name, held.
       const verdict = scanner.scanBuffer({ name, type: 'application/octet-stream', buffer: sample.bytes }).verdict;
+      if (scanner.isPlainZip(name, sample.bytes)) {
+        assert.equal(upload.error?.status, 422, `${sample.ext} / ${entry.note}: a plain zip is refused (Export / Import)`);
+        continue;
+      }
       if (verdict !== 'clean') {
         assert.equal(upload.error?.status ?? (upload.json?.held ? 'held' : 'saved'), verdict === 'blocked' ? 422 : 'held', `${sample.ext} / ${entry.note}`);
         continue;

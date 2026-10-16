@@ -4,6 +4,7 @@ import { ArrowCounterClockwise, DownloadSimple, Trash, UploadSimple } from '@pho
 import { deleteDocumentVersion, downloadBytes, fetchVersionBytes, getStorage, restoreDocumentVersion } from '../services/documentsService.js';
 import { transfers } from '../services/transfers.js';
 import { validateUpload } from '../utils/transferRules.js';
+import { ZIP_MESSAGE, isZipName } from '../utils/uploadSelection.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatManila } from '../utils/activityText.js';
 import { formatBytes } from '../utils/listing.js';
@@ -20,6 +21,10 @@ export function UploadVersion({ id, name, folder = '' }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    if (isZipName(file.name)) {
+      setState({ busy: false, message: '', error: ZIP_MESSAGE });
+      return;
+    }
     setState({ busy: true, message: '', error: '' });
     const usage = await getStorage().catch(() => null);
     const check = validateUpload(file, { usage });

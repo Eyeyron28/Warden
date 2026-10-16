@@ -22,6 +22,8 @@ const SHORT_REASON = Object.freeze({
   ARCHIVE_ABUSE: 'unsafe archive',
   EXECUTABLE_CONTENT: 'it is a program',
   KNOWN_TEST_SIGNATURE: 'antivirus test file',
+  PLAIN_ZIP: 'zips go through Export / Import',
+  ARCHIVE_UNINSPECTABLE: 'archive Warden cannot look inside',
 });
 export const shortReasons = (codes) => {
   const words = (codes || []).map((code) => SHORT_REASON[code]).filter(Boolean);
@@ -57,7 +59,8 @@ function rowOfTransfer(t) {
     default:
       if (t.error?.refused) {
         const why = t.error.version ? 'looks risky, the current version is kept' : shortReasons(t.error.reasons);
-        return { ...common, failed: true, refused: true, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: null } };
+        const zip = t.error.reasons?.includes('PLAIN_ZIP');
+        return { ...common, failed: true, refused: true, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: zip ? '/export' : null }, ...(zip ? { showLabel: 'Open Export / Import' } : {}) };
       }
       return { ...common, line: t.error?.message || 'Failed', ring: RING.FAILED, percent, failed: true, actions: { cancel: false, retry: Boolean(t.error?.retryable), dismiss: true, show: null } };
   }

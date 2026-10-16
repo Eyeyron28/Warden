@@ -30,8 +30,8 @@ const {
   deleteFolderTree,
 } = require('../utils/folders');
 const { sniffImageType, sniffPreviewKind, IMAGE_TYPES } = require('../utils/sniff');
-const { NOT_HELD, isHeld, assertNotHeld, safeScan, scanFields, refuse, noteHeld } = require('../utils/quarantine');
-const { describeReasons } = require('../utils/fileScanner');
+const { NOT_HELD, isHeld, assertNotHeld, safeScan, scanFields, refuse, refuseZip, noteHeld } = require('../utils/quarantine');
+const { describeReasons, isPlainZip } = require('../utils/fileScanner');
 const { freeName } = require('../utils/uniqueName');
 const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
 const { parseFolderStyle, hasStyleFields } = require('../utils/folderStyle');
@@ -199,6 +199,8 @@ const createDocument = asyncHandler(async (req, res) => {
 
   // Quarantine's scan of the plaintext, before anything is encrypted or stored. A blocked file is refused here: nothing is stored
   // or counted, and the same upload sent again is refused the same way. A suspicious one is saved but held (below).
+  // A plain zip is only accepted through Export / Import (which checks every file inside): refused here, before anything else.
+  if (isPlainZip(originalname, buffer)) throw await refuseZip(req);
   const scanResult = safeScan({ name: originalname, type: mimetype, buffer });
   if (scanResult.verdict === 'blocked') throw await refuse(req, scanResult);
   const held = scanResult.verdict === 'suspicious';

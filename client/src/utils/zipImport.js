@@ -111,6 +111,11 @@ export function inspectZip(bytes, limits = IMPORT_LIMITS) {
       skipped.push({ path: entry.name, reason: 'Password-protected entries cannot be imported' });
       continue;
     }
+    if (/\.zip$/i.test(parsed.segments[parsed.segments.length - 1] || '')) {
+      // Zips are only accepted through Export / Import, and this import never opens a zip inside a zip.
+      skipped.push({ path: entry.name, reason: 'A zip inside a zip is not imported' });
+      continue;
+    }
     if (entry.uncompressedSize > limits.maxFileBytes) {
       skipped.push({ path: entry.name, reason: 'Larger than the 4 MB a file can be' });
       continue;
@@ -203,6 +208,11 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
         if (error?.response?.status === 413 && code === 'STORAGE_QUOTA') {
           quotaHit = true;
           const reason = 'Your storage is full (the rest were not tried)';
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'failed', reason, size: item.size });
+        } else if (code === 'USE_IMPORT') {
+          // A zip that is only a zip by its bytes (renamed): the server refuses it, and the import says why.
+          const reason = 'A zip inside a zip is not imported';
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else if (code === 'FILE_BLOCKED') {

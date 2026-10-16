@@ -226,10 +226,10 @@ export function createTransfersManager(deps) {
           kind: item.kind,
           name: item.file.name,
           size: item.file.size,
-          phase: 'waiting',
-          state: 'queued',
+          phase: item.refused ? 'failed' : 'waiting',
+          state: item.refused ? 'failed' : 'queued',
           bytesDone: 0,
-          error: null,
+          error: item.refused || null,
           destination: item.destination ?? item.folder ?? '',
           resultId: null,
           documentId: item.documentId ?? null,
@@ -239,14 +239,15 @@ export function createTransfersManager(deps) {
           finishedAt: 0,
         };
         rows.push(row);
-        internal.set(id, { file: item.file, folder: item.folder, expiryDate: item.expiryDate, documentId: item.documentId, controller: null });
+        if (!item.refused) internal.set(id, { file: item.file, folder: item.folder, expiryDate: item.expiryDate, documentId: item.documentId, controller: null });
         ids.push(id);
       }
       if (ids.length === 0) return ids;
-      if (!batch) batch = { announcedStep: 0, total: 0, touched: false };
-      guardUnload(true);
-      publish({ force: true, announce: `Sealing ${ids.length} file${ids.length === 1 ? '' : 's'}.` });
-      for (const id of ids) run(rows.find((row) => row.id === id));
+      const live = ids.filter((id) => rows.find((row) => row.id === id).phase === 'waiting'); // (a refused file is only listed)
+      if (live.length && !batch) batch = { announcedStep: 0, total: 0, touched: false };
+      if (live.length) guardUnload(true);
+      publish({ force: true, announce: live.length ? `Sealing ${live.length} file${live.length === 1 ? '' : 's'}.` : '' });
+      for (const id of live) run(rows.find((row) => row.id === id));
       return ids;
     },
 

@@ -20,7 +20,7 @@ const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INV
   // the kit and code checks).
   'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY',
   // Quarantine: a refused upload, a held file that cannot be opened, a release without the typed word.
-  'FILE_BLOCKED', 'VERSION_REFUSED', 'QUARANTINED', 'RELEASE_CONFIRM']);
+  'FILE_BLOCKED', 'USE_IMPORT', 'VERSION_REFUSED', 'QUARANTINED', 'RELEASE_CONFIRM']);
 
 // What a caller is told for any server-side failure. The real error stays in the server log, next to the request id.
 const GENERIC_SERVER_ERROR = 'Something went wrong on our side. Please try again.';

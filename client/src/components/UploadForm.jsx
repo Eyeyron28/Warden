@@ -18,7 +18,7 @@ import styles from './UploadForm.module.css';
  * Pressing the button locks the form in the same instant (a ref, before any await), so Enter twice or a double click send ONE batch.
  * `initialFiles`, `initialUsage` and `initialOverflow` exist so each state can be rendered on its own.
  */
-function UploadForm({ onSubmit, onCancel, error, destinationLabel, footerEl = null, initialFiles = [], initialUsage = null, initialOverflow = 0 }) {
+function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel, footerEl = null, initialFiles = [], initialUsage = null, initialOverflow = 0 }) {
   const [items, setItems] = useState(() => addFiles([], initialFiles).items);
   const [overflow, setOverflow] = useState(initialOverflow);
   const [usage, setUsage] = useState(initialUsage);
@@ -178,6 +178,11 @@ function UploadForm({ onSubmit, onCancel, error, destinationLabel, footerEl = nu
                 </span>
                 <span className={styles.rowSize}>{formatBytes(row.file.size)}</span>
                 {row.error && <span className={styles.rowReason}>{row.error}</span>}
+                {row.zip && onOpenImport && (
+                  <button type="button" className={styles.openImport} data-action="open-import" onClick={onOpenImport}>
+                    Open Export / Import
+                  </button>
+                )}
                 <button type="button" className={styles.remove} data-remove="true" onClick={() => remove(row, index)} disabled={locked} aria-label={`Remove ${row.file.name}`}>
                   <X size={14} weight="bold" />
                 </button>

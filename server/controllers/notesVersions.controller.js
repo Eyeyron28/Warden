@@ -9,8 +9,8 @@ const { assertCanStore } = require('../utils/storage');
 const { downloadName, contentDisposition } = require('../utils/fileNames');
 const { toListSummary } = require('./documents.controller');
 const { MAX_VERSIONS, VERSION_MS, sealUpload, bodyOf, applyBody, trimVersions } = require('../utils/versions');
-const { assertNotHeld, safeScan, refuse, codesOf } = require('../utils/quarantine');
-const { describeReasons } = require('../utils/fileScanner');
+const { assertNotHeld, safeScan, refuse, refuseZip, codesOf } = require('../utils/quarantine');
+const { describeReasons, isPlainZip } = require('../utils/fileScanner');
 const { logSecurity } = require('../utils/securityLog');
 
 /**
@@ -140,6 +140,7 @@ const uploadVersion = asyncHandler(async (req, res) => {
 
   // Quarantine's check of the new contents. A new version that is suspicious or blocked is refused (the current version stays);
   // the person can upload it as a separate file if they want it held.
+  if (isPlainZip(uploaded.originalname, uploaded.buffer)) throw await refuseZip(req);
   const scanned = safeScan({ name: uploaded.originalname, type: uploaded.mimetype, buffer: uploaded.buffer });
   if (scanned.verdict === 'blocked') throw await refuse(req, scanned);
   if (scanned.verdict === 'suspicious') {

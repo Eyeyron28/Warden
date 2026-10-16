@@ -31,6 +31,9 @@ const REASONS = Object.freeze({
   OFFICE_MACRO: { weight: 60, severity: 'high', text: 'This Office file contains macros, small programs that can run when it is opened.' },
   ACTIVE_MARKUP: { weight: 45, severity: 'medium', text: 'This file contains script code that a browser would run.' },
   ARCHIVE_ABUSE: { weight: 50, severity: 'medium', text: 'This archive looks unsafe: too many entries, an unusual size ratio, archives inside it, odd paths, or entries that cannot be inspected.' },
+  ARCHIVE_UNINSPECTABLE: { weight: 45, severity: 'medium', text: 'Warden cannot look inside this kind of archive.' },
+  // Not a score: a plain zip is refused before scanning (see isPlainZip). The sentence is the one the refusal shows.
+  PLAIN_ZIP: { weight: 0, severity: 'low', text: 'Zip files go through Export / Import, so every file inside is checked.' },
   EXECUTABLE_CONTENT: { weight: 100, severity: 'high', text: 'This file is a program (executable), whatever its name says.' },
   KNOWN_TEST_SIGNATURE: { weight: 100, severity: 'high', text: 'This file carries the standard antivirus test signature.' },
   SCAN_ERROR: { weight: 0, severity: 'low', text: 'The check could not be completed, so the file was saved without one.' },
@@ -45,6 +48,8 @@ const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt',
 const TEXT_EXTENSIONS = new Set(['txt', 'csv', 'md', 'json', 'log', 'xml', 'html', 'htm', 'xhtml', 'svg']);
 const MARKUP_EXTENSIONS = new Set(['svg', 'html', 'htm', 'xhtml', 'xml', 'shtml']);
 const ARCHIVE_NAME = /\.(zip|jar|7z|rar|gz|tgz|tar|bz2|xz|cab)$/i;
+/** Archive formats Warden cannot look inside (by ending or by the first bytes). Zip is handled apart: see isPlainZip. */
+const UNINSPECTABLE_NAME = /\.(rar|7z|tar|gz|tgz|bz2|xz)$/i;
 
 /** What each ending is expected to look like (only endings with an unmistakable signature are checked). */
 const EXPECTED = Object.freeze({
@@ -96,6 +101,17 @@ function splitName(name) {
   const parts = clean.split('.');
   if (parts.length < 2 || (parts.length === 2 && parts[0] === '')) return { base: clean, extensions: [] };
   return { base: parts[0], extensions: parts.slice(1).map((part) => lower(part.trim())) };
+}
+
+function isUninspectableArchive(name, buffer) {
+  if (UNINSPECTABLE_NAME.test(String(name || '').trim())) return true;
+  const b = buffer;
+  if (b.length >= 6 && b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21 && b[4] === 0x1a && b[5] === 0x07) return true; // rar
+  if (b.length >= 6 && b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf && b[4] === 0x27 && b[5] === 0x1c) return true; // 7z
+  if (b.length >= 3 && b[0] === 0x1f && b[1] === 0x8b && b[2] === 0x08) return true; // gzip
+  if (b.length >= 3 && b[0] === 0x42 && b[1] === 0x5a && b[2] === 0x68) return true; // bzip2 ("BZh")
+  if (b.length >= 6 && b[0] === 0xfd && b[1] === 0x37 && b[2] === 0x7a && b[3] === 0x58 && b[4] === 0x5a && b[5] === 0x00) return true; // xz
+  return b.length >= 262 && b.toString('latin1', 257, 262) === 'ustar'; // tar
 }
 
 // ---------- the checks ----------
@@ -224,6 +240,7 @@ function scanBuffer({ name, type = '', buffer }) {
 
   if (window.includes(TEST_SIGNATURE)) found.add('KNOWN_TEST_SIGNATURE');
   if (kind === 'exe' || kind === 'elf' || kind === 'macho') found.add('EXECUTABLE_CONTENT');
+  if (isUninspectableArchive(name, buffer)) found.add('ARCHIVE_UNINSPECTABLE');
   if (checkName(name)) found.add('DOUBLE_EXTENSION');
   if (buffer.length > 0 && checkTypeMismatch(name, type, kind)) found.add('TYPE_MISMATCH');
   if (kind === 'pdf' && checkPdf(window)) found.add('PDF_ACTIVE');
@@ -242,6 +259,27 @@ function scanBuffer({ name, type = '', buffer }) {
   return { verdict, reasons, score, version: SCANNER_VERSION };
 }
 
+/**
+ * Whether an upload is a plain zip archive, which is only accepted through Export / Import (that opens it and checks every file
+ * inside; a stored zip would hide them). Two ways, neither of which trusts the name alone:
+ *   (a) the name ends in .zip; or
+ *   (b) the bytes start with a zip signature and the central directory shows no sign of a zip-based document format: no
+ *       [Content_Types].xml (Word, Excel, PowerPoint), no first entry named "mimetype" (OpenDocument, EPUB), no META-INF/ entry
+ *       (jar and similar). So renaming archive.zip to archive.bin changes nothing, and Office, OpenDocument and EPUB files pass.
+ * Reads the directory only (names), never the contents.
+ */
+function isPlainZip(name, buffer) {
+  if (/\.zip$/i.test(String(name || '').trim())) return true;
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b || (buffer[2] !== 0x03 && buffer[2] !== 0x05) || (buffer[3] !== 0x04 && buffer[3] !== 0x06)) return false;
+  const directory = readZipDirectory(buffer);
+  if (!directory || directory.zip64) return true; // a zip whose names cannot be read is not shown to be anything else
+  const names = directory.entries.map((entry) => entry.name);
+  if (names.includes('[Content_Types].xml')) return false;
+  if (names[0] === 'mimetype') return false;
+  if (names.some((entry) => entry.startsWith('META-INF/'))) return false;
+  return true;
+}
+
 /** The codes with their plain sentences and severity, for answers the browser shows. Unknown codes are dropped. */
 function describeReasons(codes) {
   return (Array.isArray(codes) ? codes : [])
@@ -258,4 +296,4 @@ function severityOf(codes) {
   }, 'low');
 }
 
-module.exports = { scanBuffer, describeReasons, severityOf, REASONS, SCANNER_VERSION, SUSPICIOUS_THRESHOLD, SEARCH_CAP, ZIP_LIMITS };
+module.exports = { scanBuffer, isPlainZip, describeReasons, severityOf, REASONS, SCANNER_VERSION, SUSPICIOUS_THRESHOLD, SEARCH_CAP, ZIP_LIMITS };

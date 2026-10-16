@@ -359,3 +359,109 @@ it('zip import: every file of an archive goes through the same upload, so each i
   assert.equal((await list(a)).length, 2);
   assert.equal((await held(a)).count, 1);
 });
+
+// ---------------- zips only through Export / Import ----------------
+
+const zipEntries = (names) => S.zip(names.map((name) => ({ name })));
+const OFFICE = () => S.zip([{ name: '[Content_Types].xml', data: '<Types/>' }, { name: 'word/document.xml', data: '<w/>' }]);
+
+it('a plain zip is refused with 422 USE_IMPORT before anything is stored or counted; a retry with the same key is refused the same way', async () => {
+  const a = await account('q.zip.refuse@example.com');
+  const before = await storage(a);
+  const key = crypto.randomUUID();
+  const first = await send(a, 'archive.zip', zipEntries(['a.txt', 'b.txt']), { uploadKey: key });
+  assert.equal(first.status, 422, first.text);
+  assert.equal(first.body.error.code, 'USE_IMPORT');
+  assert.equal(first.body.error.message, 'Zip files go through Export / Import, so every file inside is checked. Use Export / Import to add this zip.');
+  assert.deepEqual(first.body.error.reasons.map((r) => r.code), ['PLAIN_ZIP']);
+  const again = await send(a, 'archive.zip', zipEntries(['a.txt', 'b.txt']), { uploadKey: key });
+  assert.equal(again.status, 422);
+  assert.deepEqual(again.body, first.body);
+  assert.equal(await docCount(), 0, 'nothing stored');
+  assert.deepEqual(await storage(a), before, 'nothing counted against the quota');
+  const refused = await events(a, 'file_refused');
+  assert.deepEqual(refused.map((e) => e.detail), ['PLAIN_ZIP', 'PLAIN_ZIP'], 'the reason code only');
+  assert.ok(!JSON.stringify(refused).includes('archive'), 'no name in the log');
+});
+
+it('a renamed zip (.bin, .txt, no extension, a picture name) is refused too: the bytes decide, not the name', async () => {
+  const a = await account('q.zip.renamed@example.com');
+  for (const name of ['archive.bin', 'archive.txt', 'archive', 'holiday.jpg', 'ARCHIVE.ZIP']) {
+    const res = await send(a, name, zipEntries(['x.txt']));
+    assert.equal(res.status, 422, name);
+    assert.equal(res.body.error.code, 'USE_IMPORT', name);
+  }
+  assert.equal(await docCount(), 0);
+});
+
+it('Word, Excel, PowerPoint, OpenDocument and EPUB files (zips inside) upload normally and stay clean', async () => {
+  const a = await account('q.zip.office@example.com');
+  const files = {
+    'letter.docx': OFFICE(),
+    'sheet.xlsx': S.zip([{ name: '[Content_Types].xml' }, { name: 'xl/workbook.xml' }]),
+    'deck.pptx': S.zip([{ name: '[Content_Types].xml' }, { name: 'ppt/presentation.xml' }]),
+    'letter.odt': S.zip([{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml' }]),
+    'book.epub': S.zip([{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml' }]),
+    'no-extension-docx': OFFICE(),
+  };
+  for (const [name, buffer] of Object.entries(files)) {
+    const res = await send(a, name, buffer);
+    assert.equal(res.status, 201, `${name}: ${res.text}`);
+    assert.equal(res.body.held, undefined, name);
+  }
+  assert.equal((await list(a)).length, Object.keys(files).length);
+});
+
+it('jar-like names keep following the existing executable rules (a program ending is held)', async () => {
+  const a = await account('q.zip.jar@example.com');
+  const res = await send(a, 'tool.jar', S.zip([{ name: 'META-INF/MANIFEST.MF' }, { name: 'A.class' }]));
+  assert.equal(res.status, 201, res.text);
+  assert.equal(res.body.held, true);
+  assert.ok(res.body.reasons.some((r) => r.code === 'DOUBLE_EXTENSION'));
+});
+
+it('a 7z or rar (by signature or ending) is held with ARCHIVE_UNINSPECTABLE; its sentence comes with the answer', async () => {
+  const a = await account('q.archive.held@example.com');
+  const sevenZip = Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), Buffer.alloc(40, 3)]);
+  const rar = Buffer.concat([Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]), Buffer.alloc(40, 3)]);
+  for (const [name, buffer] of [['backup.7z', sevenZip], ['backup.bin', sevenZip], ['old.rar', rar], ['data.tar.gz', Buffer.from('words')]]) {
+    const res = await send(a, name, buffer);
+    assert.equal(res.status, 201, `${name}: ${res.text}`);
+    assert.equal(res.body.held, true, name);
+    assert.deepEqual(res.body.reasons.map((r) => r.code), ['ARCHIVE_UNINSPECTABLE']);
+    assert.equal(res.body.reasons[0].text, 'Warden cannot look inside this kind of archive.');
+  }
+  assert.equal((await held(a)).count, 4);
+});
+
+it('a new version that is a plain zip is refused the same way; the current version stays', async () => {
+  const a = await account('q.zip.version@example.com');
+  const id = (await send(a, 'doc.txt', Buffer.from('first contents'))).body.id;
+  const before = await rawDoc(id);
+  const res = await send(a, 'newer.zip', zipEntries(['a.txt']), { path: `${D}/${id}/versions` });
+  assert.equal(res.status, 422, res.text);
+  assert.equal(res.body.error.code, 'USE_IMPORT');
+  const renamed = await send(a, 'newer.dat', zipEntries(['a.txt']), { path: `${D}/${id}/versions` });
+  assert.equal(renamed.status, 422);
+  assert.equal((await rawDoc(id)).checksum, before.checksum);
+  assert.equal(await live.mongoose.models.DocumentVersion.countDocuments({}), 0);
+});
+
+it('another account sees none of it, and the quota still works for ordinary files after a refusal', async () => {
+  const a = await account('q.zip.a@example.com');
+  const b = await account('q.zip.b@example.com');
+  await send(a, 'x.zip', zipEntries(['a.txt']));
+  assert.equal((await events(b, 'file_refused')).length, 0);
+  assert.equal((await send(b, 'ok.txt', Buffer.from('fine'))).status, 201);
+  assert.equal((await send(a, 'ok.txt', Buffer.from('fine'))).status, 201);
+});
+
+it('the import path still works: the files of a zip upload one by one (each judged on its own), and an entry that is itself a zip is refused by the server', async () => {
+  const a = await account('q.zip.import@example.com');
+  assert.equal((await send(a, 'note-1.txt', Buffer.from('one'), { folder: 'Imported' })).status, 201);
+  assert.equal((await send(a, 'note-2.txt', Buffer.from('two'), { folder: 'Imported' })).status, 201);
+  const nested = await send(a, 'inner.zip', zipEntries(['deep.txt']), { folder: 'Imported' });
+  assert.equal(nested.status, 422);
+  assert.equal(nested.body.error.code, 'USE_IMPORT');
+  assert.equal((await list(a)).length, 2);
+});

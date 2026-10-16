@@ -5,11 +5,20 @@ import { formatBytes } from './listing.js';
 /** The most files one upload can carry. The Upload dialog's own limit; the 4 MB per file and the storage quota still apply. */
 export const MAX_FILES_PER_UPLOAD = 10;
 
+/** A name that ends in .zip: only Export / Import takes zips (the server refuses a zip by its bytes too, whatever it is called). */
+export const isZipName = (name) => /\.zip$/i.test(String(name || '').trim());
+export const ZIP_ROW_REASON = 'Zips go through Export / Import';
+export const ZIP_MESSAGE = 'Zip files go through Export / Import, so every file inside is checked. Use Export / Import to add this zip.';
+/** The tray's "Not saved" row for a zip that was not even sent. */
+export const ZIP_REFUSAL = Object.freeze({ message: 'Not saved', code: 'refused', retryable: false, refused: true, reasons: ['PLAIN_ZIP'] });
+export const zipsNotAdded = (n) => `${n} ${n === 1 ? 'zip' : 'zips'} not added: use Export / Import.`;
+
 /** Two files are the same selection entry when name, size and last-modified time all match. */
 export const fileKey = (file) => `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
 
 /** Why one file cannot be sent ('' when it can), in the short words the row shows. */
 export function rowError(file) {
+  if (isZipName(file.name)) return ZIP_ROW_REASON;
   if (!file.size) return 'Empty file';
   if (file.size > MAX_FILE_BYTES) return 'Over 4 MB';
   const check = validateUpload(file);
@@ -40,7 +49,7 @@ export function addFiles(items, files, nextId = items.reduce((max, row) => Math.
       duplicates += 1;
     } else {
       seen.add(key);
-      rows.push({ id: id++, file, error: rowError(file), duplicate: false });
+      rows.push({ id: id++, file, error: rowError(file), duplicate: false, zip: isZipName(file.name) });
     }
     added += 1;
   }

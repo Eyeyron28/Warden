@@ -20,8 +20,10 @@ codes, so the browser has no second copy of the wording.
 | `OFFICE_MACRO` | 60 | An Office Open XML zip with `vbaProject.bin`, `vbaData.xml` or macro sheets (names in the zip directory), or an old OLE Office file with VBA streams or auto-open markers. | Macros are small programs that run when the file is opened. |
 | `ACTIVE_MARKUP` | 45 | Text, SVG or HTML with `<script`, `javascript:` or (in markup) an `on…=` event attribute. | A browser would run it. |
 | `ARCHIVE_ABUSE` | 50 | A zip with more than 1000 entries, a declared expansion ratio above 100 (for entries over 1 MB), more than 64 MB declared in all, another archive inside it, `../` or absolute paths, encrypted entries, or sizes it cannot read (zip64). The limits are the zip importer's own. | A zip can hide a bomb or something it will not let us look at. Encrypted entries cannot be inspected at all, so they are held. |
+| `ARCHIVE_UNINSPECTABLE` | 45 | A rar, 7z, tar, gz, tgz, bz2 or xz archive, by ending or by its first bytes. | Warden cannot look inside these formats, so what they hold is never checked: they are held for the owner to decide. |
 | `EXECUTABLE_CONTENT` | 100, **blocked** | The bytes are a Windows program (an `MZ` header with a real `PE` header), an ELF program or a Mach-O program, whatever the name says. | There is no honest reason to keep a program in a document vault disguised as something else. |
 | `KNOWN_TEST_SIGNATURE` | 100, **blocked** | The standard antivirus test string, anywhere in the file. | It proves the rule works without any real malware. The string is joined from parts at run time: no file of the project holds it whole. |
+| `PLAIN_ZIP` | 0 (a refusal, not a score) | A plain zip: see "Zips only through Export / Import" below. | Only Export / Import opens a zip and checks every file inside. |
 | `SCAN_ERROR` | 0 | The scanner itself failed. | See below. |
 
 **Verdicts.** `blocked` only for `EXECUTABLE_CONTENT` and `KNOWN_TEST_SIGNATURE`. Otherwise the score is the sum of the weights of
@@ -32,6 +34,21 @@ JavaScript is therefore suspicious, never blocked, so a false positive costs one
 fails above 50 ms). If the scanner throws, the file is saved as normal with `scan.verdict = "unchecked"` and the reason
 `SCAN_ERROR`, one security-log line is written (no name, no content), and the upload does not fail: a scanner bug never costs
 anyone a file.
+
+## Zips only through Export / Import
+
+A zip stored as an ordinary file would hide everything inside it: only its outline (the list of names and sizes) could be read, so a
+risky file inside was never scanned. So a plain zip is **refused** (`422 USE_IMPORT`, before anything is encrypted or stored, nothing
+counted against the quota, and the same answer for a retry with the same `uploadKey`) with: "Zip files go through Export / Import, so
+every file inside is checked. Use Export / Import to add this zip." The import opens the zip in the browser and uploads each file
+inside through the normal upload, so each one is scanned on its own. Both the upload and the new-version routes apply the rule.
+
+A plain zip is (a) a name that ends in `.zip` (any case), or (b) bytes that start with a zip signature whose central directory shows
+none of: `[Content_Types].xml` (Word, Excel, PowerPoint), a first entry named `mimetype` (OpenDocument, EPUB), a `META-INF/` entry (jar
+and similar). The name does not decide: renaming `archive.zip` to `archive.bin` changes nothing, and Office, OpenDocument and EPUB
+files still upload normally. A zip inside an imported zip is skipped with the reason "A zip inside a zip is not imported". Other
+archive formats that Warden cannot inspect (rar, 7z, tar, gz, tgz, bz2, xz) are not refused but **held** (`ARCHIVE_UNINSPECTABLE`).
+Files uploaded before this rule existed were not rescanned.
 
 ## What happens to each verdict
 

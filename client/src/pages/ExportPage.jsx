@@ -329,6 +329,7 @@ function ExportPage() {
 
           <ul className={styles.points} aria-label="How an import works">
             <li>Each file follows the normal upload rules: storage limit, 4 MB per file.</li>
+            <li>Zips are opened here so every file inside is checked.</li>
             <li>A name already in use gets a number added.</li>
             <li>It keeps running if you change page; progress is in the card at the bottom right. Stopping does not undo files already imported.</li>
           </ul>

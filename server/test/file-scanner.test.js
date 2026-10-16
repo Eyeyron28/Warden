@@ -230,3 +230,55 @@ test('make-demo-samples writes only harmless files that the rules hold, and neve
   }
   assert.match(fs.readFileSync(path.join(__dirname, '..', '..', '.gitignore'), 'utf8'), /^demo-samples\/$/m);
 });
+
+// ---------- plain zips and archives Warden cannot inspect ----------
+
+const { isPlainZip } = require('../utils/fileScanner');
+
+test('plain zip: the name ends in .zip (any case), or the bytes are a zip with no sign of a document format - whatever the name says', () => {
+  const plain = S.zip([{ name: 'a.txt' }, { name: 'dir/b.txt' }]);
+  assert.equal(isPlainZip('archive.zip', Buffer.from('not even bytes of a zip')), true);
+  assert.equal(isPlainZip('ARCHIVE.ZIP', plain), true);
+  for (const name of ['archive.bin', 'archive', 'archive.txt', 'photo.jpg', 'report.pdf', 'archive.zip.bin']) assert.equal(isPlainZip(name, plain), true, `renamed: ${name}`);
+  assert.equal(isPlainZip('empty.bin', Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)])), true, 'an empty zip is a zip');
+  assert.equal(isPlainZip('broken.bin', Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(40, 1)])), true, 'a zip whose names cannot be read is not shown to be anything else');
+});
+
+test('Word, Excel, PowerPoint, OpenDocument, EPUB and jar-like files are NOT plain zips', () => {
+  const office = (part) => S.zip([{ name: '[Content_Types].xml', data: '<Types/>' }, { name: part, data: '<x/>' }]);
+  for (const [name, buffer] of [
+    ['letter.docx', office('word/document.xml')],
+    ['sheet.xlsx', office('xl/workbook.xml')],
+    ['deck.pptx', office('ppt/presentation.xml')],
+    ['letter.odt', S.zip([{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.text' }, { name: 'content.xml' }])],
+    ['calc.ods', S.zip([{ name: 'mimetype', data: 'application/vnd.oasis.opendocument.spreadsheet' }, { name: 'content.xml' }])],
+    ['book.epub', S.zip([{ name: 'mimetype', data: 'application/epub+zip' }, { name: 'META-INF/container.xml' }, { name: 'OEBPS/c.xhtml' }])],
+    ['tool.jar', S.zip([{ name: 'META-INF/MANIFEST.MF' }, { name: 'A.class' }])],
+    ['noext-docx', office('word/document.xml')],
+  ]) {
+    assert.equal(isPlainZip(name, buffer), false, name);
+  }
+  assert.equal(isPlainZip('note.txt', Buffer.from('plain text')), false);
+  assert.equal(isPlainZip('photo.png', S.png()), false);
+});
+
+test('ARCHIVE_UNINSPECTABLE: rar, 7z, tar, gz, tgz, bz2 and xz, by ending or by signature, are held (weight 45)', () => {
+  assert.equal(REASONS.ARCHIVE_UNINSPECTABLE.weight, 45);
+  assert.equal(REASONS.ARCHIVE_UNINSPECTABLE.text, 'Warden cannot look inside this kind of archive.');
+  for (const name of ['a.rar', 'a.7z', 'a.tar', 'a.gz', 'a.tgz', 'a.bz2', 'a.xz', 'A.RAR', 'backup.tar.gz']) {
+    const result = scan(name, Buffer.from('words only'));
+    assert.deepEqual(result.reasons, ['ARCHIVE_UNINSPECTABLE'], name);
+    assert.equal(result.verdict, 'suspicious', name);
+  }
+  const pad = Buffer.alloc(300, 0x20);
+  const tar = Buffer.from(pad);
+  tar.write('ustar', 257, 'latin1');
+  for (const [label, head] of [['rar', [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]], ['7z', [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]], ['gzip', [0x1f, 0x8b, 0x08]], ['bzip2', [0x42, 0x5a, 0x68, 0x39]], ['xz', [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]]]) {
+    const result = scan('renamed.bin', Buffer.concat([Buffer.from(head), pad]));
+    assert.ok(result.reasons.includes('ARCHIVE_UNINSPECTABLE'), label);
+    assert.equal(result.verdict, 'suspicious', label);
+  }
+  assert.equal(scan('renamed.bin', tar).verdict, 'suspicious', 'tar by its header');
+  assert.equal(scan('notes.txt', Buffer.from('a tarball is not a name ending')).verdict, 'clean');
+  assert.equal(scan('photo.png', S.png()).verdict, 'clean');
+});

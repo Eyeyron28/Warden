@@ -172,20 +172,23 @@ test('cancel stops uploading', async () => {
   assert.ok(calls < 12);
 });
 
-test('a zip inside the zip is never opened; one that looks like a bomb is skipped, an ordinary one is just a file', async () => {
+test('a zip inside the zip is never opened and never uploaded: it is skipped with "A zip inside a zip is not imported"; a renamed one is refused by the server with the same words', async () => {
   const bombInner = await makeZip({ 'zeros.bin': new Uint8Array(8 * 1024 * 1024) }, { compressionOptions: { level: 9 } });
   const harmlessInner = await makeZip({ 'readme.txt': 'hello' });
   assert.equal(looksLikeZipBomb(bombInner), true);
   assert.equal(looksLikeZipBomb(harmlessInner), false);
   assert.equal(looksLikeZipBomb(enc('not a zip')), false);
 
-  const outer = await makeZip({ 'bomb.zip': bombInner, 'fine.zip': harmlessInner, 'note.txt': 'x' }, { compression: 'STORE' });
+  const outer = await makeZip({ 'bomb.zip': bombInner, 'Sub/fine.ZIP': harmlessInner, 'note.txt': 'x', 'renamed.dat': harmlessInner }, { compression: 'STORE' });
   const plan = inspectZip(outer);
   assert.equal(plan.ok, true, 'the outer zip is fine: its entries are small and stored plainly');
+  assert.deepEqual(plan.skipped.map((s) => [s.path, s.reason]).sort(), [['Sub/fine.ZIP', 'A zip inside a zip is not imported'], ['bomb.zip', 'A zip inside a zip is not imported']]);
+  assert.deepEqual(plan.files.map((f) => f.name).sort(), ['note.txt', 'renamed.dat']);
   const uploaded = [];
-  const result = await runImport({ bytes: outer, plan, JSZip, uploadFile: async (file) => uploaded.push(file.name), createFolder: async () => {} });
-  assert.deepEqual(uploaded.sort(), ['fine.zip', 'note.txt']);
+  const refusedByServer = Object.assign(new Error('x'), { response: { status: 422, data: { error: { code: 'USE_IMPORT' } } } });
+  const result = await runImport({ bytes: outer, plan, JSZip, uploadFile: async (file) => { if (file.name === 'renamed.dat') throw refusedByServer; return uploaded.push(file.name); }, createFolder: async () => {} });
+  assert.deepEqual(uploaded, ['note.txt'], 'no zip was ever sent');
   assert.equal(result.failures.length, 1);
-  assert.equal(result.failures[0].path, 'bomb.zip');
-  assert.match(result.failures[0].reason, /bomb/);
+  assert.equal(result.failures[0].path, 'renamed.dat');
+  assert.equal(result.failures[0].reason, 'A zip inside a zip is not imported');
 });

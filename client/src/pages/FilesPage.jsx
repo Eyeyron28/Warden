@@ -62,6 +62,7 @@ import {
 import { DOCUMENTS_CHANGED, describeMove, dragCarriesDocuments } from '../utils/dragMove.js';
 import { validateUpload } from '../utils/transferRules.js';
 import { transfers } from '../services/transfers.js';
+import { ZIP_MESSAGE, ZIP_REFUSAL, isZipName, zipsNotAdded } from '../utils/uploadSelection.js';
 import { splitIntoBlocks } from '../utils/fileBlocks.js';
 import { usePreviewGenerator } from '../utils/usePreviewGenerator.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -276,8 +277,11 @@ function FilesPage() {
   // ---- uploads ----
   // ---- uploads: checked here (while the dialog is still open), then handed to the transfer tray (services/transfers.js) ----
   /** Splits files into what can be sent and what is refused, with the reason, against the real storage meter. */
-  const sortOut = async (files) => {
+  const sortOut = async (everything) => {
     const usage = await getStorage().catch(() => null);
+    // Zips only go through Export / Import: they are set apart here and shown as "Not saved" rows (never silently dropped).
+    const zips = everything.filter((file) => isZipName(file.name));
+    const files = everything.filter((file) => !isZipName(file.name));
     const accepted = [];
     const rejected = [];
     let pending = 0;
@@ -288,12 +292,14 @@ function FilesPage() {
         pending += file.size;
       } else rejected.push({ file, reason: check.reason });
     }
-    return { accepted, rejected };
+    return { accepted, rejected, zips };
   };
-  const saySkipped = (rejected) => {
-    if (rejected.length === 0) return;
-    const first = rejected[0];
-    setActionError(`${rejected.length === 1 ? 'One file was' : `${rejected.length} files were`} not sent. ${first.reason}`);
+  const saySkipped = (rejected, zips = []) => {
+    if (zips.length > 0) transfers.enqueue(zips.map((file) => ({ kind: 'upload', file, refused: ZIP_REFUSAL })));
+    const parts = [];
+    if (rejected.length > 0) parts.push(`${rejected.length === 1 ? 'One file was' : `${rejected.length} files were`} not sent. ${rejected[0].reason}`);
+    if (zips.length > 0) parts.push(zipsNotAdded(zips.length));
+    if (parts.length > 0) setActionError(parts.join(' '));
   };
 
   // "Encrypt & upload": a refused file keeps the dialog open with the reason; an accepted one closes it at once, and the tray shows it.
@@ -314,7 +320,7 @@ function FilesPage() {
     if (files.length === 0) return;
     setUploadOpen(false);
     setActionError('');
-    const { accepted, rejected } = await sortOut(files);
+    const { accepted, rejected, zips } = await sortOut(files);
     transfers.enqueue(
       accepted.map((file) => ({
         kind: 'upload',
@@ -322,7 +328,7 @@ function FilesPage() {
         folder: combineFolderPath(currentPath, relativeDirFromPath(file.webkitRelativePath || file.name)),
       }))
     );
-    saySkipped(rejected);
+    saySkipped(rejected, zips);
   };
 
   // Files dragged in from the computer: onto a folder tile they go into that folder, anywhere else into the open folder.
@@ -338,10 +344,10 @@ function FilesPage() {
     const dirs = entries.filter((item) => item.webkitGetAsEntry?.()?.isDirectory).length;
     const files = Array.from(event.dataTransfer.files).filter((file, index) => !entries[index]?.webkitGetAsEntry?.()?.isDirectory);
     setActionError('');
-    const { accepted, rejected } = await sortOut(files);
+    const { accepted, rejected, zips } = await sortOut(files);
     transfers.enqueue(accepted.map((file) => ({ kind: 'upload', file, folder: target })));
-    saySkipped(rejected);
-    if (dirs > 0 && rejected.length === 0) setActionError('Folders cannot be dropped here. Use New, then Upload folder.');
+    saySkipped(rejected, zips);
+    if (dirs > 0 && rejected.length === 0 && zips.length === 0) setActionError('Folders cannot be dropped here. Use New, then Upload folder.');
   };
 
   // ---- thumbnails ----
@@ -527,6 +533,10 @@ function FilesPage() {
     event.target.value = '';
     if (!file || !doc) return;
     setActionError('');
+    if (isZipName(file.name)) {
+      setActionError(ZIP_MESSAGE);
+      return;
+    }
     const { rejected } = await sortOut([file]);
     if (rejected.length > 0) {
       saySkipped(rejected);
@@ -1001,6 +1011,10 @@ function FilesPage() {
         >
           <UploadForm
             footerEl={uploadFooter}
+            onOpenImport={() => {
+              setUploadOpen(false);
+              navigate('/export');
+            }}
             onSubmit={handleUpload}
             onCancel={() => {
               setUploadOpen(false);

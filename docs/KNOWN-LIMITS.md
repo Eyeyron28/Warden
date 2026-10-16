@@ -126,6 +126,10 @@ program in disguise or the standard antivirus test string is refused. Limits, st
   of a large file).
 - It scans **only what the server receives**: the allowed types and sizes (up to 4 MB per file).
 - Files uploaded **before this feature existed were not scanned**; Details shows them as "Not scanned".
+- **Zips are accepted only through Export / Import**, which opens the zip and checks every file inside one by one; a plain zip uploaded as an
+  ordinary file is refused (by its bytes, not only its name; Word, Excel, PowerPoint, OpenDocument and EPUB files are not affected).
+  Other archive formats Warden cannot look inside (rar, 7z, tar, gz, tgz, bz2, xz) are held in Quarantine. These are simple rules, not a
+  full antivirus, and files uploaded before this change were not rescanned.
 - A held file is stored and counts toward the storage quota until its owner deletes it.
 - If the scanner itself fails, the file is saved unchecked (and one security-log line is written): a scanner bug never costs a file.
 
