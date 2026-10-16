@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
@@ -23,16 +23,32 @@ import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Sidebar.module.css';
 
 const ICON = 22;
+
+/**
+ * One labelled group of links (Main, Management, System). In the icon rail the small uppercase label becomes a thin divider, but it
+ * stays in the page for screen readers, so the group keeps its name.
+ */
+function NavGroup({ id, title, rail, children }) {
+  return (
+    <div role="group" aria-labelledby={id} className={styles.navGroup} data-group={title}>
+      <span id={id} className={rail ? styles.groupLabelRail : styles.groupLabel}>
+        {title}
+      </span>
+      {children}
+    </div>
+  );
+}
 const navClass = ({ isActive }) => `${styles.item} ${isActive ? styles.itemActive : ''}`;
 
 /**
- * Persistent left navigation: My files (with a lazily loaded folder tree),
- * Photos, Shared, Trash, then then Account at the bottom.
+ * Persistent left navigation in three labelled groups - Main (My files with its lazily loaded folder tree, Photos, Recent, Starred,
+ * Shared), Management (Overview, Devices & activity, Export / Import) and System (Emergency Access, Trash) - that scroll in the
+ * middle, and an Account footer pinned at the bottom.
  *
  * On desktop a button at the top collapses it to an icon rail (about 64px):
  * every icon gets a tooltip with its label, the active item stays
- * highlighted, the folder tree hides and the meter becomes a small ring. The
- * state lives in AppLayout's memory only. Under 768px it is a slide-in
+ * highlighted, the folder tree hides and the group labels become thin dividers
+ * (same order, same names for screen readers). The state lives in AppLayout's memory only. Under 768px it is a slide-in
  * drawer instead (never collapsed): it closes on navigation and Esc and keeps
  * keyboard focus inside while open.
  */
@@ -46,6 +62,7 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
   const [tip, setTip] = useState(null); // { text, top, left }
 
   const rail = collapsed && !drawer;
+  const ids = useId().replace(/:/g, '');
 
   useFocusTrap(navRef, drawer && open, { opener: 'activation' });
 
@@ -108,73 +125,80 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           </button>
         )}
 
-        <div className={styles.group}>
-          <div className={styles.filesRow}>
-            <NavLink to="/files" end={false} className={({ isActive }) => `${navClass({ isActive })} ${styles.grow}`} onClick={closeDrawer} {...tipFor('My files')}>
-              <FolderSimple size={ICON} weight="regular" aria-hidden="true" />
-              {label('My files')}
+        {/* The groups scroll in the middle; the Account footer stays pinned at the bottom. */}
+        <div className={styles.scroll}>
+          <NavGroup id={`${ids}-main`} title="Main" rail={rail}>
+            <div className={styles.group}>
+              <div className={styles.filesRow}>
+                <NavLink to="/files" end={false} className={({ isActive }) => `${navClass({ isActive })} ${styles.grow}`} onClick={closeDrawer} {...tipFor('My files')}>
+                  <FolderSimple size={ICON} weight="regular" aria-hidden="true" />
+                  {label('My files')}
+                </NavLink>
+                {!rail && (
+                  <button
+                    type="button"
+                    className={styles.treeToggle}
+                    onClick={() => setTreeOpen((value) => !value)}
+                    aria-expanded={treeOpen}
+                    aria-label={treeOpen ? 'Collapse folders' : 'Expand folders'}
+                  >
+                    <CaretDown size={14} weight="bold" className={treeOpen ? '' : styles.caretClosed} />
+                  </button>
+                )}
+              </div>
+              {treeOpen && !rail && <FolderTree current={currentFolder} active={onFiles} version={version} onNavigate={closeDrawer} />}
+            </div>
+            <NavLink to="/photos" className={navClass} onClick={closeDrawer} {...tipFor('Photos')}>
+              <Images size={ICON} weight="regular" aria-hidden="true" />
+              {label('Photos')}
             </NavLink>
-            {!rail && (
-              <button
-                type="button"
-                className={styles.treeToggle}
-                onClick={() => setTreeOpen((value) => !value)}
-                aria-expanded={treeOpen}
-                aria-label={treeOpen ? 'Collapse folders' : 'Expand folders'}
-              >
-                <CaretDown size={14} weight="bold" className={treeOpen ? '' : styles.caretClosed} />
-              </button>
-            )}
-          </div>
-          {treeOpen && !rail && <FolderTree current={currentFolder} active={onFiles} version={version} onNavigate={closeDrawer} />}
+            <NavLink to="/recent" className={navClass} onClick={closeDrawer} {...tipFor('Recent')}>
+              <Clock size={ICON} weight="light" aria-hidden="true" />
+              {label('Recent')}
+            </NavLink>
+            <NavLink to="/starred" className={navClass} onClick={closeDrawer} {...tipFor('Starred')}>
+              <Star size={ICON} weight="light" aria-hidden="true" />
+              {label('Starred')}
+            </NavLink>
+            <NavLink to="/shared" className={navClass} onClick={closeDrawer} {...tipFor('Shared')}>
+              <ShareNetwork size={ICON} weight="regular" aria-hidden="true" />
+              {label('Shared')}
+            </NavLink>
+          </NavGroup>
+
+          <NavGroup id={`${ids}-management`} title="Management" rail={rail}>
+            <NavLink to="/overview" className={navClass} onClick={closeDrawer} {...tipFor('Overview')}>
+              <ChartBar size={ICON} weight="regular" aria-hidden="true" />
+              {label('Overview')}
+            </NavLink>
+            <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices & activity')}>
+              <ShieldCheck size={ICON} weight="regular" aria-hidden="true" />
+              {label('Devices & activity')}
+            </NavLink>
+            <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export / Import')}>
+              <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
+              {label('Export / Import')}
+            </NavLink>
+          </NavGroup>
+
+          <NavGroup id={`${ids}-system`} title="System" rail={rail}>
+            <NavLink to="/emergency-access" className={navClass} onClick={closeDrawer} {...tipFor('Emergency Access')}>
+              <Lifebuoy size={ICON} weight="regular" aria-hidden="true" />
+              {label('Emergency Access')}
+            </NavLink>
+            <NavLink to="/trash" className={navClass} onClick={closeDrawer} {...tipFor('Trash')}>
+              <Trash size={ICON} weight="regular" aria-hidden="true" />
+              {label('Trash')}
+            </NavLink>
+          </NavGroup>
         </div>
 
-        <NavLink to="/recent" className={navClass} onClick={closeDrawer} {...tipFor('Recent')}>
-          <Clock size={ICON} weight="light" aria-hidden="true" />
-          {label('Recent')}
-        </NavLink>
-        <NavLink to="/starred" className={navClass} onClick={closeDrawer} {...tipFor('Starred')}>
-          <Star size={ICON} weight="light" aria-hidden="true" />
-          {label('Starred')}
-        </NavLink>
-        <NavLink to="/photos" className={navClass} onClick={closeDrawer} {...tipFor('Photos')}>
-          <Images size={ICON} weight="regular" aria-hidden="true" />
-          {label('Photos')}
-        </NavLink>
-        <NavLink to="/shared" className={navClass} onClick={closeDrawer} {...tipFor('Shared')}>
-          <ShareNetwork size={ICON} weight="regular" aria-hidden="true" />
-          {label('Shared')}
-        </NavLink>
-        <NavLink to="/trash" className={navClass} onClick={closeDrawer} {...tipFor('Trash')}>
-          <Trash size={ICON} weight="regular" aria-hidden="true" />
-          {label('Trash')}
-        </NavLink>
-
-        <NavLink to="/overview" className={navClass} onClick={closeDrawer} {...tipFor('Overview')}>
-          <ChartBar size={ICON} weight="regular" aria-hidden="true" />
-          {label('Overview')}
-        </NavLink>
-        <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export / Import')}>
-          <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
-          {label('Export / Import')}
-        </NavLink>
-
-        <NavLink to="/devices" className={navClass} onClick={closeDrawer} {...tipFor('Devices & activity')}>
-          <ShieldCheck size={ICON} weight="regular" aria-hidden="true" />
-          {label('Devices & activity')}
-        </NavLink>
-
-        <NavLink to="/emergency-access" className={navClass} onClick={closeDrawer} {...tipFor('Emergency Access')}>
-          <Lifebuoy size={ICON} weight="regular" aria-hidden="true" />
-          {label('Emergency Access')}
-        </NavLink>
-
-        <div className={styles.spacer} />
-
-        <NavLink to="/account" className={navClass} onClick={closeDrawer} {...tipFor('Account')}>
-          <UserCircle size={ICON} weight="regular" aria-hidden="true" />
-          {label('Account')}
-        </NavLink>
+        <div className={styles.footer} data-testid="sidebar-footer">
+          <NavLink to="/account" className={navClass} onClick={closeDrawer} {...tipFor('Account')}>
+            <UserCircle size={ICON} weight="regular" aria-hidden="true" />
+            {label('Account')}
+          </NavLink>
+        </div>
       </nav>
       {tip &&
         createPortal(

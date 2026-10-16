@@ -804,6 +804,85 @@ try {
       await context.close();
     }
     fs.rmSync(zipDir, { recursive: true, force: true });
+
+    // The grouped sidebar: Main, Management, System and the pinned Account footer, with about 30 folders in the tree.
+    for (let n = 1; n <= 30; n += 1) await api('POST', '/api/documents/folders', { token, json: { name: `Project ${String(n).padStart(2, '0')}`, parentPath: '', color: 'gray', icon: 'folder' } });
+    for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__csp = [];
+        document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
+      }, token);
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      const shot = async (state) => { if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `sidebar-${state}-${process.env.THEME || 'light'}-${size.name}.png`) }); };
+      const inspect = async () => page.evaluate(() => {
+        const nav = document.getElementById('app-sidebar');
+        const r = nav.getBoundingClientRect();
+        const account = nav.querySelector('[data-testid="sidebar-footer"] a[href="/account"]').getBoundingClientRect();
+        const groups = [...nav.querySelectorAll('[role="group"][data-group]')].map((g) => ({ name: document.getElementById(g.getAttribute('aria-labelledby'))?.textContent, links: [...g.querySelectorAll(':scope > a, :scope > div > div > a')].map((a) => a.getAttribute('href')) }));
+        const items = [...nav.querySelectorAll('a[href]')].filter((a) => !a.closest('[class*="tree"]')).map((a) => a.getAttribute('href'));
+        const small = [...nav.querySelectorAll('a[href], button')].filter((el) => !el.closest('[class*="tree"]') && el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().height < 40).map((el) => el.textContent.trim().slice(0, 20));
+        const doc = document.documentElement;
+        return { nav: { top: r.top, bottom: r.bottom, right: r.right }, account: { top: account.top, bottom: account.bottom, h: account.height }, groups, items, small, hScroll: doc.scrollWidth > doc.clientWidth + 1, navScroll: nav.scrollWidth > nav.clientWidth + 1, vh: window.innerHeight };
+      });
+      const ORDER = ['/files', '/photos', '/recent', '/starred', '/shared', '/overview', '/devices', '/export', '/emergency-access', '/trash', '/account'];
+      const judge = (info, found, where) => {
+        if (info.hScroll) found.push(`${where}: the page scrolls sideways`);
+        if (info.navScroll) found.push(`${where}: the sidebar scrolls sideways`);
+        if (!(info.account.h > 0 && info.account.bottom <= info.vh + 1 && info.account.top >= 0)) found.push(`${where}: the Account footer is not visible (${JSON.stringify(info.account)})`);
+        if (JSON.stringify(info.items) !== JSON.stringify(ORDER)) found.push(`${where}: order is ${info.items.join(' ')}`);
+        if (info.groups.map((g) => g.name).join() !== 'Main,Management,System') found.push(`${where}: groups are ${info.groups.map((g) => g.name).join()}`);
+        const system = info.groups.find((g) => g.name === 'System');
+        if (!system || system.links.at(-1) !== '/trash') found.push(`${where}: Trash is not last in System`);
+      };
+      try {
+        await page.goto(base + '/files', { waitUntil: 'networkidle' });
+        await page.getByRole('button', { name: 'New' }).waitFor();
+        const found = [];
+        if (size.width < 768) {
+          await page.getByRole('button', { name: 'Open navigation menu' }).click();
+          await page.waitForTimeout(400);
+          const info = await inspect();
+          judge(info, found, 'drawer');
+          if (info.small.length) found.push(`drawer: tap targets under 44 px: ${info.small.join(', ')}`);
+          await shot('drawer');
+          await page.locator('#app-sidebar').getByRole('link', { name: 'Trash', exact: true }).click();
+          await page.waitForURL((url) => url.pathname === '/trash').catch(() => found.push('drawer: Trash did not navigate'));
+        } else {
+          await page.waitForSelector('#app-sidebar [role="tree"], #app-sidebar ul', { timeout: 5000 }).catch(() => {});
+          await page.waitForTimeout(500);
+          const info = await inspect();
+          judge(info, found, 'expanded');
+          await shot('expanded');
+          await page.locator('#app-sidebar').getByRole('link', { name: 'Export / Import', exact: true }).click();
+          await page.waitForURL((url) => url.pathname === '/export').catch(() => found.push('Export / Import did not navigate'));
+          await page.locator('#app-sidebar').getByRole('link', { name: 'Trash', exact: true }).click();
+          await page.waitForURL((url) => url.pathname === '/trash').catch(() => found.push('Trash did not navigate'));
+          const active = await page.locator('#app-sidebar a[aria-current="page"]').getAttribute('href').catch(() => null);
+          if (active !== '/trash') found.push(`the active item is ${active}`);
+          if (size.width >= 1000) {
+            await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+            await page.waitForTimeout(400);
+            const rail = await inspect();
+            judge(rail, found, 'collapsed');
+            await page.locator('#app-sidebar a[href="/devices"]').hover();
+            const tip = await page.getByRole('tooltip').innerText().catch(() => '');
+            if (tip !== 'Devices & activity') found.push(`collapsed: the tooltip says "${tip}"`);
+            await shot('collapsed');
+            await page.getByRole('button', { name: 'Expand sidebar' }).click();
+          }
+        }
+        const csp = await page.evaluate(() => window.__csp);
+        if (csp.length) found.push(`CSP violations: ${csp.join('; ')}`);
+        record('Sidebar groups', found);
+      } catch (error) {
+        record('Sidebar groups', [`could not be checked: ${String(error.message).replace(/\s+/g, ' ').slice(0, 500)}`]);
+      }
+      await context.close();
+    }
   }
 } finally {
   await browser?.close();

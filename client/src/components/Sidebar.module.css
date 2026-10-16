@@ -19,8 +19,8 @@
   border-right: 1px solid var(--color-border);
   background: var(--color-surface);
   flex-shrink: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  /* the middle part scrolls (.scroll); the Account footer stays in view */
+  overflow: hidden;
 }
 
 /* Under 768px: a slide-in drawer over the page. */
@@ -32,6 +32,8 @@
   z-index: 16;
   width: min(300px, 86vw);
   height: auto;
+  /* stretch between top and bottom (flex-start would size a fixed box to its content and push the footer off the screen) */
+  align-self: stretch;
   box-shadow: var(--shadow-elevated);
   transition: transform var(--duration-base) var(--ease-standard);
 }
@@ -226,9 +228,55 @@
   color: var(--color-text);
 }
 
-.spacer {
+.scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   flex: 1;
-  min-height: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* room for the focus outline of the items */
+  margin-inline: calc(-1 * var(--space-1));
+  padding-inline: var(--space-1);
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* MAIN, MANAGEMENT, SYSTEM: small, quiet and uppercase. */
+.groupLabel {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--color-text-faint);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* In the icon rail a label is a thin divider (still read out by screen readers). */
+.groupLabelRail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.rail .navGroup + .navGroup {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.footer {
+  flex-shrink: 0;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
 }
 
 @media (prefers-reduced-motion: reduce) {
