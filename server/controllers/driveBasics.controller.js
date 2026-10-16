@@ -11,6 +11,8 @@ const { readLabel } = require('./shares.controller');
 const { readNote, versionSummary, listVersionRows } = require('./notesVersions.controller');
 const { MAX_VERSIONS, VERSION_DAYS } = require('../utils/versions');
 const { toListSummary, LIST_PROJECTION, moveItems } = require('./documents.controller');
+const { NOT_HELD } = require('../utils/quarantineFilter');
+const { describeReasons } = require('../utils/fileScanner');
 
 /**
  * Small features on top of the existing document model: stars, the Recent view, the details panel, and the batch move and
@@ -90,7 +92,7 @@ const listRecent = asyncHandler(async (req, res) => {
 
   const [documents, opens] = await Promise.all([
     Document.aggregate([
-      { $match: { _id: { $in: candidateIds.map((id) => new mongoose.Types.ObjectId(id)) }, userId: req.userId, deletedAt: null } },
+      { $match: { _id: { $in: candidateIds.map((id) => new mongoose.Types.ObjectId(id)) }, userId: req.userId, deletedAt: null, ...NOT_HELD } },
       { $project: LIST_PROJECTION },
     ]),
     // Where each file was last opened (a view or a download): the newest such event per file, with its device.
@@ -130,7 +132,7 @@ const getDetails = asyncHandler(async (req, res) => {
   const [rows, shares, events, versionRows] = await Promise.all([
     Document.aggregate([
       { $match: { _id, userId: req.userId, deletedAt: null } },
-      { $project: { ...LIST_PROJECTION, checksum: 1, noteCipher: 1, noteIv: 1, noteAuthTag: 1 } },
+      { $project: { ...LIST_PROJECTION, checksum: 1, noteCipher: 1, noteIv: 1, noteAuthTag: 1, scan: 1, quarantine: 1 } },
     ]),
     Share.find({ ownerUserId: req.userId, sourceDocumentIds: _id, ready: { $ne: false }, expiresAt: { $gt: new Date() } })
       .select('shareId expiresAt fileCount labelCipher labelIv labelAuthTag')
@@ -160,6 +162,10 @@ const getDetails = asyncHandler(async (req, res) => {
     shared: { count: shares.length, links: shares.map((share) => ({ expiresAt: share.expiresAt })) },
     purposes,
     fingerprint: typeof doc.checksum === 'string' ? doc.checksum.slice(0, 12) : null,
+    // What the upload scanner said (codes, never content); null for a file saved before scanning existed.
+    scan: doc.scan?.verdict
+      ? { verdict: doc.scan.verdict, reasons: describeReasons(doc.scan.reasons), version: doc.scan.scannerVersion ?? null, at: doc.scan.scannedAt ?? null, state: doc.quarantine?.state ?? null }
+      : null,
     // The owner's private note, decrypted here for the panel (the file lists carry only hasNote).
     note: readNote(doc, req.dek),
     hasNote: summary.hasNote,

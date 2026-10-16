@@ -18,6 +18,8 @@ const auditEventSchema = new mongoose.Schema({
   country: { type: String, default: null },
   // Who did it, when it was not the owner's own session: 'emergency' (an Emergency Access contact). Signed in the chain.
   actor: { type: String, enum: ['emergency', null], default: null },
+  // Quarantine events only: the scanner's reason CODES (never a name or content), e.g. 'PDF_ACTIVE,TYPE_MISMATCH'. Signed in the chain when set.
+  detail: { type: String, default: null },
   seq: { type: Number, required: true },
   prevHash: { type: String, default: '' },
   hash: { type: String, required: true },

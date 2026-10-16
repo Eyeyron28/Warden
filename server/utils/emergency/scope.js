@@ -11,14 +11,19 @@
  * Two scoped folders with the same last name get "(2)", "(3)", ... so the top level stays unambiguous.
  */
 
+const { NOT_HELD } = require('../quarantineFilter');
+
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A Mongo filter fragment for documents: {} for the whole vault, otherwise only the scoped folders and below. */
 function documentScope(emergency) {
-  if (!emergency || emergency.scopeMode !== 'folders') return {};
+  if (!emergency) return {};
+  // An Emergency Access session never lists or reads a file held in Quarantine, whatever its scope.
+  if (emergency.scopeMode !== 'folders') return { ...NOT_HELD };
   const paths = emergency.scopePaths || [];
   if (paths.length === 0) return { _id: null }; // nothing is in scope
   return {
+    ...NOT_HELD,
     $or: paths.flatMap((path) => [{ folder: path }, { folder: { $regex: `^${escapeRegex(path)}/` } }]),
   };
 }

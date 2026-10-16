@@ -134,6 +134,21 @@ const documentSchema = new mongoose.Schema(
     // is the same upload sent twice (a double click, a retry): it gets the first document back and stores nothing. Unset on
     // older documents; the unique index below covers only documents that have one.
     uploadKey: { type: String },
+    // What the upload scanner found (utils/fileScanner.js). verdict: clean | suspicious | unchecked (a blocked file is never stored).
+    // reasons are CODES. A document saved before quarantine existed has none of this: it reads as "not scanned".
+    scan: {
+      verdict: { type: String, enum: ['clean', 'suspicious', 'unchecked'] },
+      reasons: { type: [String], default: undefined },
+      scannerVersion: { type: Number },
+      scannedAt: { type: Date },
+    },
+    // Quarantine: a suspicious file is stored encrypted like any other but held, hidden from every list, preview, download, share
+    // and export until the owner releases it (utils/quarantine.js). Documents without this field are not held.
+    quarantine: {
+      state: { type: String, enum: ['held', 'released'] },
+      heldAt: { type: Date },
+      releasedAt: { type: Date },
+    },
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },
@@ -174,6 +189,8 @@ documentSchema.index({ userId: 1, checksum: 1 });
 documentSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
 documentSchema.index({ userId: 1, deletedAt: 1, sniffedType: 1 });
 documentSchema.index({ userId: 1, deletedAt: 1, docExpiresAt: 1 });
+// Quarantine's own list: this account's held files, newest first (PARTIAL: only held documents are in it).
+documentSchema.index({ userId: 1, 'quarantine.heldAt': -1 }, { partialFilterExpression: { 'quarantine.state': 'held' } });
 documentSchema.index({ trashBatchId: 1 }, { sparse: true });
 // One document per (account, upload key). PARTIAL: only documents that carry a key are in it, so older documents and uploads
 // without a key (which never had one) cannot collide, and the build cannot fail on existing data. NOT on file names.

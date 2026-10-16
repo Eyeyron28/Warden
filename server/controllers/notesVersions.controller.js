@@ -9,6 +9,9 @@ const { assertCanStore } = require('../utils/storage');
 const { downloadName, contentDisposition } = require('../utils/fileNames');
 const { toListSummary } = require('./documents.controller');
 const { MAX_VERSIONS, VERSION_MS, sealUpload, bodyOf, applyBody, trimVersions } = require('../utils/versions');
+const { assertNotHeld, safeScan, refuse, codesOf } = require('../utils/quarantine');
+const { describeReasons } = require('../utils/fileScanner');
+const { logSecurity } = require('../utils/securityLog');
 
 /**
  * Private notes on a file, and its version history (previous versions kept for 30 days, at most 3).
@@ -133,6 +136,20 @@ const uploadVersion = asyncHandler(async (req, res) => {
   const uploaded = req.files?.file?.[0];
   if (!uploaded) throw badRequest('No file uploaded.');
   const document = await ownDocument(req);
+  assertNotHeld(document);
+
+  // Quarantine's check of the new contents. A new version that is suspicious or blocked is refused (the current version stays);
+  // the person can upload it as a separate file if they want it held.
+  const scanned = safeScan({ name: uploaded.originalname, type: uploaded.mimetype, buffer: uploaded.buffer });
+  if (scanned.verdict === 'blocked') throw await refuse(req, scanned);
+  if (scanned.verdict === 'suspicious') {
+    logSecurity('file_refused', { bucket: codesOf(scanned.reasons) });
+    await recordEvent(req, 'file_refused', { targetId: document._id, detail: codesOf(scanned.reasons) });
+    throw fail(422, 'This new version looks risky, so it was not added and the current version is unchanged. To keep it anyway, upload it as a separate file: it will be held in Quarantine for you to review.', {
+      code: 'VERSION_REFUSED',
+      reasons: describeReasons(scanned.reasons),
+    });
+  }
 
   const incomingChecksum = crypto.createHash('sha256').update(uploaded.buffer).digest('hex');
   if (incomingChecksum === document.checksum) throw fail(409, 'That file is identical to the current version, so nothing was changed.', { code: 'VERSION_IDENTICAL' });
@@ -192,6 +209,7 @@ async function ownVersion(req) {
  */
 const restoreVersion = asyncHandler(async (req, res) => {
   const { document, version } = await ownVersion(req);
+  assertNotHeld(document);
   // The swap keeps the account's total the same (one stored body in, one out); the check still runs, so a full account is told so.
   await assertCanStore(req.userId, Math.max(0, sizeOf(document) - sizeOf(version)));
 
@@ -238,6 +256,7 @@ const deleteVersion = asyncHandler(async (req, res) => {
  */
 const downloadVersion = asyncHandler(async (req, res) => {
   const { document, version } = await ownVersion(req);
+  assertNotHeld(document);
   const plaintext = openBody(version, req.dek);
   await recordEvent(req, 'download', { targetId: document._id });
   res.setHeader('Content-Type', 'application/octet-stream');

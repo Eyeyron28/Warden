@@ -45,6 +45,8 @@ function canonicalFields(event) {
   ];
   // Only when set, so every event written before this field existed still verifies.
   if (event.actor) fields.push(event.actor);
+  // Likewise only when set (file_held / file_refused / file_released: reason codes).
+  if (event.detail) fields.push(`detail:${event.detail}`);
   return JSON.stringify(fields);
 }
 
@@ -73,19 +75,20 @@ async function readHead(userId) {
  *
  * @returns {Promise<{ seq: number, hash: string }>}
  */
-async function appendEvent({ userId, deviceId = null, type, targetId = null, country = null, actor = null, at = new Date() }) {
+async function appendEvent({ userId, deviceId = null, type, targetId = null, country = null, actor = null, detail = null, at = new Date() }) {
   for (let attempt = 0; attempt < MAX_APPEND_TRIES; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
     const head = await readHead(userId);
     if (!head) throw new Error('No such account.');
 
-    const event = { userId, seq: head.seq + 1, type, deviceId, targetId, at, country, actor };
+    const event = { userId, seq: head.seq + 1, type, deviceId, targetId, at, country, actor, detail };
     const hash = computeHash(head.hash, event);
     try {
       // eslint-disable-next-line no-await-in-loop
       // The actor field exists only on events an Emergency Access contact caused, so every other row keeps its old shape.
       const stored = { ...event };
       if (!actor) delete stored.actor;
+      if (!detail) delete stored.detail;
       await AuditEvent.create({
         ...stored,
         prevHash: head.hash,
@@ -150,6 +153,7 @@ async function recordEvent(req, type, options = {}) {
       targetId: options.targetId !== undefined && options.targetId !== null ? String(options.targetId) : null,
       country: options.country !== undefined ? options.country : countryFrom(req),
       actor: options.actor || null,
+      detail: options.detail || null,
     });
   } catch (error) {
     failureCount += 1;

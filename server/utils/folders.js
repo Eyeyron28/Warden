@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const Folder = require('../models/Folder');
 const Document = require('../models/Document');
+const { NOT_HELD } = require('../utils/quarantineFilter');
 
 /**
  * The one place folder naming rules live. Every code path that creates,
@@ -331,7 +332,7 @@ async function runInTransaction(fn) {
 async function listFolderPaths(userId) {
   const [folders, documentFolders] = await Promise.all([
     Folder.find({ userId }, 'parentPath name'),
-    Document.distinct('folder', { userId, deletedAt: null }),
+    Document.distinct('folder', { userId, deletedAt: null, ...NOT_HELD }),
   ]);
   const paths = new Set(folders.map(fullPathOf));
   documentFolders.forEach((folder) => {

@@ -26,6 +26,7 @@ const { documentSharesRoutes, shareTokenRoutes } = require('./routes/shares.rout
 const sharedViewRoutes = require('./routes/sharedView.routes');
 const accountRoutes = require('./routes/account.routes');
 const trashRoutes = require('./routes/trash.routes');
+const quarantineRoutes = require('./routes/quarantine.routes');
 const cronRoutes = require('./routes/cron.routes');
 const { publicRouter: emergencyPublicRoutes, ownerRouter: emergencyOwnerRoutes } = require('./routes/emergency.routes');
 const { assertEmergencyConfig } = require('./utils/emergency/config');
@@ -157,6 +158,7 @@ app.use('/api/emergency', emergencyOwnerRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/trash', trashRoutes);
+app.use('/api/quarantine', quarantineRoutes);
 app.use('/api/cron', cronRoutes);
 
 app.use(notFound);

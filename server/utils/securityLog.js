@@ -21,6 +21,10 @@ const EVENTS = new Set([
   'emergency_refused', // an emergency session tried something it may not do, or a request was refused
   'share_password_failures', // wrong passwords on one share link over the threshold
   'mail_cap', // the day's mail budget stopped a send (bucket = priority or bulk, count = the limit that was reached)
+  'file_held', // quarantine: an upload was held (bucket = the reason codes, never a name)
+  'file_refused', // quarantine: an upload was refused (bucket = the reason codes)
+  'file_released', // quarantine: the owner released a held file (bucket = the reason codes)
+  'scan_error', // quarantine: the scanner itself failed and the file was saved unchecked (bucket = the error's name)
 ]);
 
 /** Eight hex characters of a keyed hash: a correlation id, not a way back to the value. */

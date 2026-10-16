@@ -351,6 +351,9 @@ function plan() {
     'GET /api/insights/frequent': { kind: 'own' },
     // trash
     'GET /api/trash': { kind: 'own' },
+    // Quarantine: B's own (empty) list, and a release that names A's file is the same 404 as any other foreign id.
+    'GET /api/quarantine': { kind: 'own' },
+    [`POST ${D}/:id/quarantine/release`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { confirm: 'RELEASE' } },
     'POST /api/trash/restore': { kind: 'foreign', expect: GONE, json: () => ({ kind: 'file', id: w.trashedDocId }) },
     'DELETE /api/trash': { kind: 'own' },
     'DELETE /api/trash/:kind/:id': { kind: 'foreign', expect: GONE, params: { kind: 'file', id: w.trashedDocId } },

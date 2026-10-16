@@ -7,6 +7,7 @@ const { LIVE, TRASHED } = require('../utils/storage');
 const { computeFlags } = require('../utils/suspicious');
 const { computeVaultHealth } = require('../utils/vaultHealth');
 const { daysUntil } = require('../utils/docExpiry');
+const { NOT_HELD } = require('../utils/quarantineFilter');
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const DAY = 24 * 60 * 60 * 1000;
@@ -20,7 +21,7 @@ async function gatherFacts(userId, now = new Date()) {
     Share.countDocuments({ ...activeShare, createdAt: { $lt: new Date(now.getTime() - 14 * DAY) } }),
     TrustedDevice.find({ userId, expiresAt: { $gt: now } }).select('lastUsedAt'),
     AuditEvent.find({ userId, at: { $gte: new Date(now.getTime() - 30 * DAY) } }).sort({ seq: -1 }).limit(MAX_EVENTS_READ),
-    Document.find({ userId, ...LIVE, docExpiresAt: { $ne: null } }).select('docExpiresAt'),
+    Document.find({ userId, ...LIVE, ...NOT_HELD, docExpiresAt: { $ne: null } }).select('docExpiresAt'),
     Document.countDocuments({ userId, ...TRASHED, purgeAt: { $lte: new Date(now.getTime() + 7 * DAY) } }),
     User.findById(userId).select('expiryReminders'),
   ]);

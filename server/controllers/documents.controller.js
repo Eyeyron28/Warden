@@ -30,6 +30,8 @@ const {
   deleteFolderTree,
 } = require('../utils/folders');
 const { sniffImageType, sniffPreviewKind, IMAGE_TYPES } = require('../utils/sniff');
+const { NOT_HELD, isHeld, assertNotHeld, safeScan, scanFields, refuse, noteHeld } = require('../utils/quarantine');
+const { describeReasons } = require('../utils/fileScanner');
 const { freeName } = require('../utils/uniqueName');
 const { trashDocument, trashFolder, purgeExpired } = require('../utils/trash');
 const { parseFolderStyle, hasStyleFields } = require('../utils/folderStyle');
@@ -141,6 +143,8 @@ const isDuplicateKey = (error) => error && (error.code === 11000 || /E11000/.tes
 /** What an upload answers: the stored name (which may have gained a counter) and whether it did. */
 const uploadAnswer = (document, extra = {}) => ({
   id: document._id,
+  // A held file is saved but isolated: the answer says so, with the reasons (codes and their plain sentences).
+  ...(isHeld(document) ? { held: true, reasons: describeReasons(document.scan?.reasons) } : {}),
   filename: document.filename,
   folder: document.folder,
   expiryDate: document.docExpiresAt,
@@ -152,7 +156,7 @@ const uploadAnswer = (document, extra = {}) => ({
 });
 
 const findByUploadKey = (userId, uploadKey) =>
-  Document.findOne({ userId, uploadKey }).select('filename folder docExpiresAt thumbMime createdAt');
+  Document.findOne({ userId, uploadKey }).select('filename folder docExpiresAt thumbMime createdAt quarantine scan');
 
 /**
  * POST /api/documents
@@ -193,6 +197,12 @@ const createDocument = asyncHandler(async (req, res) => {
     throw badRequest('Expires on must be a date like 2027-03-05.');
   }
 
+  // Quarantine's scan of the plaintext, before anything is encrypted or stored. A blocked file is refused here: nothing is stored
+  // or counted, and the same upload sent again is refused the same way. A suspicious one is saved but held (below).
+  const scanResult = safeScan({ name: originalname, type: mimetype, buffer });
+  if (scanResult.verdict === 'blocked') throw await refuse(req, scanResult);
+  const held = scanResult.verdict === 'suspicious';
+
   // The independent database reads are all sent at once, and the CPU work below (hashing, encrypting) runs while they are in
   // flight. Nothing is stored until every check has passed:
   //  - the quota check (refused before anything is stored if it would pass the account's quota);
@@ -220,7 +230,8 @@ const createDocument = asyncHandler(async (req, res) => {
 
   // Optional preview the browser drew from the plaintext. An invalid or
   // oversized one is simply dropped - it must never fail the upload.
-  const thumbUpload = req.files?.thumb?.[0];
+  // (A held file gets none: it must not be previewed in any form.)
+  const thumbUpload = held ? null : req.files?.thumb?.[0];
   const thumbnail = thumbUpload ? encryptThumbnail(thumbUpload.buffer, thumbUpload.mimetype, req.dek) : null;
 
   const quotaError = await quotaOutcome;
@@ -253,6 +264,7 @@ const createDocument = asyncHandler(async (req, res) => {
       syncStatus: 'pending',
       ...(uploadKey ? { uploadKey } : {}),
       ...(thumbnail || {}),
+      ...scanFields(scanResult),
     });
   } catch (error) {
     // Lost the race with the same upload sent at the same instant: that one is the document.
@@ -264,6 +276,7 @@ const createDocument = asyncHandler(async (req, res) => {
   }
 
   await recordEvent(req, 'upload', { targetId: document._id });
+  if (held) await noteHeld(req, document, scanResult);
   res.status(201).json(uploadAnswer(document, changed ? { nameChanged: true, requestedName: wanted } : {}));
 });
 
@@ -298,7 +311,7 @@ const listDocuments = asyncHandler(async (req, res) => {
   const [, documents, sharedIds] = await Promise.all([
     purgeExpired(req.userId),
     Document.aggregate([
-      { $match: { userId: req.userId, deletedAt: null, ...documentScope(req.emergency) } },
+      { $match: { userId: req.userId, deletedAt: null, ...NOT_HELD, ...documentScope(req.emergency) } },
       { $sort: { createdAt: -1 } },
       { $project: LIST_PROJECTION },
     ]),
@@ -330,7 +343,7 @@ const SNIFF_BATCH = 12;
 const listPhotos = asyncHandler(async (req, res) => {
   await purgeExpired(req.userId);
 
-  const unclassified = await Document.find({ userId: req.userId, deletedAt: null, sniffedType: null })
+  const unclassified = await Document.find({ userId: req.userId, deletedAt: null, ...NOT_HELD, sniffedType: null })
     .select('_id encryptedBlob iv authTag')
     .limit(SNIFF_BATCH);
   for (const doc of unclassified) {
@@ -347,11 +360,11 @@ const listPhotos = asyncHandler(async (req, res) => {
 
   const [photos, pending] = await Promise.all([
     Document.aggregate([
-      { $match: { userId: req.userId, deletedAt: null, sniffedType: { $in: IMAGE_TYPES } } },
+      { $match: { userId: req.userId, deletedAt: null, ...NOT_HELD, sniffedType: { $in: IMAGE_TYPES } } },
       { $sort: { createdAt: -1 } },
       { $project: LIST_PROJECTION },
     ]),
-    Document.countDocuments({ userId: req.userId, deletedAt: null, sniffedType: null }),
+    Document.countDocuments({ userId: req.userId, deletedAt: null, ...NOT_HELD, sniffedType: null }),
   ]);
   const sharedIds = await activeSharedIds(req.userId);
   res.status(200).json({ photos: photos.map((doc) => toListSummary(doc, sharedIds)), pending });
@@ -414,6 +427,8 @@ const listFolderChildren = asyncHandler(async (req, res) => {
   if (canonical === '' && !req.emergency) {
     const styled = await Folder.find({ userId: req.userId, $or: [{ color: { $exists: true } }, { icon: { $exists: true } }] }).select('name parentPath color icon');
     answer.styles = Object.fromEntries(styled.map((folder) => [joinPath(folder.parentPath || '', folder.name), { color: folder.color ?? null, icon: folder.icon ?? null }]));
+    // How many files are held in Quarantine (the sidebar badge), so the badge costs no request of its own.
+    answer.heldCount = await Document.countDocuments({ userId: req.userId, deletedAt: null, 'quarantine.state': 'held' });
   }
   res.status(200).json(answer);
 });
@@ -431,7 +446,7 @@ const listExpiringDocuments = asyncHandler(async (req, res) => {
   // expiryStatus depends on "today", so it can't be computed in the Mongo
   // query itself - fetch candidates that have a date at all, then filter
   // and sort in JS using the same computeExpiryInfo the list endpoint uses.
-  const documents = await Document.find({ userId: req.userId, deletedAt: null, docExpiresAt: { $ne: null } });
+  const documents = await Document.find({ userId: req.userId, deletedAt: null, ...NOT_HELD, docExpiresAt: { $ne: null } });
 
   // Files with an "Expires on" day that is within 60 days or already past, soonest (most overdue) first.
   const expiring = documents
@@ -818,6 +833,7 @@ const viewDocument = asyncHandler(async (req, res) => {
   if (!document) {
     throw documentNotFound();
   }
+  assertNotHeld(document);
 
   const plaintext = decryptFile(
     document.encryptedBlob.toString('base64'),
@@ -878,8 +894,9 @@ const viewDocument = asyncHandler(async (req, res) => {
  */
 const recordDownload = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
-  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).select('_id');
+  const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).select('_id quarantine');
   if (!document) throw documentNotFound();
+  assertNotHeld(document);
   await Document.updateOne(
     { _id: document._id, userId: req.userId },
     { $set: { lastOpenedAt: new Date() }, $inc: { downloadCount: 1 } },
@@ -900,6 +917,7 @@ const getThumbnail = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
   const document = await Document.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null, ...documentScope(req.emergency) });
+  if (document) assertNotHeld(document);
   if (!document || !hasThumbnail(document)) {
     throw documentNotFound();
   }
@@ -938,6 +956,7 @@ const putThumbnail = asyncHandler(async (req, res) => {
   if (!document) {
     throw documentNotFound();
   }
+  assertNotHeld(document);
 
   const thumbnail = encryptThumbnail(thumbUpload.buffer, thumbUpload.mimetype, req.dek);
   if (!thumbnail) {

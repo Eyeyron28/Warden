@@ -3,6 +3,7 @@ const Document = require('../models/Document');
 const Share = require('../models/Share');
 const AuditEvent = require('../models/AuditEvent');
 const { LIVE } = require('../utils/storage');
+const { NOT_HELD } = require('../utils/quarantineFilter');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that.
@@ -35,7 +36,7 @@ const lastTouched = (doc) => new Date(doc.lastOpenedAt || doc.createdAt || 0).ge
 
 /** Live (not trashed) documents of one account, with only the fields the insights need. */
 function liveDocuments(userId) {
-  return Document.find({ userId, deletedAt: LIVE.deletedAt }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred');
+  return Document.find({ userId, deletedAt: LIVE.deletedAt, ...NOT_HELD }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred');
 }
 
 /**
@@ -60,6 +61,7 @@ async function frequentFor(userId, knownDocs, now = new Date()) {
     (await Document.find({
       userId,
       deletedAt: LIVE.deletedAt,
+      ...NOT_HELD,
       $or: [{ _id: { $in: [...counts.keys()].filter((id) => mongoose.Types.ObjectId.isValid(id)) } }, { viewCount: { $gt: 0 }, lastOpenedAt: { $gte: since } }],
     }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred'));
   const byId = new Map(docs.map((doc) => [String(doc._id), doc]));

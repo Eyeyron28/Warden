@@ -18,7 +18,9 @@ const notFound = (req, res, next) => {
 const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INVALID', 'STORAGE_QUOTA', 'INVITE_CODE_INVALID', 'RESET_TICKET_INVALID', 'EMAIL_DOMAIN_NO_MAIL',
   // Emergency Access: answers the screens act on (the first three are only ever given to someone who has already passed
   // the kit and code checks).
-  'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY']);
+  'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY',
+  // Quarantine: a refused upload, a held file that cannot be opened, a release without the typed word.
+  'FILE_BLOCKED', 'VERSION_REFUSED', 'QUARANTINED', 'RELEASE_CONFIRM']);
 
 // What a caller is told for any server-side failure. The real error stays in the server log, next to the request id.
 const GENERIC_SERVER_ERROR = 'Something went wrong on our side. Please try again.';
@@ -75,6 +77,8 @@ const errorHandler = (err, req, res, next) => {
   if (PUBLIC_ERROR_CODES.has(err.code)) {
     errorBody.code = err.code;
   }
+  // Quarantine: the reason codes with their plain sentences (utils/fileScanner.js), never the file's name or content.
+  if (Array.isArray(err.reasons) && PUBLIC_ERROR_CODES.has(err.code)) errorBody.reasons = err.reasons;
   // "Not yet" tells an authenticated contact when the waiting period ends.
   if (err.code === 'NOT_YET' && err.releaseAt) errorBody.releaseAt = err.releaseAt;
 

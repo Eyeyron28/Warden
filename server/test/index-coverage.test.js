@@ -203,3 +203,25 @@ test('the app, loaded the way production loads it, registers every model file', 
   const missing = expected.filter((name) => !loaded.includes(name));
   assert.deepEqual(missing, [], `models the app does not load at startup: ${missing.join(', ')}`);
 });
+
+it('Quarantine\'s list is served by its own partial index (only held documents are in it), not by reading every document', async () => {
+  const Document = mongoose.models.Document;
+  await mongoose.connection.dropDatabase();
+  await migrateIndexes();
+  const declared = Document.schema.indexes().find(([fields]) => keyOf(fields) === keyOf({ userId: 1, 'quarantine.heldAt': -1 }));
+  assert.ok(declared, 'the partial index is declared on the model');
+  assert.deepEqual(declared[1].partialFilterExpression, { 'quarantine.state': 'held' });
+  const user = new mongoose.Types.ObjectId();
+  // many ordinary documents and a few held ones
+  const rows = Array.from({ length: 300 }, (_, n) => ({ userId: user, filename: `f${n}`, folder: 'root', encryptedBlob: Buffer.alloc(1), iv: 'x', authTag: 'y', checksum: 'z', createdAt: new Date(), deletedAt: null }));
+  for (let n = 0; n < 3; n += 1) rows[n] = { ...rows[n], quarantine: { state: 'held', heldAt: new Date(Date.now() - n * 1000) } };
+  await Document.collection.insertMany(rows);
+  const plan = await Document.collection.find({ userId: user, 'quarantine.state': 'held', deletedAt: null }).sort({ 'quarantine.heldAt': -1 }).explain('executionStats');
+  const stages = JSON.stringify(plan.queryPlanner.winningPlan);
+  assert.match(stages, /IXSCAN/, 'an index scan');
+  assert.match(stages, /quarantine\.heldAt/, 'the held-files index');
+  assert.ok(plan.executionStats.totalDocsExamined <= 3, `examined ${plan.executionStats.totalDocsExamined} documents for 3 held ones`);
+  // the count behind the sidebar badge (the storage meter's heldCount) uses it as well
+  const count = await Document.collection.find({ userId: user, deletedAt: null, 'quarantine.state': 'held' }).explain('executionStats');
+  assert.ok(count.executionStats.totalDocsExamined <= 3);
+});

@@ -15,6 +15,7 @@ process.env.NODE_ENV = 'test';
 
 const db = require('./helpers/fakeDb');
 const { SAMPLES, NAMES } = require('./helpers/samples');
+const scanner = require('../utils/fileScanner');
 const names = require('../utils/fileNames');
 const { sniffImageType } = require('../utils/sniff');
 
@@ -159,6 +160,13 @@ test('every sample, under every kind of name, survives upload, listing, download
         : entry.name;
       for (const table of Object.keys(world.tables)) world.tables[table] = [];
       const upload = await call(D.createDocument, as({ body: {}, files: { file: [{ buffer: sample.bytes, originalname: name, mimetype: 'application/octet-stream' }] } }));
+      // A sample the scanner would hold or refuse (an .exe, an HTML page with a script...) is Quarantine's business: that is covered by
+      // quarantine.test.js. Here it is only checked that it is never lost: refused (nothing stored) or stored under its name, held.
+      const verdict = scanner.scanBuffer({ name, type: 'application/octet-stream', buffer: sample.bytes }).verdict;
+      if (verdict !== 'clean') {
+        assert.equal(upload.error?.status ?? (upload.json?.held ? 'held' : 'saved'), verdict === 'blocked' ? 422 : 'held', `${sample.ext} / ${entry.note}`);
+        continue;
+      }
       assert.equal(upload.error, null, `${sample.ext} / ${entry.note}: upload`);
       const id = String(upload.json.id);
       const stored = world.tables.documents[0].filename;

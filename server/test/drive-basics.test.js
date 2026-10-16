@@ -193,7 +193,7 @@ it('details: one answer with the facts, sharing, purpose, a 12-character fingerp
   const row = await raw(id);
   for (const secret of [full, row.iv, row.authTag, row.encryptedBlob.toString('base64').slice(0, 24)]) assert.ok(!text.includes(secret), 'no checksum, IV, tag or ciphertext');
   assert.doesNotMatch(text, /wrapped|storage|path":|"iv"|authTag|encryptedBlob|dek|"key"/i);
-  assert.deepEqual(Object.keys(body).sort(), ['activity', 'createdAt', 'daysUntilExpiry', 'expiresAt', 'expiryStatus', 'fingerprint', 'folder', 'hasNote', 'id', 'mimeType', 'name', 'note', 'purposes', 'shared', 'size', 'starred', 'type', 'updatedAt', 'versionLimits', 'versions']);
+  assert.deepEqual(Object.keys(body).sort(), ['activity', 'createdAt', 'daysUntilExpiry', 'expiresAt', 'expiryStatus', 'fingerprint', 'folder', 'hasNote', 'id', 'mimeType', 'name', 'note', 'purposes', 'scan', 'shared', 'size', 'starred', 'type', 'updatedAt', 'versionLimits', 'versions']);
 });
 
 it('details: another account\'s file, a trashed file and a bad id are all the same 404', async () => {

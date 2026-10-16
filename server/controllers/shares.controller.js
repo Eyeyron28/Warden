@@ -19,6 +19,7 @@ const { getPublicAppUrl } = require('../utils/publicAppUrl');
 const { recordEvent } = require('../utils/audit');
 const { removeShares } = require('../utils/shareCleanup');
 const { sha256 } = require('../utils/shareGate');
+const { quarantinedError } = require('../utils/quarantine');
 
 // Routes are async, but Express doesn't forward rejected promises to
 // error-handling middleware on its own - this small wrapper does that so
@@ -233,6 +234,8 @@ async function issueShare(req, res, documentIds) {
   }
 
   const objectIds = uniqueIds.map((id) => new mongoose.Types.ObjectId(id));
+  // A file held in Quarantine cannot be shared (released ones can).
+  if (await Document.exists({ _id: { $in: objectIds }, userId: req.userId, ...{ 'quarantine.state': 'held' } })) throw quarantinedError();
   const sizes = await Document.aggregate([
     { $match: { _id: { $in: objectIds }, userId: req.userId, deletedAt: null } },
     { $project: { size: { $binarySize: '$encryptedBlob' } } },

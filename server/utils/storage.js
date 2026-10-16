@@ -56,19 +56,22 @@ async function versionsFor(userId) {
 }
 
 async function getUsage(userId) {
-  const [files, trashed, versions, trashedFolders, loose] = await Promise.all([
+  const [files, trashed, versions, trashedFolders, loose, held] = await Promise.all([
     sumFor(userId, LIVE),
     sumFor(userId, TRASHED),
     versionsFor(userId),
     TrashFolder.countDocuments({ userId }),
     Document.countDocuments({ userId, ...TRASHED, trashBatchId: null }),
+    // Files held in Quarantine: they count toward the bytes (they are stored) but are not part of the file count.
+    Document.countDocuments({ userId, ...LIVE, 'quarantine.state': 'held' }),
   ]);
   const quota = quotaBytes();
   // Previous versions of files (models/DocumentVersion.js) count against the same quota as the files themselves.
   const usedBytes = files.bytes + trashed.bytes + versions.bytes;
   return {
     fileBytes: files.bytes,
-    fileCount: files.count,
+    fileCount: Math.max(0, files.count - held),
+    heldCount: held,
     trashBytes: trashed.bytes,
     trashCount: loose + trashedFolders,
     versionBytes: versions.bytes,
