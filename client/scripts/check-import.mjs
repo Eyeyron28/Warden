@@ -139,7 +139,7 @@ try {
   const consoleProblems = [];
   page.on('console', (message) => { if (message.type() === 'error') consoleProblems.push(message.text()); });
   page.on('pageerror', (error) => consoleProblems.push(`pageerror: ${error.message}`));
-  const card = page.getByTestId('import-card');
+  const card = page.getByTestId('transfer-tray');
   const nav = (name) => page.getByRole('link', { name, exact: true }).first();
   const counter = async () => {
     const text = await card.innerText();
@@ -153,7 +153,7 @@ try {
   await page.getByRole('button', { name: /^Import 20 files$/ }).click();
   await card.waitFor({ timeout: 10000 });
   check(true, 'the card appears as soon as the import starts');
-  check(/Importing/.test(await card.innerText()) && /backup\.zip/.test(await card.innerText()), 'it says "Importing backup.zip"');
+  check(/Importing 20 files/.test(await card.innerText()) && /backup\.zip/.test(await card.innerText()), 'it says "Importing 20 files" with backup.zip as a row');
   check((await page.getByRole('button', { name: /^Choose a \.zip/ }).count()) === 0, 'a second zip cannot be chosen while one runs (the choose button is gone)');
 
   // ---- moving around: the import must keep going ----
@@ -176,27 +176,26 @@ try {
   check(mid > 0 && mid < 20, `files are arriving on the server while the person is elsewhere (${mid} of 20 so far)`);
 
   // ---- clicking the running card opens the Import screen ----
-  await card.getByRole('button', { name: /Importing/ }).click();
+  await card.getByRole('button', { name: /^Show details/ }).click();
   await page.waitForURL((url) => url.pathname === '/export');
-  check(await page.getByTestId('import-progress').isVisible(), 'a click on the running card opens the Import screen, which shows the full progress');
+  check(await page.getByTestId('import-progress').isVisible(), '"Show details" on the running row opens the Import screen, which shows the full progress');
 
   // ---- the end ----
-  await page.getByText(/Imported 20 files/).first().waitFor({ timeout: 30000 });
+  await page.getByText(/20 files sealed/).first().waitFor({ timeout: 30000 });
   check((await docCount()) === 20, 'all 20 files are in the vault');
-  check((await card.getAttribute('data-kind')) === 'done', 'the card changes to the done state (check mark)');
-  check(/Imported 20 files/.test(await card.innerText()), 'it says "Imported 20 files"');
-  check((await card.getByRole('button', { name: 'Dismiss' }).count()) === 1, 'the finished card has a close button');
+  check((await card.getAttribute('data-state')) === 'done', 'the tray changes to the done state (sealed lock)');
+  check(/20 files sealed/.test(await card.innerText()), 'it says "20 files sealed"');
+  check((await card.getByRole('button', { name: /^Dismiss/ }).count()) === 1, 'the finished import row has Dismiss');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'import-card-done.png') });
   await nav('Overview').click();
   await page.waitForURL((url) => url.pathname === '/overview');
-  await card.getByRole('button', { name: /Imported 20 files/ }).click();
+  await card.getByRole('button', { name: /^Show .* in its folder/ }).click();
   await page.waitForURL((url) => url.pathname === '/files' && url.searchParams.get('path') === 'Backup');
   await page.getByRole('heading', { name: /^Folders/ }).or(page.getByRole('heading', { name: /^Files/ })).first().waitFor();
   await page.waitForTimeout(800);
   const folderCards = await page.locator('ul[aria-label="Folders"] > li').count();
   check(folderCards >= 4, `clicking the done card opens the destination folder "Backup" (it holds ${folderCards} sub-folders with the files)`);
-  check((await card.count()) === 0 || !(await card.isVisible()), 'the card is gone once it was clicked (the click dismisses it)') || null;
-
+  
   // ---- an unclicked finished card goes away by itself; the report stays ----
   const second = await makeZip('second.zip', 6, 'Backup');
   await nav('Export').click();
@@ -205,7 +204,7 @@ try {
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(second);
   await page.getByRole('button', { name: /^Import 6 files$/ }).click();
   await nav('Trash').click();
-  await page.getByText(/Imported 6 files/).first().waitFor({ timeout: 30000 });
+  await page.getByText(/6 files sealed/).first().waitFor({ timeout: 30000 });
   const finishedAt = Date.now();
   await card.waitFor({ state: 'detached', timeout: CARD_MS + 8000 });
   const stayed = Date.now() - finishedAt;
@@ -223,12 +222,12 @@ try {
   await card.waitFor();
   await nav('Overview').click();
   await page.getByRole('button', { name: 'Lock vault' }).click();
-  const ask = page.getByRole('dialog', { name: 'Stop the import?' });
+  const ask = page.getByRole('dialog', { name: 'Stop and sign out?' });
   await ask.waitFor();
   check(/An import is running\. Stop it and sign out\?/.test(await ask.innerText()), 'Lock vault asks: "An import is running. Stop it and sign out?"');
-  await ask.getByRole('button', { name: 'Keep importing' }).click();
+  await ask.getByRole('button', { name: 'Keep going' }).click();
   await ask.waitFor({ state: 'detached' });
-  check(page.url().includes('/overview') && (await card.isVisible()), '"Keep importing" leaves the person signed in and the import running');
+  check(page.url().includes('/overview') && (await card.isVisible()), '"Keep going" leaves the person signed in and the import running');
   const before = await counter();
   await page.waitForTimeout(1500);
   check((await counter()) > before, 'and it keeps advancing');

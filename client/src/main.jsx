@@ -14,7 +14,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import './styles/global.css';
 import App from './App.jsx';
 import UpdatePrompt from './components/UpdatePrompt.jsx';
-import ImportHost from './components/ImportHost.jsx';
+import TransferHost from './components/TransferHost.jsx';
 import { prefetchFirstScreen } from './services/prefetch.js';
 import { installSessionReset } from './services/sessionReset.js';
 
@@ -29,8 +29,8 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <App />
       <UpdatePrompt />
-      {/* The import job's card and sign-out question: above the routes, so no page change can remove them. */}
-      <ImportHost />
+      {/* The transfer tray (uploads, new versions, the zip import) and its sign-out question: above the routes, so no page change can remove them. */}
+      <TransferHost />
     </BrowserRouter>
   </StrictMode>
 );

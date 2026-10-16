@@ -5,6 +5,7 @@ import { Copy, Info, Star, X } from '@phosphor-icons/react';
 import { getDocumentDetails, peekDocumentDetails } from '../services/documentsService.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatManila } from '../utils/activityText.js';
+import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { formatDate } from '../utils/formatDate.js';
 import { formatBytes } from '../utils/listing.js';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
@@ -79,7 +80,14 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onCl
     };
   }, [id, starred, reload]); // a changed star or file is a write: the cached answer is gone, so ask again
 
-  // The file's contents changed (a new version, a restore, a deleted version): ask again, and tell the page.
+  // A transfer finished (a new version sealed in the tray): the versions are read again.
+  useEffect(() => {
+    const again = () => setReload((value) => value + 1);
+    window.addEventListener(DOCUMENTS_CHANGED, again);
+    return () => window.removeEventListener(DOCUMENTS_CHANGED, again);
+  }, []);
+
+  // The file's contents changed (a restore, a deleted version): ask again, and tell the page.
   const changed = (kind) => {
     if (kind === 'file') setReload((value) => value + 1);
     onChanged?.({ id, kind });
@@ -135,7 +143,7 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onCl
                 <span className={styles.hint}>{starred ? 'Click to remove the star' : 'Click to star this file'}</span>
               </button>
 
-              <UploadVersion id={id} name={name} onChanged={changed} />
+              <UploadVersion id={id} name={name} folder={details.folder && details.folder !== 'root' ? details.folder : ''} />
 
               <dl className={styles.list}>
                 <Row label="Type">{kindLabel(details)}</Row>

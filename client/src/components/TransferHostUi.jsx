@@ -1,0 +1,38 @@
+import Modal from './Modal.jsx';
+import TransferTray from './TransferTray.jsx';
+import { transfers, useTransfers } from '../services/transfers.js';
+import styles from './TransferTray.module.css';
+
+/**
+ * Everything the transfers put on screen: the tray, and the question asked when someone presses Lock vault or Log out while files
+ * are being sealed or a zip is being imported. Loaded on demand (components/TransferHost.jsx).
+ */
+function TransferHostUi() {
+  const t = useTransfers();
+  return (
+    <>
+      <TransferTray />
+      {t.signOutPrompt && (
+        <Modal
+          title="Stop and sign out?"
+          onClose={() => transfers.answerSignOut(false)}
+          footer={
+            <>
+              <button type="button" className={styles.dialogPlain} onClick={() => transfers.answerSignOut(false)}>
+                Keep going
+              </button>
+              <button type="button" className={styles.dialogDanger} onClick={() => transfers.answerSignOut(true)}>
+                Stop and sign out
+              </button>
+            </>
+          }
+        >
+          <p className={styles.dialogText}>{t.signOutPrompt.text}</p>
+          <p className={styles.dialogHint}>Files that were already sealed or imported stay in your vault. Nothing is undone.</p>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+export default TransferHostUi;

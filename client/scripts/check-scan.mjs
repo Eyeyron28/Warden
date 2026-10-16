@@ -252,6 +252,7 @@ try {
   await dialog.getByLabel(/PDF \(all pages in one file\)/).check();
   await dialog.getByRole('button', { name: 'Save to the vault' }).click();
   await dialog.waitFor({ state: 'detached', timeout: 60000 });
+  check(await page.getByTestId('transfer-tray').waitFor({ timeout: 8000 }).then(() => true, () => false), 'the scan went through the transfer tray (the dialog closed at once)');
 
   // ---- the file ----
   const row = page.getByRole('button', { name: `${name}.pdf` }).first();

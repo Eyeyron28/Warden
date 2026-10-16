@@ -1,15 +1,9 @@
 import { useRef, useState } from 'react';
 import { ArrowCounterClockwise, DownloadSimple, Trash, UploadSimple } from '@phosphor-icons/react';
 
-import {
-  MAX_UPLOAD_BYTES,
-  TOO_LARGE_MESSAGE,
-  deleteDocumentVersion,
-  downloadBytes,
-  fetchVersionBytes,
-  restoreDocumentVersion,
-  uploadNewVersion,
-} from '../services/documentsService.js';
+import { deleteDocumentVersion, downloadBytes, fetchVersionBytes, getStorage, restoreDocumentVersion } from '../services/documentsService.js';
+import { transfers } from '../services/transfers.js';
+import { validateUpload } from '../utils/transferRules.js';
 import { extractErrorMessage } from '../services/api.js';
 import { formatManila } from '../utils/activityText.js';
 import { formatBytes } from '../utils/listing.js';
@@ -17,7 +11,7 @@ import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './DetailsPanel.module.css';
 
 /** "Upload new version": picks a file and replaces this file's contents, keeping the old ones as a previous version. */
-export function UploadVersion({ id, name, onChanged }) {
+export function UploadVersion({ id, name, folder = '' }) {
   const input = useRef(null);
   const [state, setState] = useState({ busy: false, message: '', error: '' });
   const run = useSingleFlight();
@@ -26,18 +20,16 @@ export function UploadVersion({ id, name, onChanged }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setState({ busy: false, message: '', error: TOO_LARGE_MESSAGE });
+    setState({ busy: true, message: '', error: '' });
+    const usage = await getStorage().catch(() => null);
+    const check = validateUpload(file, { usage });
+    if (!check.ok) {
+      setState({ busy: false, message: '', error: check.reason });
       return;
     }
-    setState({ busy: true, message: '', error: '' });
-    try {
-      await uploadNewVersion(id, file);
-      setState({ busy: false, message: 'Uploaded. The earlier contents are kept as a version.', error: '' });
-      onChanged?.('file');
-    } catch (err) {
-      setState({ busy: false, message: '', error: extractErrorMessage(err, 'Could not upload the new version.') });
-    }
+    // Handed to the transfer tray (the panel does not wait): the earlier contents are kept as a version once it is sealed.
+    transfers.enqueue([{ kind: 'newVersion', file, documentId: id, destination: folder }]);
+    setState({ busy: false, message: 'Sending. Follow it in the tray at the bottom right.', error: '' });
   };
 
   return (

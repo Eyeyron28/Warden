@@ -8,7 +8,7 @@ import { getToken, peekSessionNotice, subscribeToken } from './session.js';
  * It used to live in the Import page's own state (pages/ExportPage.jsx), so leaving that page left the upload loop with nowhere to
  * report to: no progress, no result, no way to cancel. This store is a module, not a component: it exists for as long as the tab
  * does, so changing page cannot touch it. The Import page starts a job and reads its state; the card at the bottom right
- * (components/ImportCard.jsx, mounted above the router in main.jsx) reads the same state on every page.
+ * (components/TransferTray.jsx, mounted above the router in main.jsx) reads the same state on every page.
  *
  * What it holds, in memory only: the zip's bytes while the job runs (dropped the moment it ends), the file name, and a per-file
  * report. Nothing goes to localStorage, sessionStorage, IndexedDB or a cache. One import at a time.

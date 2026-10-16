@@ -1,6 +1,7 @@
 import { invalidateAll } from './dataCache.js';
 import { clearEmergencyFlag, leaveEmergencyMode } from './emergencyMode.js';
 import { importJob } from './importJob.js';
+import { transfers } from './transfers.js';
 import { getToken, peekSessionNotice, subscribeToken } from './session.js';
 import { visitMemory } from './visitMemory.js';
 
@@ -17,11 +18,12 @@ import { visitMemory } from './visitMemory.js';
  *                flag (the contact's page says so), and the import job (which reports that it stopped, services/importJob.js).
  */
 export function createSessionReset(deps) {
-  const { visitMemory: memory, invalidateCache, leaveEmergency, clearEmergency, clearImport, storage } = deps;
+  const { visitMemory: memory, invalidateCache, leaveEmergency, clearEmergency, clearImport, clearTransfers = () => {}, storage } = deps;
   return function forgetPreviousVisit({ reason = 'signout' } = {}) {
     const expired = reason === 'expired';
     memory.clear({ keepReturn: expired });
     invalidateCache();
+    clearTransfers(); // every queued, running and finished transfer, names included
     leaveEmergency({ keepFlag: expired });
     if (!expired) {
       clearEmergency();
@@ -49,6 +51,7 @@ export const forgetPreviousVisit = createSessionReset({
   leaveEmergency: leaveEmergencyMode,
   clearEmergency: clearEmergencyFlag,
   clearImport: () => importJob.clear(),
+  clearTransfers: () => transfers.clear(),
   storage: typeof window === 'undefined' ? null : window.sessionStorage,
 });
 

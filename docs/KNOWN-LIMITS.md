@@ -30,7 +30,8 @@ deadline. Both advisories cover every 6.x release, so no patch or minor update i
      `/files`.
    - `OverviewPage.jsx` and `DriveList.jsx` (the Starred and Recent lists): `openLink(doc)`, the same fixed `/files?path=` start.
    - `ExportPage.jsx` (the import report): `filesLink(job.destination)`, the same helper.
-   - `ImportCard.jsx` (the import card): `navigate(view.target)`, where `utils/importCard.js` returns only `/export` or `filesLink()`, which
+   - `TransferTray.jsx` (the transfer tray): `row.actions.show`, built by `utils/trayModel.js` from `filesLink()` or `/export` only.
+   - `ImportCard.jsx` (the former import card, now part of the tray): `navigate(view.target)`, where `utils/importCard.js` returns only `/export` or `filesLink()`, which
      is `/files` with an encoded `?path=`.
    - `VaultHealthCard.jsx`: `item.actionPath`, fixed paths written by the server in `server/utils/vaultHealth.js`.
    - `SiteHeader.jsx`, `EmergencyShell.jsx`: constant lists, and `emergencyRedirect()` returns one of the app's own fixed paths.

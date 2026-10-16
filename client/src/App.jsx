@@ -10,7 +10,7 @@ import { adoptTokenFromOtherTabs, clearToken, expireSession, getToken } from './
 import { getMe } from './services/authService.js';
 import { JUST_ASKED_MS } from './services/dataCache.js';
 import { checkStoredSession } from './services/sessionCheck.js';
-import { importJob } from './services/importJob.js';
+import { transfers } from './services/transfers.js';
 import { forgetPreviousVisit } from './services/sessionReset.js';
 import { visitMemory } from './services/visitMemory.js';
 import { useSessionToken } from './utils/useSessionToken.js';
@@ -109,7 +109,7 @@ function App() {
   // "Lock vault": with an import running it asks first (An import is running. Stop it and sign out?).
   const handleLocked = useCallback(
     () =>
-      importJob.requestSignOut(async () => {
+      transfers.requestSignOut(async () => {
         try {
           await logoutVault();
         } catch {

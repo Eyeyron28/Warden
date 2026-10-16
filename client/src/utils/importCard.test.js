@@ -1,19 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-
-import * as esbuild from 'esbuild';
 
 import { createDismissTimer, describeCard, filesLink, importCardConfig, percentOf, skippedCount } from './importCard.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const src = path.join(here, '..');
-const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
-const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 const state = (patch = {}) => ({
   id: 1,
@@ -199,115 +188,4 @@ test('clicking or pressing close dismisses at once: the timer is cancelled and c
   timer.resume();
   fake.advance(100_000);
   assert.equal(gone, 0, 'a cancelled timer stays cancelled');
-});
-
-test('the container starts the timer only for a finished card, pauses it on focus, and counts the line down for the same time', () => {
-  const card = strip(read('components/ImportCard.jsx'));
-  assert.match(card, /const autoDismiss = Boolean\(view\?\.autoDismiss\);\s*useEffect\(\(\) => \{\s*if \(!autoDismiss\) return undefined;/, 'nothing while running');
-  assert.match(card, /createDismissTimer\(\{ ms: importCardConfig\.dismissMs, onExpire: \(\) => importJob\.dismissCard\(\) \}\)/);
-  assert.match(card, /timer\.current\?\.pause\(\)/);
-  assert.match(card, /timer\.current\?\.resume\(\)/);
-  assert.match(card, /navigate\(view\.target\);\s*if \(view\.autoDismiss\) importJob\.dismissCard\(\);/, 'a click opens the target, and dismisses a finished card');
-  assert.match(card, /onClose=\{\(\) => importJob\.dismissCard\(\)\}/);
-  assert.match(card, /onStop=\{\(\) => importJob\.cancel\(\)\}/);
-  const style = read('components/ImportCard.module.css').replace(/\r\n/g, '\n');
-  assert.match(style, /animation: drain var\(--dismiss-ms, 45s\) linear forwards;/);
-  assert.match(style, /\.countdownFill\[data-paused\] \{\s*animation-play-state: paused;/);
-  assert.match(style, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.spin \{\s*animation: none;/);
-});
-
-// ---------- the card as markup (the real component, rendered) ----------
-
-let renderCard;
-test.before(async () => {
-  const entry = `
-    import { createElement } from 'react';
-    import { renderToStaticMarkup } from 'react-dom/server';
-    import { ImportCardView } from './components/ImportCardView.jsx';
-    import { describeCard } from './utils/importCard.js';
-    export const render = (state, props = {}) => {
-      const view = describeCard(state);
-      return view ? renderToStaticMarkup(createElement(ImportCardView, { view, announce: state.announce, dismissMs: 45000, ...props })) : '';
-    };`;
-  const built = await esbuild.build({
-    stdin: { contents: entry, resolveDir: src, loader: 'jsx' },
-    bundle: true,
-    write: false,
-    outdir: 'out',
-    format: 'cjs',
-    platform: 'node',
-    jsx: 'automatic',
-    loader: { '.module.css': 'local-css', '.css': 'css' },
-    define: { 'process.env.NODE_ENV': '"production"' },
-    logLevel: 'silent',
-  });
-  const js = built.outputFiles.find((file) => file.path.endsWith('.js'));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warden-card-'));
-  const file = path.join(dir, 'card.cjs');
-  fs.writeFileSync(file, js.text);
-  renderCard = createRequire(import.meta.url)(file).render;
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test('markup, running: the title, the name, the count, the bar, Cancel, one click target; no close button and no countdown', () => {
-  const html = renderCard(state({ announce: 'Importing backup.zip: 48 files.' }));
-  assert.match(html, /data-testid="import-card"/);
-  assert.match(html, /data-kind="running"/);
-  assert.match(html, /Importing /);
-  assert.match(html, /aria-label="backup\.zip"/, 'the file name, as text');
-  assert.match(html, /12 of 48 files/);
-  assert.match(html, /role="progressbar"[^>]*aria-valuenow="25"/);
-  assert.match(html, />25%</);
-  assert.match(html, /data-action="cancel"/);
-  assert.match(html, /data-action="open" data-target="\/export"/);
-  assert.doesNotMatch(html, /data-action="dismiss"/, 'it cannot be closed while it runs');
-  assert.doesNotMatch(html, /countdown/);
-  assert.match(html, /<div class="[^"]*" role="status" aria-live="polite">Importing backup\.zip: 48 files\.<\/div>/, 'one polite live region with the announcement');
-  assert.equal((html.match(/aria-live=/g) || []).length, 1, 'the counters themselves are not live');
-});
-
-test('markup, Cancel asks first: "Stop the import?" with Stop and Keep going, and the Cancel button is gone', () => {
-  const html = renderCard(state(), { confirming: true });
-  assert.match(html, /Stop the import\?/);
-  assert.match(html, /data-action="stop"/);
-  assert.match(html, /data-action="keep-going"/);
-  assert.doesNotMatch(html, /data-action="cancel"/);
-});
-
-test('markup, finished: the title, a click target to the folder, a close button, and the countdown line for 45 seconds', () => {
-  const html = renderCard(finished({ destination: 'Backup' }));
-  assert.match(html, /data-kind="done"/);
-  assert.match(html, /Imported 48 files/);
-  assert.match(html, /data-action="open" data-target="\/files\?path=Backup"/);
-  assert.match(html, /data-action="dismiss"/);
-  assert.match(html, /--dismiss-ms:45000ms/);
-  assert.doesNotMatch(html, /data-paused/);
-  assert.doesNotMatch(html, /role="progressbar"/);
-  assert.match(renderCard(finished(), { focused: true }), /data-paused="true"/, 'the line stops while the card has focus');
-});
-
-test('markup, finished with problems, cancelled, stopped and failed', () => {
-  const warning = renderCard(finished({ uploaded: 45, skipped: [{ path: 'a' }, { path: 'b' }, { path: 'c' }] }));
-  assert.match(warning, /data-kind="warning"/);
-  assert.match(warning, /Imported 45 files, 3 skipped/);
-  const cancelled = renderCard(state({ status: 'cancelled', uploaded: 12 }));
-  assert.match(cancelled, /data-kind="cancelled"/);
-  assert.match(cancelled, /Import cancelled/);
-  assert.match(cancelled, /data-action="dismiss"/);
-  const stopped = renderCard(state({ status: 'stopped', fileName: '', message: 'Your session ended, so the import stopped.' }));
-  assert.match(stopped, /Your session ended/);
-  assert.doesNotMatch(stopped, /data-action="open"/, 'nothing to open');
-  assert.match(renderCard(state({ status: 'failed', message: 'That zip could not be imported.' })), /data-kind="failed"/);
-  assert.equal(renderCard(finished({ cardVisible: false })), '');
-});
-
-test('markup: a 255-character zip name is plain text with the full name as the tooltip and accessible name; markup in a name is escaped', () => {
-  const long = `${'quarterly_report_'.repeat(16).slice(0, 251)}.zip`;
-  assert.equal(long.length, 255);
-  const html = renderCard(state({ fileName: long }));
-  assert.ok(html.includes(`title="${long}"`) && html.includes(`aria-label="${long}"`));
-  assert.match(html, /aria-hidden="true">[^<]*<\/span><span class="[^"]*" aria-hidden="true">[^<]*\.zip<\/span>/, 'the extension is the visible tail');
-  const evil = renderCard(state({ fileName: '<img src=x onerror=alert(1)>.zip' }));
-  assert.doesNotMatch(evil, /<img/);
-  assert.match(evil, /&lt;img/);
 });

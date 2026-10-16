@@ -336,3 +336,11 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Files are being dragged in from the computer: the page says where they would go. */
+.dropActive {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -6px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-wash);
+}

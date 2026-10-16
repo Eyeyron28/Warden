@@ -260,8 +260,9 @@ test('the scanner uses a file input with the camera hint, never getUserMedia, an
 
 test('the dialog uploads through the existing upload (no request of its own), checks storage first, frees its canvases, and shows the gallery notice', () => {
   const dialog = strip(read('components/scan/ScanDialog.jsx'));
-  assert.match(dialog, /uploadDocument\(\{ file: files\[index\], folder: folder \|\| undefined \}/);
-  assert.match(dialog, /uploadFitsMessage\(await getStorage\(\)/);
+  assert.match(dialog, /transfers\.enqueue\(files\.map\(\(item\) => \(\{ kind: 'upload', file: item, folder: folder \|\| '' \}\)\)\);\s*onClose\(\);/, 'handed to the tray, and the dialog closes');
+  assert.match(dialog, /validateUpload\(item, \{ usage, pendingBytes: pending \}\)/);
+  assert.match(dialog, /await getStorage\(\)/);
   assert.doesNotMatch(dialog, /api\.(post|put|patch)|fetch\(/);
   assert.match(dialog, /for \(const page of pagesRef\.current\) releaseCanvas\(page\.work\)/, 'closing frees every page');
   assert.match(dialog, /for \(const canvas of canvases\) releaseCanvas\(canvas\)/);

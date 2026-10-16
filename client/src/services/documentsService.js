@@ -119,6 +119,10 @@ export async function updateDocument(id, updates) {
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const TOO_LARGE_MESSAGE = 'File exceeds the 4MB size limit.';
 
+// XMLHttpRequest, explicitly, for every upload: it is the one browser transport that reports how many bytes have been sent (fetch
+// cannot). Where there is no XMLHttpRequest (the tests, which supply their own transport) the default applies.
+const XHR_ONLY = typeof XMLHttpRequest === 'undefined' ? {} : { adapter: 'xhr' };
+
 /** Told when a preview that was drawn AFTER an upload has been stored, so a list can show it without asking again. */
 export const THUMBNAIL_READY = 'warden:thumbnail-ready';
 
@@ -158,12 +162,13 @@ function drawPreviewLater(file, id) {
  * @param {{ file: File, folder?: string, expiryDate?: string, signal?: AbortSignal, preview?: boolean }} params
  * @param {(percent: number) => void} [onProgress] real bytes sent, 0 to 100
  */
-export async function uploadDocument({ file, folder, expiryDate, signal, preview = true }, onProgress) {
+export async function uploadDocument({ file, folder, expiryDate, signal, preview = true, uploadKey }, onProgress) {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw Object.assign(new Error(TOO_LARGE_MESSAGE), { response: { status: 413, data: { error: { message: TOO_LARGE_MESSAGE } } } });
   }
   const formData = new FormData();
-  formData.append('uploadKey', newUploadKey());
+  // A retry passes the same key again, so a file the server already saved is answered, not duplicated.
+  formData.append('uploadKey', uploadKey || newUploadKey());
   if (folder) formData.append('folder', folder);
   if (expiryDate) formData.append('expiryDate', expiryDate);
   // The file goes last: the small fields are read first.
@@ -172,6 +177,7 @@ export async function uploadDocument({ file, folder, expiryDate, signal, preview
   try {
     const { data } = await api.post('/documents', formData, {
       signal,
+      ...XHR_ONLY,
       onUploadProgress: (event) => {
         if (onProgress && event.total) {
           onProgress(Math.round((event.loaded / event.total) * 100));
@@ -416,7 +422,7 @@ export async function setDocumentNote(id, note) {
  * POST /api/documents/:id/versions - "Upload new version": replaces the file's contents (same id, name, folder, expiry, star, note and
  * share links); what it held is kept as a previous version. The same 4 MB cap, preview and server checks as a new upload.
  */
-export async function uploadNewVersion(id, file, onProgress) {
+export async function uploadNewVersion(id, file, onProgress, { signal } = {}) {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw Object.assign(new Error(TOO_LARGE_MESSAGE), { response: { status: 413, data: { error: { message: TOO_LARGE_MESSAGE } } } });
   }
@@ -426,6 +432,8 @@ export async function uploadNewVersion(id, file, onProgress) {
   if (thumb) formData.append('thumb', thumb, 'thumb');
   try {
     const { data } = await api.post(`/documents/${id}/versions`, formData, {
+      signal,
+      ...XHR_ONLY,
       onUploadProgress: (event) => {
         if (onProgress && event.total) onProgress(Math.round((event.loaded / event.total) * 100));
       },

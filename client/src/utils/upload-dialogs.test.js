@@ -179,7 +179,8 @@ test('every submit that creates something is guarded: Upload, Scan, new version,
   assert.match(form, /if \(!file \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
   assert.match(form, /disabled=\{!file \|\| busy\}/);
   assert.match(form, /Encrypting and uploading…/);
-  assert.match(strip(read('pages/FilesPage.jsx')), /if \(uploadAbort\.current\) return;/);
+  // an upload is handed to the transfer tray at once: the dialog has nothing left to submit twice
+  assert.match(strip(read('pages/FilesPage.jsx')), /transfers\.enqueue\(\[\{ kind: 'upload', file, folder: currentPath, expiryDate \}\]\);\s*setUploadOpen\(false\);/);
   assert.match(strip(read('components/scan/ScanDialog.jsx')), /if \(saving\.current\) return;\s*saving\.current = true;/);
   assert.match(strip(read('components/DetailsVersions.jsx')), /onChange=\{\(event\) => run\(\(\) => choose\(event\)\)\}/);
   // an import is one app-level job, and starting a second while one runs is refused by the job itself
@@ -194,17 +195,11 @@ test('every submit that creates something is guarded: Upload, Scan, new version,
   assert.match(strip(read('components/ShareModal.jsx')), /if \(!canGenerate \|\| generating\.current\) return;\s*generating\.current = true;/);
 });
 
-test('while an upload runs: real progress, an elapsed clock, an indeterminate bar once everything is sent, and Cancel aborts the request', () => {
-  const form = strip(read('components/UploadForm.jsx'));
-  assert.match(form, /Sending \$\{progress\}%/);
-  assert.match(form, /Sent\. Encrypting and saving on the server/);
-  assert.match(form, /useElapsedSeconds\(busy\)/);
-  assert.match(form, /onClick=\{busy \? onAbort : onCancel\}/);
-  assert.match(form, /Cancel upload/);
-  assert.match(strip(read('pages/FilesPage.jsx')), /onAbort=\{\(\) => uploadAbort\.current\?\.abort\(\)\}/);
-  assert.match(strip(read('pages/FilesPage.jsx')), /Upload cancelled\. If the file had already reached the server it may still appear in your list\./);
-  assert.match(strip(read('pages/FilesPage.jsx')), /signal: controller\.signal/);
-  assert.match(css('components/UploadForm.module.css'), /prefers-reduced-motion: reduce/);
+test('the Upload dialog checks the file BEFORE it closes (a refusal stays next to the file) and then hands it to the tray', () => {
+  const page = strip(read('pages/FilesPage.jsx'));
+  assert.match(page, /const \{ rejected \} = await sortOut\(\[file\]\);\s*if \(rejected\.length > 0\) \{\s*setUploadError\(rejected\[0\]\.reason\);\s*return;/);
+  assert.match(page, /validateUpload\(file, \{ usage, pendingBytes: pending \}\)/);
+  assert.match(page, /await getStorage\(\)/, 'against the real storage meter');
 });
 
 // ---------- the upload request itself ----------
@@ -251,13 +246,10 @@ test('the preview is drawn after the response, never before the request; the pag
   assert.match(strip(read('pages/FilesPage.jsx')), /window\.addEventListener\(THUMBNAIL_READY, onReady\)/);
 });
 
-test('upload, scan and folder upload tell the person when a name got a number', () => {
-  const page = strip(read('pages/FilesPage.jsx'));
-  assert.match(page, /const notice = renamedNotice\(saved\);\s*if \(notice\) showToast\(notice\);/);
-  assert.match(page, /saved with a number added to its name/);
-  const scan = strip(read('components/scan/ScanDialog.jsx'));
-  assert.match(scan, /notices\.push\(renamedNotice\(stored\)\)/);
-  assert.match(page, /if \(notices\.length > 0\) showToast\(notices\[0\]\)/);
+test('a name that got a number is shown in the tray row ("Sealed as ...") for uploads, Scan and folder uploads alike', () => {
+  const model = strip(read('utils/trayModel.js'));
+  assert.match(model, /Sealed as "\$\{t\.savedAs\}"/);
+  assert.match(strip(read('services/transfers.js')), /savedAs: data\?\.nameChanged \? data\.filename : null/);
 });
 
 // ---------- folders and files as two blocks ----------

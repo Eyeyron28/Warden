@@ -398,14 +398,15 @@ test('the job is a module of its own: no page owns it, and nothing of it is writ
   assert.doesNotMatch(exportPage, /useEffect/, 'nothing on the page is tied to its lifecycle');
   assert.match(exportPage, /useImportJob\(\)/);
   const main = strip(read('main.jsx'));
-  assert.match(main, /<App \/>[\s\S]*<ImportHost \/>[\s\S]*<\/BrowserRouter>/, 'mounted beside the routes, inside the router, above every page');
-  const importCard = strip(read('components/ImportCard.jsx'));
-  assert.doesNotMatch(importCard, /localStorage|sessionStorage|indexedDB/);
+  assert.match(main, /<App \/>[\s\S]*<TransferHost \/>[\s\S]*<\/BrowserRouter>/, 'mounted beside the routes, inside the router, above every page');
+  for (const file of ['components/TransferTray.jsx', 'components/TransferTrayView.jsx', 'services/transfers.js']) assert.doesNotMatch(strip(read(file)), /localStorage|sessionStorage|indexedDB/, file);
 });
 
 test('every way of leaving the session goes through the job: Lock vault and signing this device out ask first', () => {
-  assert.match(strip(read('App.jsx')), /importJob\.requestSignOut\(/);
-  assert.match(strip(read('pages/DevicesPage.jsx')), /importJob\.requestSignOut\(/);
+  // the transfers manager asks for the whole tray (an import is one of its rows)
+  assert.match(strip(read('App.jsx')), /transfers\.requestSignOut\(/);
+  assert.match(strip(read('pages/DevicesPage.jsx')), /transfers\.requestSignOut\(/);
+  assert.match(strip(read('services/transfers.js')), /An import is running\. Stop it and sign out\?/);
   assert.match(strip(read('services/importJob.js')), /watchToken\(\(next\) =>/);
   assert.match(strip(read('services/importJob.js')), /An import is running\. Stop it and sign out\?/);
   assert.match(strip(read('services/importJob.js')), /beforeunload/);

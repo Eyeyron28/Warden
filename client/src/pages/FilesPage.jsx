@@ -47,8 +47,6 @@ import {
   listDocuments,
   peekDocuments,
   peekFolders,
-  uploadDocument,
-  renamedNotice,
   THUMBNAIL_READY,
   putThumbnail,
   deleteDocument,
@@ -58,13 +56,12 @@ import {
   getStorage,
   listFolders,
   starDocuments,
-  uploadNewVersion,
-  MAX_UPLOAD_BYTES,
-  TOO_LARGE_MESSAGE,
   batchMoveDocuments,
   batchTrashDocuments,
 } from '../services/documentsService.js';
-import { DOCUMENTS_CHANGED, describeMove } from '../utils/dragMove.js';
+import { DOCUMENTS_CHANGED, describeMove, dragCarriesDocuments } from '../utils/dragMove.js';
+import { validateUpload } from '../utils/transferRules.js';
+import { transfers } from '../services/transfers.js';
 import { splitIntoBlocks } from '../utils/fileBlocks.js';
 import { usePreviewGenerator } from '../utils/usePreviewGenerator.js';
 import { extractErrorMessage } from '../services/api.js';
@@ -72,7 +69,6 @@ import { invalidateThumbnail } from '../services/thumbnailCache.js';
 import { generateThumbnail } from '../utils/thumbnail.js';
 import { formatDate } from '../utils/formatDate.js';
 import { SORT_OPTIONS, formatBytes, sortItems } from '../utils/listing.js';
-import { uploadFitsMessage } from '../utils/storageUsage.js';
 import { useSelection } from '../utils/useSelection.js';
 import { getViewPrefs, setViewPref } from '../utils/viewPrefs.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
@@ -127,12 +123,8 @@ function FilesPage() {
   const [sort, setSort] = useState(() => getViewPrefs().sort);
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [folderUploadOpen, setFolderUploadOpen] = useState(false);
-  const [folderUploadCount, setFolderUploadCount] = useState(0);
 
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -281,77 +273,73 @@ function FilesPage() {
   const vaultIsEmpty = documents.length === 0 && !folders.some((name) => normalizeFolderPath(name));
 
   // ---- uploads ----
-  const uploadAbort = useRef(null);
-  const handleUpload = async ({ file, expiryDate }) => {
-    // The form has locked itself already (one request per press). This lock is the second line: one upload at a time.
-    if (uploadAbort.current) return;
-    const controller = new AbortController();
-    uploadAbort.current = controller;
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadError('');
-    try {
-      // Refused before anything is sent when it cannot fit (the server checks again regardless).
-      const tooBig = uploadFitsMessage(await getStorage().catch(() => null), file.size);
-      if (tooBig) {
-        setUploadError(tooBig);
-        return;
-      }
-      const saved = await uploadDocument({ file, folder: currentPath || undefined, expiryDate, signal: controller.signal }, setUploadProgress);
-      setUploadOpen(false);
-      const notice = renamedNotice(saved);
-      if (notice) showToast(notice);
-      await refresh();
-      refreshFolders();
-    } catch (err) {
-      if (controller.signal.aborted) {
-        // Say what happened: the request was stopped here, but a request that had already been fully sent may have been stored.
-        setUploadError('Upload cancelled. If the file had already reached the server it may still appear in your list.');
-        refresh({ quiet: true });
-      } else {
-        setUploadError(extractErrorMessage(err, 'Upload failed.'));
-      }
-    } finally {
-      uploadAbort.current = null;
-      setUploading(false);
+  // ---- uploads: checked here (while the dialog is still open), then handed to the transfer tray (services/transfers.js) ----
+  /** Splits files into what can be sent and what is refused, with the reason, against the real storage meter. */
+  const sortOut = async (files) => {
+    const usage = await getStorage().catch(() => null);
+    const accepted = [];
+    const rejected = [];
+    let pending = 0;
+    for (const file of files) {
+      const check = validateUpload(file, { usage, pendingBytes: pending });
+      if (check.ok) {
+        accepted.push(file);
+        pending += file.size;
+      } else rejected.push({ file, reason: check.reason });
     }
+    return { accepted, rejected };
+  };
+  const saySkipped = (rejected) => {
+    if (rejected.length === 0) return;
+    const first = rejected[0];
+    setActionError(`${rejected.length === 1 ? 'One file was' : `${rejected.length} files were`} not sent. ${first.reason}`);
+  };
+
+  // "Encrypt & upload": a refused file keeps the dialog open with the reason; an accepted one closes it at once, and the tray shows it.
+  const handleUpload = async ({ file, expiryDate }) => {
+    setUploadError('');
+    const { rejected } = await sortOut([file]);
+    if (rejected.length > 0) {
+      setUploadError(rejected[0].reason);
+      return;
+    }
+    transfers.enqueue([{ kind: 'upload', file, folder: currentPath, expiryDate }]);
+    setUploadOpen(false);
   };
 
   const handleUploadFolder = async (fileList) => {
     const files = Array.from(fileList);
     if (files.length === 0) return;
     setUploadOpen(false);
-    setFolderUploadOpen(true);
-    const tooBig = uploadFitsMessage(await getStorage().catch(() => null), files.reduce((sum, file) => sum + file.size, 0));
-    if (tooBig) {
-      setUploadError(tooBig);
-      return;
-    }
-    setFolderUploadCount(0);
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadError('');
-    try {
-      let renamed = 0;
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        const relativeDir = relativeDirFromPath(file.webkitRelativePath || file.name);
-        const folder = combineFolderPath(currentPath, relativeDir);
-        // eslint-disable-next-line no-await-in-loop
-        const saved = await uploadDocument({ file, folder }, (filePercent) => {
-          setUploadProgress(Math.round(((index + filePercent / 100) / files.length) * 100));
-        });
-        if (saved?.nameChanged) renamed += 1;
-      }
-      if (renamed > 0) showToast(`${renamed} file${renamed === 1 ? ' was' : 's were'} saved with a number added to its name, because a file with that name already existed.`);
-      setFolderUploadCount(files.length);
-      await refresh();
-      refreshFolders();
-    } catch (err) {
-      setUploadError(extractErrorMessage(err, 'Folder upload failed.'));
-    } finally {
-      setUploading(false);
-    }
+    setActionError('');
+    const { accepted, rejected } = await sortOut(files);
+    transfers.enqueue(
+      accepted.map((file) => ({
+        kind: 'upload',
+        file,
+        folder: combineFolderPath(currentPath, relativeDirFromPath(file.webkitRelativePath || file.name)),
+      }))
+    );
+    saySkipped(rejected);
+  };
+
+  // Files dragged in from the computer: onto a folder tile they go into that folder, anywhere else into the open folder.
+  const [dropActive, setDropActive] = useState(false);
+  const carriesComputerFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files') && !dragCarriesDocuments(event);
+  const handleComputerDrop = async (event) => {
+    if (!carriesComputerFiles(event)) return;
+    event.preventDefault();
+    setDropActive(false);
+    const tile = event.target.closest?.('[data-file-key^="folder:"]');
+    const target = tile ? tile.dataset.fileKey.slice('folder:'.length) : currentPath;
+    const entries = Array.from(event.dataTransfer.items || []);
+    const dirs = entries.filter((item) => item.webkitGetAsEntry?.()?.isDirectory).length;
+    const files = Array.from(event.dataTransfer.files).filter((file, index) => !entries[index]?.webkitGetAsEntry?.()?.isDirectory);
+    setActionError('');
+    const { accepted, rejected } = await sortOut(files);
+    transfers.enqueue(accepted.map((file) => ({ kind: 'upload', file, folder: target })));
+    saySkipped(rejected);
+    if (dirs > 0 && rejected.length === 0) setActionError('Folders cannot be dropped here. Use New, then Upload folder.');
   };
 
   // ---- thumbnails ----
@@ -537,18 +525,12 @@ function FilesPage() {
     event.target.value = '';
     if (!file || !doc) return;
     setActionError('');
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setActionError(TOO_LARGE_MESSAGE);
+    const { rejected } = await sortOut([file]);
+    if (rejected.length > 0) {
+      saySkipped(rejected);
       return;
     }
-    try {
-      await uploadNewVersion(doc.id, file);
-      invalidateThumbnail(doc.id);
-      showToast(`Uploaded a new version of "${doc.filename}"`);
-      await refresh();
-    } catch (err) {
-      if (!isSessionExpired(err)) setActionError(extractErrorMessage(err, 'Could not upload the new version.'));
-    }
+    transfers.enqueue([{ kind: 'newVersion', file, documentId: doc.id, destination: normalizeFolderPath(doc.folder) }]);
   };
 
   const handleBulkTrash = async () => {
@@ -824,7 +806,20 @@ function FilesPage() {
   const emptyHere = !loading && !vaultIsEmpty && items.length === 0;
 
   return (
-    <div className={styles.page} onContextMenu={handleAreaContextMenu}>
+    <div
+      className={`${styles.page} ${dropActive ? styles.dropActive : ''}`}
+      onContextMenu={handleAreaContextMenu}
+      onDragOver={(event) => {
+        if (!carriesComputerFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        if (!dropActive) setDropActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setDropActive(false);
+      }}
+      onDrop={handleComputerDrop}
+    >
       {selection.count > 0 ? (
         <SelectionBar count={selection.count} actions={selectionActions} onClear={selection.clear} />
       ) : (
@@ -997,65 +992,21 @@ function FilesPage() {
         <Modal
           title="Upload file"
           onClose={() => {
-            if (uploading) return;
             setUploadOpen(false);
             setUploadError('');
           }}
         >
           <UploadForm
             onSubmit={handleUpload}
-            onAbort={() => uploadAbort.current?.abort()}
             onCancel={() => {
               setUploadOpen(false);
               setUploadError('');
             }}
-            uploading={uploading}
-            progress={uploadProgress}
+            uploading={false}
+            progress={0}
             error={uploadError}
             destinationLabel={currentPath || 'My files'}
           />
-        </Modal>
-      )}
-
-      {folderUploadOpen && (
-        <Modal
-          title="Upload folder"
-          onClose={() => {
-            if (uploading) return;
-            setFolderUploadOpen(false);
-            setUploadError('');
-          }}
-        >
-          {uploading ? (
-            <>
-              <p className={styles.folderUploadLabel}>Uploading folder, {uploadProgress}%</p>
-              <div className={styles.progressTrack} role="progressbar" aria-valuenow={uploadProgress} aria-valuemin={0} aria-valuemax={100}>
-                <div className={styles.progressFill} style={{ width: `${uploadProgress}%` }} />
-              </div>
-            </>
-          ) : (
-            <>
-              {uploadError ? (
-                <p className={styles.banner} role="alert">{uploadError}</p>
-              ) : (
-                <p className={styles.folderUploadLabel}>
-                  Uploaded {folderUploadCount} file{folderUploadCount === 1 ? '' : 's'} to {currentPath || 'My files'}.
-                </p>
-              )}
-              <div className={styles.modalActions}>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => {
-                    setFolderUploadOpen(false);
-                    setUploadError('');
-                  }}
-                >
-                  Done
-                </button>
-              </div>
-            </>
-          )}
         </Modal>
       )}
 
@@ -1110,12 +1061,6 @@ function FilesPage() {
             folderPaths={[...folders, ...documents.map((doc) => normalizeFolderPath(doc.folder))]}
             currentPath={currentPath}
             onClose={() => setScanOpen(false)}
-            // The upload has already emptied the page cache (every write does) and the server has logged it; read the list again.
-            onSaved={async (saved, notices = []) => {
-              if (notices.length > 0) showToast(notices[0]);
-              await refresh();
-              refreshFolders();
-            }}
           />
         </Suspense>
       )}

@@ -15,7 +15,7 @@ import {
 
 import Modal from '../components/Modal.jsx';
 import { clearToken } from '../services/session.js';
-import { importJob } from '../services/importJob.js';
+import { transfers } from '../services/transfers.js';
 import { forgetPreviousVisit } from '../services/sessionReset.js';
 import {
   forgetTrustedDevice,
@@ -126,8 +126,8 @@ function DevicesPage() {
         );
       } else if (confirm.kind === 'device') {
         // Signing THIS device out ends the session an import may be using: ask first (the device list itself stays as it was).
-        if (confirm.device.current && importJob.isRunning()) {
-          const proceeded = await importJob.requestSignOut(async () => {
+        if (confirm.device.current && transfers.isRunning()) {
+          const proceeded = await transfers.requestSignOut(async () => {
             const result = await signOutDevice(confirm.device.id);
             if (result.self) {
               forgetPreviousVisit({ reason: 'signout' });

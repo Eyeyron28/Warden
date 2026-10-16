@@ -206,7 +206,7 @@ it('a zip import uploads every file through the same route, so imported duplicat
   const fs = require('node:fs');
   const path = require('node:path');
   const page = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'services', 'importRuntime.js'), 'utf8');
-  assert.match(page, /uploadFile: \(file, folder\) => uploadDocument\(\{ file, folder \}/, 'the import hands every file to the normal upload');
+  assert.match(page, /return await uploadDocument\(\{ file, folder \}\)/, 'the import hands every file to the normal upload');
   const a = await account('names.import@example.com');
   await upload(a, 'scan.pdf', { folder: 'Imported' });
   for (const [index, expected] of [['', 'scan (1).pdf'], ['', 'scan (2).pdf']].map((row) => row)) {

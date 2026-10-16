@@ -3,9 +3,10 @@ import { ArrowClockwise, ArrowCounterClockwise, Camera, Plus, Trash } from '@pho
 
 import Modal from '../Modal.jsx';
 import CropOverlay from './CropOverlay.jsx';
-import { getStorage, renamedNotice, uploadDocument } from '../../services/documentsService.js';
+import { getStorage } from '../../services/documentsService.js';
+import { transfers } from '../../services/transfers.js';
+import { validateUpload } from '../../utils/transferRules.js';
 import { extractErrorMessage } from '../../services/api.js';
-import { uploadFitsMessage } from '../../utils/storageUsage.js';
 import { FULL_CROP, cleanScanName, defaultScanName, rotateCrop } from '../../utils/scan/imageOps.js';
 import { applyDocumentMode, canvasToJpeg, loadPage, releaseCanvas, renderFinal, renderRotated } from '../../utils/scan/canvasOps.js';
 import { planScan } from '../../utils/scan/scanPlan.js';
@@ -54,7 +55,7 @@ function Preview({ page }) {
  * page, optionally switch to Document mode, then save one PDF or separate JPEGs into the vault through the normal upload.
  * Everything lives in memory; closing the dialog discards it all. Loaded on demand, so none of it is in the main bundle.
  */
-function ScanDialog({ folderPaths = [], currentPath = '', onClose, onSaved }) {
+function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
   const [step, setStep] = useState('edit'); // 'edit' | 'save'
   const [pages, setPages] = useState([]);
   const [current, setCurrent] = useState(0);
@@ -151,30 +152,20 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose, onSaved }) {
         return;
       }
       const files = plan.files.map((item) => new File([item.bytes], `${cleaned}${item.suffix}.${item.type === 'application/pdf' ? 'pdf' : 'jpg'}`, { type: item.type }));
-      // The same pre-check the Upload dialog makes; the server checks again regardless.
-      const full = uploadFitsMessage(await getStorage().catch(() => null), files.reduce((sum, file) => sum + file.size, 0));
-      if (full) {
-        setError(full);
-        return;
-      }
-      let saved = 0;
-      const notices = [];
-      try {
-        for (let index = 0; index < files.length; index += 1) {
-          setWork({ busy: true, label: files.length > 1 ? `Saving file ${index + 1} of ${files.length}…` : 'Saving…', percent: 0 });
-          // The existing upload, unchanged: the 4 MB cap, the preview, the type sniffing and the quota are all its own.
-          // eslint-disable-next-line no-await-in-loop
-          const stored = await uploadDocument({ file: files[index], folder: folder || undefined }, (percent) => alive.current && setWork((value) => ({ ...value, percent })));
-          saved += 1;
-          if (stored?.nameChanged) notices.push(renamedNotice(stored));
+      // The same checks the Upload dialog makes (the 4 MB cap, the name rules, the room left), here while the dialog is still open;
+      // the server checks again regardless.
+      const usage = await getStorage().catch(() => null);
+      let pending = 0;
+      for (const item of files) {
+        const check = validateUpload(item, { usage, pendingBytes: pending });
+        if (!check.ok) {
+          setError(check.reason);
+          return;
         }
-      } catch (err) {
-        const message = extractErrorMessage(err, 'Upload failed.');
-        setError(saved > 0 ? `Saved ${saved} of ${files.length} files, then it stopped: ${message}` : message);
-        if (saved > 0) await onSaved?.(saved, notices);
-        return;
+        pending += item.size;
       }
-      await onSaved?.(saved, notices);
+      // Handed to the transfer tray: the dialog closes at once and the tray shows each file until it is sealed.
+      transfers.enqueue(files.map((item) => ({ kind: 'upload', file: item, folder: folder || '' })));
       onClose();
     } catch (err) {
       if (alive.current) setError(extractErrorMessage(err, 'Could not prepare the scan.'));
