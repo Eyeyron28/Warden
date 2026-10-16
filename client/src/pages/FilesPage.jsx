@@ -123,6 +123,7 @@ function FilesPage() {
   const [sort, setSort] = useState(() => getViewPrefs().sort);
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFooter, setUploadFooter] = useState(null); // the Upload dialog's footer element (its buttons are drawn there)
   const [uploadError, setUploadError] = useState('');
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
@@ -296,14 +297,15 @@ function FilesPage() {
   };
 
   // "Encrypt & upload": a refused file keeps the dialog open with the reason; an accepted one closes it at once, and the tray shows it.
-  const handleUpload = async ({ file, expiryDate }) => {
+  const handleUpload = async ({ files, expiryDate }) => {
     setUploadError('');
-    const { rejected } = await sortOut([file]);
+    const { accepted, rejected } = await sortOut(files);
+    // The whole batch or nothing: one refused file (the room left, a name) keeps the dialog open with the reason.
     if (rejected.length > 0) {
       setUploadError(rejected[0].reason);
       return;
     }
-    transfers.enqueue([{ kind: 'upload', file, folder: currentPath, expiryDate }]);
+    transfers.enqueue(accepted.map((file) => ({ kind: 'upload', file, folder: currentPath, expiryDate })));
     setUploadOpen(false);
   };
 
@@ -991,19 +993,19 @@ function FilesPage() {
       {uploadOpen && (
         <Modal
           title="Upload file"
+          footer={<div ref={setUploadFooter} className={styles.uploadFooter} />}
           onClose={() => {
             setUploadOpen(false);
             setUploadError('');
           }}
         >
           <UploadForm
+            footerEl={uploadFooter}
             onSubmit={handleUpload}
             onCancel={() => {
               setUploadOpen(false);
               setUploadError('');
             }}
-            uploading={false}
-            progress={0}
             error={uploadError}
             destinationLabel={currentPath || 'My files'}
           />

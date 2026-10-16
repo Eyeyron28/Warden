@@ -91,12 +91,12 @@ test('every dialog goes through ONE structure: a fixed header, a body that scrol
 
 test('the Upload dialog shows the name with a middle ellipsis, the full name as tooltip and accessible name, and no sideways scroll', () => {
   const form = strip(read('components/UploadForm.jsx'));
-  assert.match(form, /<FileNameLabel name=\{file\.name\} \/>/);
-  assert.match(form, /title=\{file \? file\.name : undefined\}/);
-  assert.match(form, /aria-label=\{file \? `Chosen file \$\{file\.name\}/);
+  assert.match(form, /<FileNameLabel name=\{row\.file\.name\} \/>/);
+  assert.match(form, /aria-label=\{`Remove \$\{row\.file\.name\}`\}/);
   const style = css('components/UploadForm.module.css');
   assert.match(/\.fileButton \{([^}]*)\}/.exec(style)[1], /min-width: 0;/);
-  assert.match(/\.fileLabel \{([^}]*)\}/.exec(style)[1], /min-width: 0;/);
+  assert.match(/\.rowName \{([^}]*)\}/.exec(style)[1], /min-width: 0;/);
+  assert.match(/\.rows \{([^}]*)\}/.exec(style)[1], /overflow-y: auto;/);
   assert.match(css('components/FileNameLabel.module.css'), /\.head \{[^}]*text-overflow: ellipsis;/);
 });
 
@@ -176,11 +176,10 @@ test('pressing "Encrypt & upload" twice in the same moment sends ONE request', a
 
 test('every submit that creates something is guarded: Upload, Scan, new version, Import, Export / Import, New folder, Rename, Edit, Move, Share', () => {
   const form = strip(read('components/UploadForm.jsx'));
-  assert.match(form, /if \(!file \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
-  assert.match(form, /disabled=\{!file \|\| busy\}/);
-  assert.match(form, /Encrypting and uploading…/);
+  assert.match(form, /if \(!summary\.canUpload \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
+  assert.match(form, /disabled=\{!summary\.canUpload \|\| locked\}/);
   // an upload is handed to the transfer tray at once: the dialog has nothing left to submit twice
-  assert.match(strip(read('pages/FilesPage.jsx')), /transfers\.enqueue\(\[\{ kind: 'upload', file, folder: currentPath, expiryDate \}\]\);\s*setUploadOpen\(false\);/);
+  assert.match(strip(read('pages/FilesPage.jsx')), /transfers\.enqueue\(accepted\.map\(\(file\) => \(\{ kind: 'upload', file, folder: currentPath, expiryDate \}\)\)\);\s*setUploadOpen\(false\);/);
   assert.match(strip(read('components/scan/ScanDialog.jsx')), /if \(saving\.current\) return;\s*saving\.current = true;/);
   assert.match(strip(read('components/DetailsVersions.jsx')), /onChange=\{\(event\) => run\(\(\) => choose\(event\)\)\}/);
   // an import is one app-level job, and starting a second while one runs is refused by the job itself
@@ -197,7 +196,7 @@ test('every submit that creates something is guarded: Upload, Scan, new version,
 
 test('the Upload dialog checks the file BEFORE it closes (a refusal stays next to the file) and then hands it to the tray', () => {
   const page = strip(read('pages/FilesPage.jsx'));
-  assert.match(page, /const \{ rejected \} = await sortOut\(\[file\]\);\s*if \(rejected\.length > 0\) \{\s*setUploadError\(rejected\[0\]\.reason\);\s*return;/);
+  assert.match(page, /const \{ accepted, rejected \} = await sortOut\(files\);[\s\S]*?if \(rejected\.length > 0\) \{\s*setUploadError\(rejected\[0\]\.reason\);\s*return;/);
   assert.match(page, /validateUpload\(file, \{ usage, pendingBytes: pending \}\)/);
   assert.match(page, /await getStorage\(\)/, 'against the real storage meter');
 });

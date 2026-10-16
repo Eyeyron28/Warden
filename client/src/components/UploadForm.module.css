@@ -18,20 +18,42 @@
   pointer-events: none;
 }
 
+.zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
+}
+
+.zoneOver {
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+
+.zoneHint {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
 .fileButton {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  width: 100%;
   min-width: 0;
-  max-width: 100%;
   min-height: 44px;
   text-align: left;
-  padding: var(--space-4);
-  border: 1px dashed var(--color-border-strong);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
+  color: var(--color-text);
   font-size: var(--fs-sm);
+  font-weight: 600;
   transition: border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard);
 }
@@ -208,5 +230,111 @@
   .submitButton {
     width: 100%;
     justify-content: center;
+  }
+}
+
+.limitMessage {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warn);
+  border-radius: var(--radius-md);
+  background: var(--color-warn-wash);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.counter {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* The list scrolls on its own, so the buttons below it never leave the screen. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: min(26vh, 200px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.rowError {
+  border-color: var(--color-danger);
+}
+
+.rowName {
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+.rowSize {
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}
+
+/* The reason sits under the name, across the row. */
+.rowReason {
+  grid-column: 1 / 3;
+  grid-row: 2;
+  font-size: var(--fs-xs);
+  color: var(--color-danger);
+  overflow-wrap: anywhere;
+}
+
+.remove {
+  display: grid;
+  place-items: center;
+  grid-column: 3;
+  grid-row: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.remove:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zone {
+    transition: none;
   }
 }

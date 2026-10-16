@@ -225,10 +225,10 @@ try {
   gate.posts = 0;
   dialog = await openUpload();
   await dialog.locator('input[type=file]').setInputFiles(file('huge.bin', 4 * 1024 * 1024 + 10));
-  await dialog.getByRole('button', { name: /Encrypt/ }).click();
-  await page.waitForTimeout(800);
-  check(await dialog.isVisible(), 'a file over 4 MB: the dialog stays open');
-  check(/4 MB/.test(await dialog.innerText()), 'with the reason next to the file');
+  await page.waitForTimeout(500);
+  check(await dialog.getByRole('button', { name: /^Encrypt/ }).isDisabled(), 'a file over 4 MB: the upload button stays off');
+  check(await dialog.isVisible(), 'and the dialog stays open');
+  check(/Over 4 MB/.test(await dialog.innerText()), 'with the reason on the row');
   check(gate.posts === 0 && (await tray.count()) === 0, 'nothing was sent and no row was made');
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'detached', timeout: 4000 }).catch(() => {});

@@ -344,3 +344,24 @@
   border-radius: var(--radius-md);
   background: var(--color-accent-wash);
 }
+
+/* The Upload dialog's buttons are drawn into the dialog's fixed footer (components/UploadForm.jsx). */
+.uploadFooter {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .uploadFooter {
+    flex-direction: column-reverse;
+  }
+
+  .uploadFooter > button {
+    width: 100%;
+    justify-content: center;
+  }
+}

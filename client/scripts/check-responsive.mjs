@@ -429,9 +429,53 @@ try {
         await dialog.locator('input[type=file]').setInputFiles({ name: longName, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% sample\n') });
         await page.waitForTimeout(200);
         const found = await inspect(page, dialog, 'Upload', size);
-        const titled = await dialog.locator('button[title]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('title')));
-        if (!titled.includes(longName)) found.push('the full name is not the tooltip of the file button');
-        if (!(await dialog.locator('button[aria-label*="Chosen file"]').count())) found.push('the file button has no accessible name with the file name');
+        if (!(await dialog.locator(`[title="${longName}"]`).count())) found.push('the full name is not the tooltip of the row');
+        if (!(await dialog.locator('button[aria-label^="Remove "]').count())) found.push('the row has no Remove button with the file name');
+        return found;
+      });
+      // Several files: ten rows (one with the 255-character name), then twelve files (the limit message), then rows with errors and a quota error.
+      await attempt('Upload (10 files)', async () => {
+        await page.getByRole('button', { name: 'New' }).click();
+        await page.getByRole('menuitem', { name: /Upload file/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Upload file' });
+        await dialog.waitFor({ timeout: 8000 });
+        const files = [{ name: longName, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% sample\n') }, ...Array.from({ length: 9 }, (_, n) => ({ name: `batch-file-${n + 1}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`file ${n + 1}`) }))];
+        await dialog.locator('input[type=file]').setInputFiles(files);
+        await page.waitForTimeout(250);
+        const found = await inspect(page, dialog, 'Upload (10 files)', size);
+        if ((await dialog.getByTestId('upload-row').count()) !== 10) found.push('expected 10 rows');
+        const rowsBox = await dialog.getByTestId('upload-rows').evaluate((el) => ({ scrolls: el.scrollHeight > el.clientHeight, h: el.getBoundingClientRect().height, vh: window.innerHeight }));
+        if (rowsBox.h > rowsBox.vh * 0.35) found.push(`the list is ${Math.round(rowsBox.h)}px of ${rowsBox.vh}px: it should scroll inside`);
+        const submitBox = await dialog.getByRole('button', { name: 'Encrypt & upload 10 files' }).boundingBox();
+        if (!submitBox || submitBox.y + submitBox.height > size.height + 1) found.push('the upload button is below the screen');
+        const dBox = await dialog.boundingBox();
+        if (dBox && dBox.height > size.height * 0.9 + 1) found.push(`the dialog is ${Math.round(dBox.height)}px high, more than 90vh`);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `upload-10-files-${process.env.THEME || 'light'}-${size.name}-${kind}.png`) });
+        return found;
+      });
+      await attempt('Upload (over the limit)', async () => {
+        await page.getByRole('button', { name: 'New' }).click();
+        await page.getByRole('menuitem', { name: /Upload file/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Upload file' });
+        await dialog.waitFor({ timeout: 8000 });
+        await dialog.locator('input[type=file]').setInputFiles(Array.from({ length: 12 }, (_, n) => ({ name: `${n === 0 ? longName : `over-${n}`}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`f${n}`) })));
+        await page.waitForTimeout(250);
+        const found = await inspect(page, dialog, 'Upload (over the limit)', size);
+        if (!/2 were not added/.test(await dialog.innerText())) found.push('the limit message is missing');
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `upload-limit-${process.env.THEME || 'light'}-${size.name}-${kind}.png`) });
+        return found;
+      });
+      await attempt('Upload (error rows)', async () => {
+        await page.getByRole('button', { name: 'New' }).click();
+        await page.getByRole('menuitem', { name: /Upload file/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Upload file' });
+        await dialog.waitFor({ timeout: 8000 });
+        await dialog.locator('input[type=file]').setInputFiles([{ name: longName, mimeType: 'application/octet-stream', buffer: Buffer.alloc(4 * 1024 * 1024 + 5, 1) }, { name: 'empty.txt', mimeType: 'text/plain', buffer: Buffer.alloc(0) }, { name: 'fine.txt', mimeType: 'text/plain', buffer: Buffer.from('ok') }]);
+        await page.waitForTimeout(250);
+        const found = await inspect(page, dialog, 'Upload (error rows)', size);
+        const text = await dialog.innerText();
+        if (!/Over 4 MB/.test(text) || !/Empty file/.test(text)) found.push('the row errors are missing');
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `upload-errors-${process.env.THEME || 'light'}-${size.name}-${kind}.png`) });
         return found;
       });
       await attempt('Rename', async () => {
