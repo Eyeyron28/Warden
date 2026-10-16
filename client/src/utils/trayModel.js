@@ -1,4 +1,4 @@
-import { describeCard, filesLink, skippedCount } from './importCard.js';
+import { describeCard, filesLink, outcomeOf } from './importCard.js';
 import { formatBytes } from './listing.js';
 
 /**
@@ -91,7 +91,7 @@ function rowOfTransferLine(t) {
       if (t.held) {
         // Saved, but held in Quarantine until the owner decides: amber, with a way to the page.
         const why = shortReasons(t.held);
-        return { ...common, held: true, line: `Held for review${why ? `: ${why}` : ''}`, ring: RING.HELD, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: '/quarantine' }, showLabel: 'Open Quarantine' };
+        return { ...common, held: true, heldCount: 1, line: `Held for review${why ? `: ${why}` : ''}`, ring: RING.HELD, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: '/quarantine' }, showLabel: 'Open Quarantine' };
       }
       return {
         ...common,
@@ -106,7 +106,7 @@ function rowOfTransferLine(t) {
       if (t.error?.refused) {
         const why = t.error.version ? 'looks risky, the current version is kept' : shortReasons(t.error.reasons);
         const zip = (t.error.reasons || []).some((r) => codeOf(r) === 'PLAIN_ZIP');
-        return { ...common, failed: true, refused: true, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: zip ? '/export' : null }, ...(zip ? { showLabel: 'Open Export / Import' } : {}) };
+        return { ...common, failed: true, refused: true, refusedCount: 1, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: zip ? '/export' : null }, ...(zip ? { showLabel: 'Open Export / Import' } : {}) };
       }
       return { ...common, line: t.error?.message || 'Failed', ring: RING.FAILED, percent, failed: true, actions: { cancel: false, retry: Boolean(t.error?.retryable), dismiss: true, show: null } };
   }
@@ -122,21 +122,21 @@ function rowOfImport(job) {
   }
   const bad = view.kind === 'failed' || view.kind === 'stopped' || view.kind === 'cancelled';
   // The summary line carries what Quarantine did with the files inside: how many were held and how many were not saved.
-  const results = job.results || [];
-  const heldN = results.filter((r) => r.status === 'held').length;
-  const refusedN = results.filter((r) => r.status === 'refused').length;
-  const otherN = Math.max(0, skippedCount(job) - heldN - refusedN);
-  const counts = `${heldN ? `, ${heldN} held` : ''}${refusedN ? `, ${refusedN} not saved` : ''}${otherN ? `, ${otherN} skipped` : ''}`;
+  // A held file is not imported: the row, its colour and its icon say what Quarantine did (amber warning shield; red for not saved).
+  const { held: heldN, refused: refusedN } = outcomeOf(job);
   return {
     ...common,
     tip: bad ? view.line || 'The import did not finish.' : TIPS.importDone,
     working: false,
     failed: view.kind === 'failed' || view.kind === 'stopped',
-    line: bad ? `${view.title}. ${view.line}` : `Imported ${plural(job.uploaded, 'file')}${counts} · each file checked`,
-    ring: bad ? RING.FAILED : RING.SEALED,
+    held: heldN > 0,
+    heldCount: heldN,
+    refusedCount: refusedN,
+    line: bad ? `${view.title}. ${view.line}` : `${view.title} · each file checked`,
+    ring: bad ? RING.FAILED : heldN > 0 ? RING.HELD : refusedN > 0 ? RING.REFUSED : RING.SEALED,
     percent: view.percent,
     warn: view.kind === 'warning',
-    actions: { cancel: false, retry: false, dismiss: true, show: view.target },
+    actions: { cancel: false, retry: false, dismiss: true, show: view.target, review: heldN > 0 ? '/quarantine' : null },
     importDone: { uploaded: job.uploaded },
   };
 }
@@ -155,8 +155,9 @@ export function buildTray(transfers, job) {
   const importRemaining = importRow?.working ? Math.max(1, importRow.importFiles.total - importRow.importFiles.done) : 0;
   const filesWorking = uploadsWorking + importRemaining;
   const failed = rows.filter((row) => row.failed).length;
-  const held = rows.filter((row) => row.held).length;
-  const refused = rows.filter((row) => row.refused).length;
+  // real counts of files (an import row can hold several), not of rows
+  const held = rows.reduce((sum, row) => sum + (row.heldCount || 0), 0);
+  const refused = rows.reduce((sum, row) => sum + (row.refusedCount || 0), 0);
   const sealedUploads = rows.filter((row) => row.source === 'transfer' && row.phase === 'sealed' && !row.held).length;
   const sealed = sealedUploads + (importRow && !importRow.working && importRow.importDone ? importRow.importDone.uploaded : 0);
 
@@ -164,8 +165,8 @@ export function buildTray(transfers, job) {
   if (filesWorking > 0) title = importRow?.working && uploadsWorking === 0 ? `Importing ${plural(importRow.importFiles.total, 'file')}` : `Sealing ${plural(filesWorking, 'file')}`;
   else if (held > 0 || refused > 0) {
     // Quarantine outcomes: "Sealed 2, 1 held", "1 file held for review", "1 not saved".
-    const bad = failed - refused;
-    const parts = [sealed > 0 ? `Sealed ${sealed}` : null, held > 0 ? `${held} held` : null, bad > 0 ? `${bad} failed` : null, refused > 0 ? `${refused} not saved` : null].filter(Boolean);
+    const bad = rows.filter((row) => row.failed && !row.refused).length;
+    const parts = [sealed > 0 ? `Sealed ${sealed}` : null, held > 0 ? `${held} held for review` : null, bad > 0 ? `${bad} failed` : null, refused > 0 ? `${refused} not saved` : null].filter(Boolean);
     title = parts.length === 1 && held > 0 ? `${plural(held, 'file')} held for review` : parts.length === 1 && refused > 0 ? `${refused} not saved` : parts.join(', ');
   } else if (failed > 0 && sealed > 0) title = `Sealed ${sealed}, ${failed} failed`;
   else if (failed > 0) title = `${failed} failed`;
@@ -185,9 +186,11 @@ export function buildTray(transfers, job) {
     overall,
     running: working.length > 0,
     anyFailed: failed > 0,
+    anyHeld: held > 0,
+    anyRefused: refused > 0,
     // the tray closes by itself only when nothing runs and nothing failed
     // (a held file needs a decision, so it keeps the tray open until it is dismissed, like a failure)
-    autoDismiss: rows.length > 0 && working.length === 0 && failed === 0 && held === 0,
+    autoDismiss: rows.length > 0 && working.length === 0 && failed === 0 && held === 0 && refused === 0,
     announce: transfers.announce || job.announce || '',
   };
 }

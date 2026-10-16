@@ -46,6 +46,7 @@ const EMPTY = Object.freeze({
   announce: '',
   cardVisible: false,
   signOutPrompt: false,
+  prepared: null, // a zip that was chosen and checked and is waiting for "Import": { name, plan } (its bytes are kept in the closure)
 });
 
 /** The folder the imported files land in: the zip's one top-level folder when all of them are inside it, otherwise the top level. */
@@ -78,6 +79,7 @@ export function createImportJobManager(deps) {
   // What runs now. Never part of the published state.
   let live = null; // { controller, token, results, bytesDone, lastEmit, timer, announcedStep, stopReason, bytes }
   let pendingSignOut = null; // { action, resolve }
+  let prepared = null; // { name, bytes, plan, token }: the chosen zip, in memory only
 
   const emit = () => listeners.forEach((listener) => listener());
   const set = (patch) => {
@@ -157,6 +159,7 @@ export function createImportJobManager(deps) {
       live = null;
     }
     guardUnload(false);
+    prepared = null;
     state = EMPTY;
     emit();
   }
@@ -164,7 +167,7 @@ export function createImportJobManager(deps) {
   async function execute({ plan, token }) {
     const controller = live.controller;
     try {
-      const { runImport: run, loadJSZip, inspect, uploadFile, createFolder: makeFolder, onFinished = () => {} } = await loadRuntime();
+      const { runImport: run, loadJSZip, inspect, uploadFile, createFolder: makeFolder, onFinished = () => {}, outcomeLine = () => '' } = await loadRuntime();
       const JSZip = await loadJSZip();
       if (!live || live.controller !== controller) return;
       live.phase = 'validating';
@@ -225,9 +228,7 @@ export function createImportJobManager(deps) {
         status: cancelled ? 'cancelled' : 'done',
         uploaded,
         message: result.quotaHit ? 'Your storage filled up, so the rest were not imported.' : '',
-        announce: cancelled
-          ? `Import cancelled. ${uploaded} file${uploaded === 1 ? '' : 's'} imported.`
-          : `Import finished. ${uploaded} file${uploaded === 1 ? '' : 's'} imported.`,
+        announce: `Import ${cancelled ? 'cancelled' : 'finished'}. ${outcomeLine({ results: live.results, uploaded, skipped: state.skipped, ignored: state.ignored }) || `${uploaded} file${uploaded === 1 ? '' : 's'} imported`}.`,
       });
       onFinished({ uploaded, cancelled, token });
     } catch (error) {
@@ -254,6 +255,7 @@ export function createImportJobManager(deps) {
     /** Starts an import of an already-inspected zip. One at a time: a second is refused, with the reason. */
     start({ name, bytes, plan }) {
       if (state.status === 'running') return { ok: false, message: BLOCKED_MESSAGE };
+      prepared = null; // the job takes over the zip
       const token = currentToken();
       live = {
         controller: new AbortController(),
@@ -291,6 +293,19 @@ export function createImportJobManager(deps) {
       execute({ plan, token });
       return { ok: true };
     },
+
+    /** Keeps a chosen, checked zip while the person looks at other pages (memory only; one at a time; a reload loses it). */
+    prepare({ name, bytes, plan }) {
+      if (state.status === 'running') return;
+      prepared = { name, bytes, plan, token: currentToken() };
+      set({ prepared: { name, plan } });
+    },
+    /** "Clear": forgets the chosen zip. */
+    unprepare() {
+      prepared = null;
+      if (state.prepared) set({ prepared: null });
+    },
+    startPrepared: () => (prepared ? api.start(prepared) : { ok: false, message: 'Choose a zip first.' }),
 
     /** Stops after the file(s) being uploaded now; what was imported stays imported. */
     cancel() {
@@ -337,6 +352,8 @@ export function createImportJobManager(deps) {
 
   // A signed-out or different session ends the job. (Subscribed once, for the life of the tab.)
   watchToken((next) => {
+    // A chosen zip never outlives its session: sign-out, lock, expiry or another account clears it.
+    if (prepared && next !== prepared.token) api.unprepare();
     if (state.status === 'idle') return;
     const jobToken = live?.token ?? null;
     // expireSession() sets its notice just AFTER telling listeners, so look one tick later.

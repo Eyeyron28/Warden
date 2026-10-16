@@ -411,3 +411,79 @@ test('every way of leaving the session goes through the job: Lock vault and sign
   assert.match(strip(read('services/importJob.js')), /An import is running\. Stop it and sign out\?/);
   assert.match(strip(read('services/importJob.js')), /beforeunload/);
 });
+
+// ---------- a chosen zip is kept while the person looks at other pages ----------
+
+const zipArgs = (name = 'chosen.zip') => ({ name, bytes: new Uint8Array([9, 9, 9]), plan: planOf([file('a.txt', 10, 'Top'), file('b.txt', 20, 'Top')]) });
+
+test('prepare: the chosen zip (name and checked plan) lives in the job module, so it is still there after a route change', () => {
+  const r = rig();
+  assert.equal(r.manager.getState().prepared, null);
+  r.manager.prepare(zipArgs());
+  const kept = r.manager.getState().prepared;
+  assert.equal(kept.name, 'chosen.zip');
+  assert.equal(kept.plan.files.length, 2);
+  assert.equal(JSON.stringify(r.manager.getState()).includes('"9,9,9"'), false, 'the bytes are not in the published state');
+  // a page unmounts and another mounts: nothing in the module changes, and a new subscriber reads it at once
+  let seen = null;
+  r.manager.subscribe(() => {});
+  seen = r.manager.getState().prepared;
+  assert.equal(seen.name, 'chosen.zip');
+  assert.equal(r.manager.isRunning(), false, 'nothing is running, so no warning on closing the tab');
+  assert.equal(r.windowEvents.added.filter((e) => e.type === 'beforeunload').length, 0);
+});
+
+test('only one chosen zip at a time: choosing another replaces it', () => {
+  const r = rig();
+  r.manager.prepare(zipArgs('one.zip'));
+  r.manager.prepare(zipArgs('two.zip'));
+  assert.equal(r.manager.getState().prepared.name, 'two.zip');
+});
+
+test('Clear removes it; Import starts the job with it and the job takes over (nothing is left prepared)', async () => {
+  const r = rig();
+  r.manager.prepare(zipArgs());
+  r.manager.unprepare();
+  assert.equal(r.manager.getState().prepared, null);
+  assert.deepEqual(r.manager.startPrepared(), { ok: false, message: 'Choose a zip first.' });
+  r.manager.prepare(zipArgs('go.zip'));
+  assert.deepEqual(r.manager.startPrepared(), { ok: true });
+  await flush();
+  const state = r.manager.getState();
+  assert.equal(state.status, 'running');
+  assert.equal(state.fileName, 'go.zip');
+  assert.equal(state.prepared, null);
+  assert.equal(r.runs.length, 1, 'the job really started with the prepared bytes');
+  assert.deepEqual([...r.runs[0].options.bytes], [9, 9, 9]);
+  // while a job runs a new zip cannot be prepared
+  r.manager.prepare(zipArgs('later.zip'));
+  assert.equal(r.manager.getState().prepared, null);
+});
+
+test('a chosen zip never outlives its session: sign-out, lock, a 401, an expiry and another account all clear it', async () => {
+  for (const [label, next, notice] of [['sign-out or lock', null, null], ['a 401 / expiry', null, { kind: 'expired' }], ['another account', 'token-B', null]]) {
+    const r = rig();
+    r.manager.prepare(zipArgs());
+    r.signIn(next, notice);
+    await flush();
+    assert.equal(r.manager.getState().prepared, null, label);
+  }
+  const same = rig();
+  same.manager.prepare(zipArgs());
+  same.signIn('token-A');
+  await flush();
+  assert.notEqual(same.manager.getState().prepared, null, 'the same session: it stays');
+  // the app-wide reset (sessionReset.js) calls clear(): nothing of a chosen zip is left
+  const reset = rig();
+  reset.manager.prepare(zipArgs());
+  reset.manager.clear();
+  assert.equal(reset.manager.getState().prepared, null);
+  assert.equal(reset.manager.startPrepared().ok, false, 'and its bytes are gone too');
+});
+
+test('a chosen zip is memory only: nothing is written to any browser storage', () => {
+  const code = strip(read('services/importJob.js'));
+  assert.doesNotMatch(code, /localStorage|sessionStorage|indexedDB|caches\.|document\.cookie/);
+  assert.match(strip(read('pages/ExportPage.jsx')), /If you reload the page, you will need to choose the zip again\./);
+  assert.match(strip(read('pages/ExportPage.jsx')), /onClick=\{\(\) => importJob\.unprepare\(\)\}/);
+});

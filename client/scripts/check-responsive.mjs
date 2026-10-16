@@ -890,6 +890,69 @@ try {
       await context.close();
     }
 
+    // A finished tray with a held file (amber), and the Export / Import page with a chosen zip waiting: no sideways scroll, big targets.
+    for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => {
+        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        window.__csp = [];
+        document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
+      }, token);
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      const measure = (buttonScope) => page.evaluate((scope) => {
+        const doc = document.documentElement;
+        const tray = document.querySelector('[data-testid="transfer-tray"]');
+        const r = tray ? tray.getBoundingClientRect() : null;
+        const buttons = [...document.querySelectorAll(scope)].filter((b) => b.getBoundingClientRect().width > 0).map((b) => Math.round(b.getBoundingClientRect().height));
+        return { hScroll: doc.scrollWidth > doc.clientWidth + 1, tray: r && { x: r.x, right: r.right, bottom: r.bottom }, minButton: buttons.length ? Math.min(...buttons) : null };
+      }, buttonScope);
+      try {
+        // the held tray: one clean and one risky file dropped on the page
+        await page.goto(base + '/files', { waitUntil: 'networkidle' });
+        await page.getByRole('button', { name: 'New' }).waitFor();
+        const dt = await page.evaluateHandle(() => {
+          const d = new DataTransfer();
+          d.items.add(new File(['plain words'], `clean-${Date.now()}.txt`, { type: 'text/plain' }));
+          d.items.add(new File(['%PDF-1.4 /JavaScript'], `risky-${Date.now()}.pdf`, { type: 'application/pdf' }));
+          return d;
+        });
+        await page.getByRole('button', { name: 'New' }).dispatchEvent('dragenter', { dataTransfer: dt });
+        await page.getByRole('button', { name: 'New' }).dispatchEvent('drop', { dataTransfer: dt });
+        const tray = page.getByTestId('transfer-tray');
+        await tray.getByText(/Held for review/).first().waitFor({ timeout: 15000 });
+        await page.waitForTimeout(400);
+        const found = [];
+        const info = await measure('[data-testid="transfer-tray"] button');
+        if (info.hScroll) found.push('the page scrolls sideways');
+        if (info.tray && (info.tray.x < -1 || info.tray.right > size.width + 1 || info.tray.bottom > size.height + 1)) found.push(`the tray is outside the screen ${JSON.stringify(info.tray)}`);
+        if (info.minButton !== null && info.minButton < 43) found.push(`a button is ${info.minButton}px tall`);
+        if ((await tray.locator('[data-ring="held"]').count()) < 1) found.push('no amber held row');
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `tray-held-${process.env.THEME || 'light'}-${size.name}.png`) });
+        record('Transfer tray (finished with a held file)', found);
+
+        // the page with a chosen zip
+        const zip = new JSZip();
+        zip.file('Waiting/a.txt', 'a');
+        zip.file('Waiting/b.txt', 'b');
+        await page.goto(base + '/export', { waitUntil: 'networkidle' });
+        await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles({ name: `${'waiting_'.repeat(30).slice(0, 251)}.zip`, mimeType: 'application/zip', buffer: Buffer.from(await zip.generateAsync({ type: 'uint8array' })) });
+        await page.getByRole('button', { name: /^Import 2 files$/ }).waitFor();
+        const pageFound = [];
+        const pInfo = await measure('main button:not([class*="remove"])');
+        if (pInfo.hScroll) pageFound.push('the page scrolls sideways with a chosen zip');
+        if (pInfo.minButton !== null && pInfo.minButton < 43) pageFound.push(`a button is ${pInfo.minButton}px tall`);
+        if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `export-prepared-${process.env.THEME || 'light'}-${size.name}.png`) });
+        record('Export / Import page (a chosen zip waiting)', pageFound);
+        const csp = await page.evaluate(() => window.__csp);
+        if (csp.length) record('Held tray and chosen zip (CSP)', [`CSP violations: ${csp.join('; ')}`]);
+      } catch (error) {
+        record('Transfer tray (finished with a held file)', [`could not be checked: ${String(error.message).replace(/\s+/g, ' ').slice(0, 300)}`]);
+      }
+      await context.close();
+    }
+
     // Finished, and with the update bar: a context that has a service worker controller before the import starts.
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });

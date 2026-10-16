@@ -13,9 +13,29 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export const isFinished = (state) => ['done', 'cancelled', 'stopped', 'failed'].includes(state.status);
 
-/** Files that were not imported: failures and skips in the report, plus zip entries that were ignored or too big up front. */
+/**
+ * Files that were not imported and are not accounted for apart: failures and skips in the report, plus zip entries that were ignored
+ * or too big up front. A file held in Quarantine, or refused outright, is counted on its own (see outcomeOf), never as "imported".
+ */
 export function skippedCount(state) {
-  return state.results.filter((item) => item.status !== 'imported').length + state.skipped.length + state.ignored.length;
+  return state.results.filter((item) => !['imported', 'held', 'refused'].includes(item.status)).length + state.skipped.length + state.ignored.length;
+}
+
+/** What an import did, in real counts: files imported (clean and saved), held for review, not saved, and skipped. */
+export function outcomeOf(state) {
+  const held = state.results.filter((item) => item.status === 'held').length;
+  const refused = state.results.filter((item) => item.status === 'refused').length;
+  return { imported: state.uploaded, held, refused, other: skippedCount(state) };
+}
+
+/**
+ * "Imported 4 files" only when every file was clean; "Imported 1 file, 3 held for review"; "Imported 1 file, 2 held for review, 1 not
+ * saved"; "No files imported. 4 held for review". A held file is never counted as imported.
+ */
+export function outcomeText({ imported, held, refused, other }) {
+  const bits = [held ? `${held} held for review` : '', refused ? `${refused} not saved` : '', other ? `${other} skipped` : ''].filter(Boolean);
+  if (imported === 0 && (held || refused)) return `No files imported. ${bits.join(', ')}`;
+  return [`Imported ${plural(imported, 'file')}`, ...bits].join(', ');
 }
 
 export const percentOf = (state) => (state.total ? Math.min(100, Math.floor((state.done / state.total) * 100)) : 0);
@@ -59,13 +79,20 @@ export function describeCard(state) {
   if (state.status === 'failed') {
     return { kind: 'failed', title: 'Import failed', name, line: state.message || 'That zip could not be imported.', percent: 0, target: '/export', canCancel: false, closable: true, autoDismiss: true };
   }
+  const outcome = outcomeOf(state);
+  const trouble = outcome.held + outcome.refused + outcome.other > 0;
   return {
-    kind: skipped > 0 ? 'warning' : 'done',
-    title: skipped > 0 ? `Imported ${imported}, ${skipped} skipped` : `Imported ${imported}`,
+    kind: trouble ? 'warning' : 'done',
+    // the look: ok (the normal success), held (amber), refused (amber and red)
+    tone: outcome.refused ? 'refused' : trouble ? 'held' : 'ok',
+    held: outcome.held,
+    refused: outcome.refused,
+    title: outcomeText(outcome),
     name,
-    line: state.message || (skipped > 0 ? 'Some files were not imported. Open the report.' : 'Open the folder to see them.'),
+    line: state.message || (outcome.held ? 'Held files wait in Quarantine until you decide.' : skipped > 0 ? 'Some files were not imported. Open the report.' : 'Open the folder to see them.'),
     percent: 100,
-    target: toFiles,
+    // imported something: its folder; nothing imported: Quarantine when something is held, else the report
+    target: state.uploaded > 0 ? toFiles : outcome.held ? '/quarantine' : '/export',
     canCancel: false,
     closable: true,
     autoDismiss: true,

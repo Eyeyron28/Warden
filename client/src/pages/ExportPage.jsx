@@ -11,7 +11,7 @@ import { listHeld } from '../services/quarantineService.js';
 import { buildExportZip, exportFileName } from '../utils/zipExport.js';
 import { IMPORT_LIMITS, inspectZip } from '../utils/zipImport.js';
 import { BLOCKED_MESSAGE, importJob, useImportJob } from '../services/importJob.js';
-import { filesLink } from '../utils/importCard.js';
+import { filesLink, outcomeOf, outcomeText } from '../utils/importCard.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './ExportPage.module.css';
@@ -58,9 +58,9 @@ function ImportReport({ job }) {
       ) : (
         <p>
           {heading}
-          {plural(job.uploaded, 'file')} imported{heldItems.length ? `, ${heldItems.length} held in Quarantine` : ''}{refusedItems.length ? `, ${refusedItems.length} not saved` : ''}{problems.length ? `, ${plural(problems.length, 'problem')}` : ''}.
+          {outcomeText(outcomeOf(job))}.
           {job.message ? ` ${job.message}` : ''}{' '}
-          <Link to={filesLink(job.destination)}>Open {job.destination ? `"${job.destination}"` : 'My files'}</Link>
+          {job.uploaded > 0 && <Link to={filesLink(job.destination)}>Open {job.destination ? `"${job.destination}"` : 'My files'}</Link>}
           {heldItems.length > 0 && (
             <>
               {' '}
@@ -163,9 +163,9 @@ function ExportPage() {
   // The import itself is an app-level job (services/importJob.js): it keeps running when this page is left, and the card at the
   // bottom right follows it. This page only chooses the zip, starts the job, and shows whatever the job reports.
   const job = useImportJob();
-  const [chosen, setChosen] = useState({ phase: 'idle' }); // idle | checked | error
+  // A chosen zip lives in the job module (memory only), so it is still here after another page; this page keeps only a refusal.
+  const [chosen, setChosen] = useState({ phase: 'idle' }); // idle | error
   const [blocked, setBlocked] = useState('');
-  const zipBytes = useRef(null);
   const running = job.status === 'running';
 
   const acceptFile = async (file) => {
@@ -175,40 +175,38 @@ function ExportPage() {
       return;
     }
     if (!isZipFile(file)) {
-      zipBytes.current = null;
+      importJob.unprepare();
       setChosen({ phase: 'error', message: NOT_A_ZIP(file.name) });
       return;
     }
     if (file.size > IMPORT_LIMITS.maxArchiveBytes) {
-      zipBytes.current = null;
+      importJob.unprepare();
       setChosen({ phase: 'error', message: 'That zip is too large to import here.' });
       return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const plan = inspectZip(bytes);
     if (!plan.ok) {
-      zipBytes.current = null;
+      importJob.unprepare();
       setChosen({ phase: 'error', message: plan.message });
       return;
     }
-    zipBytes.current = bytes;
-    setChosen({ phase: 'checked', name: file.name, plan });
+    importJob.prepare({ name: file.name, bytes, plan }); // replaces any zip chosen before
+    setChosen({ phase: 'idle' });
   };
 
   const startImport = () => {
-    const started = importJob.start({ name: chosen.name, bytes: zipBytes.current, plan: chosen.plan });
+    const started = importJob.startPrepared(); // the job takes over the zip
     if (!started.ok) {
       setBlocked(started.message);
       return;
     }
-    // The job owns the zip now; this page lets go of it.
-    zipBytes.current = null;
     setBlocked('');
     setChosen({ phase: 'idle' });
   };
 
   const e = exportState;
-  const i = chosen;
+  const i = job.prepared ? { phase: 'checked', name: job.prepared.name, plan: job.prepared.plan } : chosen;
   const percent = (done, total) => (total ? Math.round((done / total) * 100) : 0);
 
   const zipSize = i.phase === 'checked' ? formatBytes(i.plan.files.reduce((n, f) => n + f.size, 0)) : '';
@@ -304,6 +302,15 @@ function ExportPage() {
           )}
 
           {blocked && <p className={styles.error} role="alert">{blocked}</p>}
+
+          {i.phase === 'checked' && !running && (
+            <div className={styles.keepNote}>
+              <p className={styles.small}>If you reload the page, you will need to choose the zip again.</p>
+              <button type="button" className={styles.secondary} onClick={() => importJob.unprepare()} data-action="clear-zip">
+                Clear
+              </button>
+            </div>
+          )}
 
           {i.phase === 'checked' && !running && (
             <button type="button" className={`${styles.primary} ${styles.big}`} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>

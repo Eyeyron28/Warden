@@ -64,6 +64,10 @@ function TransferTray() {
   };
 
   const onAction = (row, action) => {
+    if (action === 'review') {
+      navigate(row.actions.review);
+      return;
+    }
     if (action === 'show') {
       navigate(row.actions.show);
       return;

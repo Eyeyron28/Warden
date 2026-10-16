@@ -186,7 +186,7 @@ test('tray, refused: red "Not saved" with the short reason, no Retry', () => {
 test('tray titles: "Sealed 2, 1 held", "Sealed 1, 1 not saved", "2 files held for review"; the old ones are unchanged', () => {
   const title = (rows) => buildTray({ rows, announce: '' }, { status: 'idle', results: [], skipped: [], ignored: [] }).title;
   const refused = (id) => row({ id, phase: 'failed', error: { refused: true, reasons: ['EXECUTABLE_CONTENT'], retryable: false } });
-  assert.equal(title([row({ id: 1 }), row({ id: 2 }), row({ id: 3, held: ['OFFICE_MACRO'] })]), 'Sealed 2, 1 held');
+  assert.equal(title([row({ id: 1 }), row({ id: 2 }), row({ id: 3, held: ['OFFICE_MACRO'] })]), 'Sealed 2, 1 held for review');
   assert.equal(title([row({ id: 1 }), refused(2)]), 'Sealed 1, 1 not saved');
   assert.equal(title([row({ id: 1, held: ['PDF_ACTIVE'] }), row({ id: 2, held: ['PDF_ACTIVE'] })]), '2 files held for review');
   assert.equal(title([row({ id: 1 }), row({ id: 2, phase: 'failed', error: { message: 'Network error', retryable: true } })]), 'Sealed 1, 1 failed');
@@ -239,8 +239,8 @@ test('zip import: each file is judged by the server; imported, held and refused 
 
 test('the import report on the Export / Import page counts imported, held and not saved, and links to Quarantine; Export says how many were left out', () => {
   const page = strip(read('pages/ExportPage.jsx'));
-  assert.match(page, /\$\{heldItems\.length\} held in Quarantine/);
-  assert.match(page, /\$\{refusedItems\.length\} not saved/);
+  assert.match(page, /outcomeText\(outcomeOf\(job\)\)/);
+  assert.match(page, /import \{ filesLink, outcomeOf, outcomeText \}/);
   assert.match(page, /<Link to="\/quarantine">Review the held files<\/Link>/);
   assert.match(page, /title="Not saved"/);
   assert.match(page, /listHeld\(\)\.then\(\(data\) => data\.count, \(\) => 0\)/);

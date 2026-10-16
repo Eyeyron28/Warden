@@ -59,6 +59,11 @@ function Row({ row, onAction }) {
               {row.showLabel || (row.actions.show === '/export' ? 'Show details' : 'Show in folder')}
             </button>
           )}
+          {row.actions.review && (
+            <button type="button" className={styles.action} data-action="review" onClick={() => onAction(row, 'review')}>
+              Review held files
+            </button>
+          )}
           {row.actions.dismiss && (
             <button type="button" className={styles.action} data-action="dismiss" onClick={() => onAction(row, 'dismiss')} aria-label={`Dismiss ${row.name}`}>
               Dismiss
@@ -97,7 +102,7 @@ export function TransferTrayView({
     <aside
       className={styles.tray}
       data-testid="transfer-tray"
-      data-state={model.running ? 'running' : model.anyFailed ? 'failed' : 'done'}
+      data-state={model.running ? 'running' : model.anyFailed ? 'failed' : model.anyHeld ? 'held' : 'done'}
       data-minimized={minimized || undefined}
       aria-label="Transfers"
       onKeyDown={onKeyDown}
@@ -118,7 +123,7 @@ export function TransferTrayView({
         <h2 className={styles.title} data-testid="tray-title">
           {model.title}
         </h2>
-        {minimized && <SealRing ring={model.running ? RING.PROGRESS : model.anyFailed ? RING.FAILED : RING.SEALED} percent={model.overall} small />}
+        {minimized && <SealRing ring={model.running ? RING.PROGRESS : model.anyHeld ? RING.HELD : model.anyRefused ? RING.REFUSED : model.anyFailed ? RING.FAILED : RING.SEALED} percent={model.overall} small />}
         <button type="button" className={styles.headButton} onClick={onToggleMinimize} aria-expanded={!minimized} aria-label={minimized ? 'Expand the transfers' : 'Minimize the transfers'} data-action="minimize">
           {minimized ? <CaretUp size={16} weight="bold" /> : <CaretDown size={16} weight="bold" />}
         </button>

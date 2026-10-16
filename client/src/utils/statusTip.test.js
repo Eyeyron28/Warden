@@ -146,7 +146,7 @@ test('the status line says "checked" or "not checked" next to Sealed; the import
   const done = { status: 'done', phase: 'finished', fileName: 'b.zip', done: 8, total: 8, uploaded: 5, bytesTotal: 100, bytesDone: 100, finishedAt: 5, destination: '', cardVisible: true, announce: '', ignored: [], skipped: [],
     results: [...Array(5).fill({ status: 'imported' }), { status: 'held' }, { status: 'held' }, { status: 'refused' }] };
   const importLine = buildTray({ rows: [], announce: '' }, done).rows[0].line;
-  assert.match(importLine, /^Imported 5 files, 2 held, 1 not saved · each file checked$/);
+  assert.match(importLine, /^Imported 5 files, 2 held for review, 1 not saved · each file checked$/);
   assert.equal(buildTray({ rows: [], announce: '' }, done).rows[0].tip, TIPS.importDone);
 });
 

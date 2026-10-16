@@ -201,6 +201,7 @@ try {
   // ---- a clean file is unaffected ----
   await uploadVia(sample('clean-note.txt', Buffer.from('an ordinary note')));
   await rows.first().getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
+  const sealedRingHtml = await rows.first().getByTestId('status-icon').innerHTML();
   // ---- the status icon explains itself: hover, keyboard, Escape ----
   const icon = rows.first().getByTestId('status-icon');
   const tipBox = page.getByTestId('status-tip');
@@ -386,6 +387,40 @@ try {
   await rows.first().getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
   check((await docs()).some((d) => d.filename === 'letter.docx'), 'a docx built at run time uploads and is sealed');
   await closeTray();
+
+  // ---- a zip with 1 clean and 3 risky files: held files are never counted as imported ----
+  await nav('Export / Import').click();
+  await page.waitForURL((url) => url.pathname === '/export');
+  await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(sample('mix.zip', zipOf({
+    'Mix/clean.txt': 'plain words',
+    'Mix/form-1.pdf': '%PDF-1.4 /JavaScript',
+    'Mix/form-2.pdf': '%PDF-1.4 /OpenAction',
+    'Mix/logo.svg': '<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>',
+  })));
+  await page.getByRole('button', { name: /^Import 4 files$/ }).click();
+  await tray.waitFor({ timeout: 10000 });
+  await page.getByTestId('import-report').waitFor({ timeout: 30000 });
+  await rows.first().getByText(/each file checked/).waitFor({ timeout: 10000 });
+  const importLine = (await rows.first().innerText()).replace(/\s+/g, ' ');
+  check(/Imported 1 file, 3 held for review · each file checked/.test(importLine), `the tray row says "Imported 1 file, 3 held for review" (${importLine.slice(0, 90)})`);
+  check(!/Imported 4|4 files imported|3 skipped/.test(importLine), 'and never counts the held files as imported or skipped');
+  check(/Sealed 1, 3 held for review/.test(await page.getByTestId('tray-title').innerText()), 'the tray title says "Sealed 1, 3 held for review"');
+  const reportText = (await page.getByTestId('import-report').innerText()).replace(/\s+/g, ' ');
+  check(/Imported 1 file, 3 held for review\./.test(reportText) && !/4 files imported/.test(reportText), 'the Import page report says the same');
+  check((await rows.first().getAttribute('data-ring')) === 'held', 'the import row is amber (held), not the sealed lock');
+  check((await rows.first().getByTestId('status-icon').innerHTML()) !== sealedRingHtml, 'with a different icon shape from a sealed row');
+  check((await tray.getAttribute('data-state')) === 'held', 'the tray is in its held state');
+  check((await rows.first().getByRole('button', { name: 'Review held files' }).count()) === 1, 'the finished row has "Review held files"');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'import-held-tray-1280.png') });
+  await tray.getByRole('button', { name: 'Minimize the transfers' }).click();
+  check((await tray.locator('header [data-ring]').first().getAttribute('data-ring')) === 'held', 'the minimized tray ring is amber');
+  await tray.getByRole('button', { name: 'Expand the transfers' }).click();
+  await rows.first().getByRole('button', { name: 'Review held files' }).click();
+  await page.waitForURL((url) => url.pathname === '/quarantine', { timeout: 5000 });
+  check((await heldList()).count >= 3, 'the button opens Quarantine with the held files');
+  await closeTray();
+  await page.goto(`${base}/files`);
+  await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
   // ---- touch: a tap on the icon toggles a popover; a tap elsewhere closes it (a phone-sized screen) ----
   const phone = await browser.newContext({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });

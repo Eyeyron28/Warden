@@ -151,5 +151,5 @@ test('a zip that is not a .zip is refused with a clear message before anything i
   assert.match(page, /if \(!isZipFile\(file\)\) \{[\s\S]*NOT_A_ZIP\(file\.name\)/);
   assert.ok(page.indexOf('isZipFile(file)') < page.indexOf('file.arrayBuffer()'), 'checked before the bytes are read');
   assert.match(page, /buildExportZip\(\{/);
-  assert.match(page, /importJob\.start\(\{ name: chosen\.name, bytes: zipBytes\.current, plan: chosen\.plan \}\)/);
+  assert.match(page, /importJob\.startPrepared\(\)/);
 });

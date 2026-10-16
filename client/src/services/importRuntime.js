@@ -3,6 +3,7 @@ import { invalidateAll } from './dataCache.js';
 import { reportClientEvent } from './securityService.js';
 import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { inspectZip, runImport } from '../utils/zipImport.js';
+import { outcomeOf, outcomeText } from '../utils/importCard.js';
 import { uploadSlots } from './uploadSlots.js';
 import { quarantineCount } from './quarantineCount.js';
 
@@ -12,6 +13,8 @@ import { quarantineCount } from './quarantineCount.js';
  */
 export const runtime = {
   runImport,
+  // The finished import in words (screen readers): the real counts, held files never counted as imported.
+  outcomeLine: (state) => outcomeText(outcomeOf(state)),
   loadJSZip: async () => (await import('jszip')).default,
   inspect: inspectZip,
   // The normal upload: the 4 MB cap, the quota, the type sniffing and - for a name already in use - the same-name counter.

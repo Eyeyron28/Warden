@@ -215,6 +215,48 @@ try {
   const names = (await api('GET', '/api/documents', { token })).body.map((doc) => doc.filename);
   check(names.some((name) => /note-1 \(1\)\.txt$/.test(name)), 'a name already in use was imported with a counter, e.g. "note-1 (1).txt"');
 
+  // ---- a chosen zip is kept while the person looks at other pages (memory only) ----
+  const choose = async (file) => page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(file);
+  const keepZip = await makeZip('keep.zip', 5, 'Keep');
+  const ready = page.getByRole('button', { name: /^Import 5 files$/ });
+  await choose(keepZip);
+  await ready.waitFor({ timeout: 6000 });
+  check(/If you reload the page, you will need to choose the zip again\./.test(await page.locator('main').innerText()), 'a chosen zip says: "If you reload the page, you will need to choose the zip again."');
+  check((await page.getByRole('button', { name: 'Clear' }).count()) === 1, 'and has a Clear button');
+  await nav('My files').click();
+  await page.waitForURL((url) => url.pathname === '/files');
+  await nav('Export / Import').click();
+  await page.waitForURL((url) => url.pathname === '/export');
+  check((await ready.isVisible()) && /keep\.zip/.test(await page.locator('main').innerText()), 'after another page the zip is still ready, with its name and the Import button');
+  check((await page.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => k !== 'warden.session'), l: Object.keys(localStorage) }))).s.length === 0, 'and nothing about it is in browser storage');
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await ready.waitFor({ state: 'detached', timeout: 3000 });
+  check((await page.getByRole('button', { name: 'Choose a .zip…', exact: true }).count()) === 1, 'Clear removes the chosen zip');
+  await choose(keepZip);
+  await ready.waitFor({ timeout: 6000 });
+  await page.reload();
+  await page.getByRole('button', { name: 'Choose a .zip…', exact: true }).waitFor({ timeout: 8000 });
+  check((await ready.count()) === 0, 'a reload loses it, by design');
+  await choose(keepZip);
+  await ready.waitFor({ timeout: 6000 });
+  await page.getByRole('button', { name: 'Lock vault' }).click();
+  await page.waitForURL((url) => url.pathname === '/login', { timeout: 10000 });
+  await mongoose.models.RateLimit.deleteMany({});
+  await page.getByLabel(/^email/i).fill(email);
+  await page.locator('input[type=password]').first().fill(password);
+  await page.getByRole('button', { name: /^continue$/i }).first().click();
+  await page.waitForFunction(() => !location.pathname.startsWith('/login'), null, { timeout: 15000 });
+  await nav('Export / Import').click();
+  await page.waitForURL((url) => url.pathname === '/export');
+  await page.waitForTimeout(500);
+  check((await ready.count()) === 0, 'signing out and in again leaves no chosen zip');
+  await choose(await makeZip('again.zip', 2, 'Again'));
+  await page.getByRole('button', { name: /^Import 2 files$/ }).click();
+  await card.waitFor({ timeout: 10000 });
+  check((await page.getByRole('button', { name: 'Choose a .zip…', exact: true }).count()) === 0 && (await ready.count()) === 0, 'starting the import takes the zip over (nothing is left prepared)');
+  await page.getByText(/2 files sealed/).first().waitFor({ timeout: 30000 });
+  await card.getByRole('button', { name: /^Dismiss/ }).first().click().catch(() => {});
+
   // ---- Lock vault asks first ----
   const third = await makeZip('third.zip', 20, 'Third');
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(third);
