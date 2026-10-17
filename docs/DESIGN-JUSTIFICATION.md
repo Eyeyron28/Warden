@@ -98,8 +98,7 @@ The static client and the API share one origin. This lets the "trust this browse
 
 `SIGNUP_MODE` is `invite` or `open`, and production refuses to start if it is not set. In invite mode the server asks for an invite
 code before it even looks at the email. In open mode anyone can sign up. We built the switch because open sign-up lets strangers
-make the app send emails, and a free Gmail account can only send a few hundred a day. Which mode the live site uses during the
-defense is [to confirm].
+make the app send emails, and a free Gmail account can only send a few hundred a day. The live site is in open mode (the owner confirmed this on 14 October 2026).
 
 ## What we kept from the first local version
 
@@ -109,9 +108,7 @@ defense is [to confirm].
 
 ## What we removed, and why
 
-- **Phone pairing and sync.** We removed the phone vault, and its old URLs now answer 410 (see `DEPLOY.md`). The exact reason the
-  team decided to remove it is [to confirm]. What we can show from the repo is that a hosted serverless app has no memory or disk
-  shared between requests, and phone sync had to be rebuilt to fit that before it was dropped.
+- **Phone pairing and sync.** We removed the phone vault, and its old URLs now answer 410 (see `DEPLOY.md`). The reason: the app became a public website, so there is no local PC to pair a phone with.
 - **USB backup and restore.** It needed a path on the server's own disk, which a serverless function does not have. We replaced it
   with Export and Import: the browser builds a zip from the authenticated downloads, and import sends each file back through the
   normal upload so every check still applies.

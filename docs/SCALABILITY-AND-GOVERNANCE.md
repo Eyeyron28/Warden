@@ -20,8 +20,8 @@ on Vercel or Atlas), we say so.
 | Emails per day for the whole app | 300 (`MAIL_DAILY_CAP`), bulk mail stops at 150 (`MAIL_BULK_SHARE` 0.5) | `server/utils/mailBudget.js`, `DEPLOY.md` |
 | Cron jobs | two, once a day each (Trash purge 03:17 UTC, reminders 01:00 UTC) | `vercel.json` |
 
-The Atlas region and the Vercel function region are set in the dashboards, not in the repo. We believe the function region is
-Singapore (`sin1`) and the database is in Singapore too [to confirm both in the dashboards].
+The Atlas region and the Vercel function region are set in the dashboards, not in the repo. The owner confirmed in the dashboards that the function
+region is `sin1` and the Atlas database is in Singapore. `vercel.json` sets no region.
 
 ## What we measured
 
@@ -56,7 +56,7 @@ take about 30 users as the starting point, which is an assumption).
 | **Storage** | If everyone used the whole 25 MB, that is about 7.5 GB, far over 512 MB. Real use would be lower, but the free tier would not hold it. | About 75 GB at full use. MongoDB is the wrong place for this. Files need object storage. |
 | **Email** | Sign-up and login codes could pass 300 a day on a busy day. Login codes are protected because bulk mail stops at 150 and the rest is kept for login codes. Sign-ups would be refused with a "busy" answer. | Gmail SMTP cannot work. A mail service with our own domain is needed (also needed for SPF, DKIM and DMARC). |
 | **Connections** | Probably fine. | Likely to need a paid Atlas tier or a connection proxy [estimate]. |
-| **Request volume** | Likely fine on Hobby, but we did not test it. Note that Hobby is for personal use under Vercel terms [to confirm the current terms before a public launch]. | Needs a paid plan and tests. |
+| **Request volume** | Likely fine on Hobby, but we did not test it. Vercel Hobby is for personal, non-commercial use. A school project fits that. A commercial launch would not. | Needs a paid plan and tests. |
 | **Cron** | Two daily jobs, one email per account per run, at most 40 emails per run. At 300 users the reminder job will take several runs to finish. | Needs a queue or worker. |
 | **File list** | One JSON list per request is fine for hundreds of documents (the cap is 2,000). | Needs paging on the server. |
 | **Abuse** | Per-account upload limits and the document cap stop one account from filling the database with tiny files. | Needs monitoring and a way to remove abusive accounts. We have no admin role. |
@@ -102,7 +102,7 @@ Every item here is a plan. None of it exists yet.
 
 - The operator can read metadata. We say so on the privacy page.
 - The privacy page is a plain-language draft for a student project. It is not a reviewed legal document.
-- We have no named data protection officer and no written breach notification procedure [to confirm]. The Data Privacy Act of 2012
+- No data protection officer is appointed (student project), and we have no written breach notification procedure. The Data Privacy Act of 2012
   (RA 10173) expects a process to tell the National Privacy Commission and affected people after a breach. This is listed as a gap in
   `docs/PRIVACY-AND-DPA.md`.
 - We do not address use by children.

@@ -134,5 +134,5 @@ we also write the risk that is left. We do not claim Warden is safe against ever
 
 Denial of service at network level (we rely on Vercel), physical access to the user's computer, bugs in Node, MongoDB, Vercel or
 Gmail, and any attack on the supply chain of our dependencies beyond `npm audit`. We did not do a penetration test by an outside
-party. [to confirm: whether the independent review mentioned in the team notes has a written report in the repo. We could not find
-one.]
+party. The review on 10 October was a read-only Claude Code review. The only written record is the fix commit `d7543a6`. There is no
+separate review report.

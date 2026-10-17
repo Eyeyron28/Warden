@@ -3,7 +3,7 @@
 This is the script for the defense demo. It runs on the live site in Chrome with **throwaway accounts only**. Never use a real
 vault, a real document or a real person's email in a demo.
 
-Live site: https://warden-vault.vercel.app [to confirm this is the final address]. Source: github.com/Eyeyron28/Warden.
+Live site: https://warden-vault.vercel.app. Source: github.com/Eyeyron28/Warden.
 
 The longer Emergency Access script is in `docs/DEMO-EMERGENCY.md`. This one fits it into 10 minutes.
 
@@ -20,8 +20,8 @@ The longer Emergency Access script is in `docs/DEMO-EMERGENCY.md`. This one fits
 - [ ] A **fresh email** for the live sign-up in step 1. Do not sign it up before the demo.
 - [ ] Set `EMERGENCY_DEMO_MODE` to `true` in Vercel **Settings, Environment Variables** and redeploy, only for the demo. **Turn it off
       again after** (last step below). The server warns at start-up if it is on in production.
-- [ ] If sign-up on the live site is in invite mode (`SIGNUP_MODE=invite`), have the invite code ready on paper. Never show it on the
-      projector. [to confirm which mode the live site uses]
+- [ ] Sign up on the live site is in open mode, so no invite code is needed. If that is ever switched to invite mode
+      (`SIGNUP_MODE=invite`), keep the code on paper and never show it on the projector.
 - [ ] The **demo-samples folder**: from the repository root run `node scripts/make-demo-samples.mjs`. It writes four harmless files
       into `demo-samples/`: `tax-form-with-script.pdf`, `logo-with-script.svg`, `holiday-photo.png` (really a PDF) and
       `statement.pdf.exe` (really text). None is real malware.

@@ -54,7 +54,7 @@ Export zips built in the browser are **not encrypted**. They leave out held file
 | Trusted browser records | 30 days | TTL index, or removed by the user |
 | Share links and their copies | At most 30 days, or until the download limit, or until stopped | TTL index |
 | Rate limit counters | Minutes to a day | TTL index |
-| Server logs | Kept by Vercel for a time that depends on the plan [to confirm] | Vercel |
+| Server logs | Kept by Vercel for a time that depends on the plan | Vercel |
 
 ## Consent and the policy version
 
@@ -94,13 +94,13 @@ This is our own reading, as students. It is not a legal opinion.
 ## Gaps we know about
 
 - Older accounts have no consent record.
-- We have no named data protection officer [to confirm].
+- No data protection officer is appointed (student project).
 - We have no written breach notification procedure. RA 10173 expects the National Privacy Commission and affected people to be told
   after certain breaches [to confirm the exact rules]. This is a gap.
 - Some rights (correction beyond renaming, objection) are handled by email, by hand.
 - The privacy page is a draft written by students. A real service would need a lawyer to review it.
 - We do not address use by children.
 - Operator access to metadata is a real privacy cost. We state it, we do not remove it.
-- The database host and the email provider are processors. The privacy page names them in general terms. We have no signed data
-  processing agreement with them beyond their standard terms [to confirm].
+- The database host and the email provider are processors. The privacy page names them in general terms. We have not signed data
+  processing agreements with Vercel, Atlas or Gmail. We rely on their standard terms.
 - Warden should not be used for real sensitive documents until it is reviewed.

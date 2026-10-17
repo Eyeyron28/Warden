@@ -4,6 +4,21 @@ Audit date: 2026-10-15. Commit audited: `9c03bf8` (96 commits, first 2026-08-23)
 
 **Scope note.** The prompt asked for the "top band (90-100) wording" of each criterion but did not include the rubric text. Verdicts below are judged against each criterion's title, weight and the checklist in the prompt. Re-check them against the official wording before the defense.
 
+**Update, 17 October 2026.** This audit was written on 15 October at commit `9c03bf8`. The structure, line numbers and verdicts below are
+from that date. Since then the code changed in these ways, and notes marked **Update** in the sections below say what each one
+changes. No score or verdict was changed, because we did not re-run the whole audit.
+
+- Consent and the policy version are stored on new accounts (`consent.acceptedAt`, `consent.policyVersion`).
+- The privacy page names the National Privacy Commission for complaints, and covers withdrawing consent and data portability.
+- There is a daily mail cap (`MAIL_DAILY_CAP`, default 300, bulk mail 150) in `server/utils/mailBudget.js`.
+- Lockouts, wrong code bursts and 429 answers are written to the security log (`server/utils/securityLog.js`).
+- ESLint exists in `client` and `server` (`npm run lint`).
+- Uploads are limited per account: 120 per minute, 600 per hour, and 2,000 documents (`server/utils/uploadLimits.js`).
+- The Quarantine scanner checks every upload (`server/utils/fileScanner.js`, `docs/QUARANTINE.md`).
+- Test counts at the last full run: server 549, client 594 (the baseline below says 414 and 302). Main bundle 122.12 KB gzip.
+- The other documents in this folder (`docs/README.md` is the index) now cover the justification, the role matrix, the threat model
+  and the test evidence that sections 2.1, 2.6 and 4 list as missing.
+
 **How the live evidence was produced.** A scratch copy of the real app (every middleware, `server/server.js`) ran against a throwaway local MongoDB (127.0.0.1:27099, a separate instance from any other database), with mail captured to files. No `.env` file was read, no Atlas connection was made, no mail was sent. The probe scripts lived outside the repo. The throwaway MongoDB and the dev server were stopped at the end.
 
 ---
@@ -156,6 +171,17 @@ Honesty note: this is a forced fault. Probing the real app with 25 hostile input
 
 Dev-only caveat: when SMTP is not configured and the app is not in production, `utils/email.js:185` prints the whole email (including the code) to the console. Production is guarded (`email.js:175-179`) and start-up refuses missing SMTP (`productionConfig.js`).
 
+**Update (17 October):** the rows above that say "not logged" are out of date. The security log (`server/utils/securityLog.js`, read in
+Vercel Logs) now writes one JSON line for a `lockout`, `code_failures` (3 or more wrong guesses on one code), `rate_limited` (every 429,
+by limiter name), `sessions_revoked`, `emergency_denied`, `emergency_refused`, `share_password_failures`, `mail_cap`, `file_held`,
+`file_refused`, `file_released`, `scan_error` and `document_limit`. Each line holds a short keyed hash and no email, token, IP address or
+file name, and floods are thinned. Tests: `server/test/security-log.test.js`, `log-privacy.test.js`. The activity log (per account) is
+unchanged. The logging gap in the 3.1 summary is therefore closed in code. The verdict above is not changed.
+
+**Update (17 October), uploads:** `POST /api/documents` now also runs the Quarantine scanner (`server/utils/fileScanner.js`) before
+encryption, refuses a plain zip (`USE_IMPORT`) and applies the per-account limits. Warden accepts any file type up to 4 MB. There is no
+list of allowed types. Risky files are held, and a program in disguise is refused. See `docs/QUARANTINE.md`.
+
 ### 3.2 Authentication, MFA, session security (25): PASS with caveats, band 80-89 (top)
 
 | Control | Evidence |
@@ -208,6 +234,12 @@ Dev-only caveat: when SMTP is not configured and the app is not in production, `
 | document count cap (not a window: a count of the account's documents, live, held and in Trash) | account | 2000 documents (env `MAX_DOCUMENTS_PER_ACCOUNT`); 409 `DOCUMENT_LIMIT`; one indexed count stopped at the cap; new versions are not new documents | `utils/uploadLimits.js`, `documents.controller.js` |
 
 **Auth or email-sending routes with NO limiter:** none found. `POST /auth/password-reset/recovery-key-only` has no route-level limiter in `auth.routes.js:121`, but the controller reserves the `rk-*` budgets before looking at the key (`passwordReset.controller.js:255-285`). Public routes with no limiter are `GET /api/health` and `GET /api/auth/config`, neither of which sends email or touches an account. Uploads (`POST /api/documents`) are now limited per account in count and speed (the two rows above), in addition to the 4 MB and storage quota limits. The other signed-in data routes (shares, trash, insights) have no per-request limiter; they are bounded by the session, the 25 MB quota and the 4 MB file cap, not by a request-rate limit (see 2.6).
+
+**Update (17 October):** since this audit the per-account limiters in `server/routes/documents.routes.js` (`docs-star`, `docs-recent`,
+`docs-details`, `docs-batch-move`, `docs-batch-trash`, `docs-note`, `docs-version-*`, `docs-quarantine-release`) were added next to the
+two upload rows above, and the whole app has a daily mail budget (300 a day, bulk mail 150). The complete current list is in
+`docs/ROLES-AND-RATE-LIMITS.md`. The sentence above that says other signed-in routes have no per-request limiter is true only for trash,
+shares, insights and folders now.
 
 Caveats for the defense: MFA is email-code only (no authenticator-app/TOTP option); the lock is short (5 minutes) and keyed by address, so an attacker who knows an address can keep it locked by retrying every 5 minutes (a deliberate trade-off against guessing); the sessionStorage token trade-off is documented.
 
@@ -287,7 +319,7 @@ Roles: **Owner** = signed-in normal session. **Share recipient** = anyone holdin
 
 ### 3.5 Privacy controls (15): PARTIAL, band 80-89
 
-**Consent at sign-up.** `client/src/pages/auth/SignupPage.jsx:86-90,115-118,371-396`: a checkbox "I have read and agree to the Terms of use and Privacy policy" that stays unusable until both documents are opened and scrolled to the end in a dialog; submit is disabled otherwise (`canSubmit = isValid && agreed && legalAllRead`, `:118`). The server refuses `termsAccepted !== true` (`signup.controller.js:80`; live probe: 400 "Please agree to the Terms of use and the Privacy policy to continue."). **Gap: the user record has no consent field** (fields observed: `email, emailVerified, passwordHash, salt, recoveryKeyHash, wrappedDEK*, dekFingerprint, failedAttempts, expiryReminders, auditHead, createdAt`), so there is no stored proof of when or which version was accepted. The client also sends `termsAccepted: true` as a constant (`client/src/services/authService.js:12`), so the server check proves the request was well-formed, not that a person ticked the box.
+**Consent at sign-up.** `client/src/pages/auth/SignupPage.jsx:86-90,115-118,371-396`: a checkbox "I have read and agree to the Terms of use and Privacy policy" that stays unusable until both documents are opened and scrolled to the end in a dialog; submit is disabled otherwise (`canSubmit = isValid && agreed && legalAllRead`, `:118`). The server refuses `termsAccepted !== true` (`signup.controller.js:80`; live probe: 400 "Please agree to the Terms of use and the Privacy policy to continue."). **Update (17 October): this gap is closed for new accounts.** The server now writes `consent: { acceptedAt, policyVersion }` on every new account (`server/controllers/signup.controller.js`, `server/utils/policyVersion.js`, current version `2026-10-15.3`, tests `server/test/consent-mailcap.test.js` and `signup-flow.test.js`). Accounts made before that have no record. The rest of this paragraph is as written on 15 October. **Gap: the user record has no consent field** (fields observed: `email, emailVerified, passwordHash, salt, recoveryKeyHash, wrappedDEK*, dekFingerprint, failedAttempts, expiryReminders, auditHead, createdAt`), so there is no stored proof of when or which version was accepted. The client also sends `termsAccepted: true` as a constant (`client/src/services/authService.js:12`), so the server check proves the request was well-formed, not that a person ticked the box.
 
 **Privacy notice.** `client/src/pages/public/PrivacyPage.jsx` (263 lines, "Updated October 2026", a draft "not a reviewed legal document"). It states purpose (`:153-165` "We use your information only to run Warden: to sign you in, keep your vault working, send the emails you ask for, and protect accounts from abuse. We do not sell, rent or share your data, and we do not use it for advertising."), data collected (`:12-108`, 14 itemised entries), what the operator can and cannot read (`:112-139`), limits (`:140-152`), where data is stored (`:167-176` MongoDB Atlas and an SMTP provider), retention (`:177-191`: Trash 30 days then removed with previews; "Sign-in sessions, sign-up codes, verification links and rate-limit records expire on their own"; activity log 30 days at `:57-58`; sessions 30 min idle / 12 h at most at `:105-106`; one-time codes "a few minutes"), deletion (`:192-221`) and rights (`:222-233`: informed, access, correct, object, erase/block, under RA 10173, by email).
 
@@ -324,7 +356,7 @@ The 9 remaining `ratelimits` rows are keyed by IP address and expire by TTL; the
 | Proportionality | Minimal sign-up fields; audit log holds ids only (no names, content, emails, IPs); 30-day retention; contents encrypted; sign-up pending state stores only a salted code hash tied to a keyed address hash; account deletion removes everything | `PrivacyPage.jsx:17-25,57-64`; orphan check above |
 | Data subject rights | Access/portability (zip export), erasure (self-service deletion), correction (rename files; password change); object/block by email | `PrivacyPage.jsx:192-233` |
 
-**Gaps to close:** record consent (timestamp and policy version) on the user; add the right to lodge a complaint with the National Privacy Commission and a named contact/DPO; add withdrawal of consent and portability wording; the page is labelled a draft; rights other than export and deletion are by email only (manual).
+**Gaps to close:** record consent (timestamp and policy version) on the user; add the right to lodge a complaint with the National Privacy Commission and a named contact/DPO; add withdrawal of consent and portability wording; the page is labelled a draft; rights other than export and deletion are by email only (manual). **Update (17 October):** consent with policy version is recorded, and the privacy page now has the right to complain to the National Privacy Commission, withdrawing consent and portability. No data protection officer is appointed (student project) and there is still no breach notification procedure. The page is still labelled a draft. The 3.5 verdict is not changed.
 
 ---
 
@@ -380,7 +412,7 @@ Original or distinctive features (all with tests):
 
 - **Tests:** 414 server + 302 client = 716, in 72 files; DB-backed tests use a local throwaway MongoDB and are skipped with a reason when none runs (`test/helpers/realMongo.js`), real-HTTP tests for the whole app (`cross-user.test.js`, `rate-limit-headroom.test.js`).
 - **Structure:** `server/{config,controllers,middleware,models,routes,utils,scripts,test}`, `client/src/{components,pages,services,utils}`, `api/index.js` for Vercel, `docs/`. Clear and conventional.
-- **Lint:** none. No ESLint/Prettier config exists in the repo or either package; the code carries `eslint-disable` comments for a tool that is not installed.
+- **Lint:** none. No ESLint/Prettier config exists in the repo or either package; the code carries `eslint-disable` comments for a tool that is not installed. **Update (17 October): ESLint now exists.** `npm run lint` in `client` and `server` (recommended rules only). It reports no errors. The server has some old warnings that we left alone.
 - **Large files (over 600 lines):** `client/src/pages/FilesPage.jsx` 941, `server/controllers/documents.controller.js` 926, `server/utils/emergency/service.js` 680, `server/controllers/shares.controller.js` 621, `client/src/pages/SharedDocumentPage.jsx` 620, `client/src/pages/auth/ForgotPasswordPage.jsx` 619 (plus `auth.module.css` 646 and four test files).
 - **Dead code:** `client/src/components/FolderTile.jsx` (+ `.module.css`) and `client/src/utils/documentSort.js` are imported nowhere (crude import scan, confirmed by grep). Scripts under `scripts/` and `server/scripts/` are command-line entry points, not dead. `api/index.js:8-9` still carries a stale "UNVERIFIED ... not exercised against an actual Vercel deployment" comment.
 - **Commit history:** 96 commits over eight weeks, conventional prefixes (`feat:`, `fix:`, `perf:`, `test:`, `docs:`) in recent history; a few early messages are imperative sentences without a prefix and several subjects are very long (one commit bundles a whole security review).
@@ -452,6 +484,8 @@ Tests for these: `server/test/expiry-health.test.js:351,365,405` (health weights
 
 **Email capacity (no change made).** The commonly documented limit for a free Gmail account is about 500 recipients per day (external fact, check before quoting). Every email-sending route is limited per IP and/or per address (table in 3.2), for example `signup/start` 10 per hour per IP and 5 per hour per address, but **there is no global or per-day cap anywhere** (grep of `utils/email.js`, `otpChallenge.js`, `rateLimit.js` for a daily/global limit found none). What an attacker can do: with `SIGNUP_MODE=open`, many addresses or many IPs (an IPv6 /64 counts as one IP) can send sign-up, reset and sharing-code emails until the shared daily cap is used. What happens to real login codes: `sendEmail` returns false when the provider refuses, and the login challenge then fails with an "we couldn't send the code email" error (`utils/otpChallenge.js:134,257`), so real users cannot get a code until the cap resets. Mitigations already present: the default sign-up mode is `invite` (`utils/inviteGate.js:30-32`, invite failures limited 5 per 15 min per IP), so unauthenticated bulk sign-up is closed in the default mode; login codes are only sent after the password is verified, so an attacker cannot make a victim's login mail without the password; per-account code mails are capped at 5 per hour (`otpChallenge.js:40`). Remaining exposure is `SIGNUP_MODE=open`, password-reset start (10 per hour per IP, 5 per hour per address) and the emergency/share code mails. This is the strongest scalability risk in the project.
 
+**Update (17 October): a daily cap now exists.** `server/utils/mailBudget.js` keeps one counter per UTC day in the database. `MAIL_DAILY_CAP` defaults to 300. Bulk mail (sign-up codes, expiry reminders, new-device notices, share codes) stops at `MAIL_BULK_SHARE` of that (0.5, so 150), and login codes, reset codes and security notices may use the rest. At the bulk limit `signup/start` answers 503 "busy" for everyone. This is the fix listed as C4 below. Live sign-up is in open mode (the owner confirmed this on 14 October), so the cap matters. The risk is reduced, not removed: a flood can still use up the bulk share.
+
 **Performance evidence (prompts 31P and 31Q, measured locally on 2,000 seeded documents; real Atlas latency and Vercel cold starts were not measured).**
 - Time to first file row at 4x CPU throttling and Slow 4G: about 6.6 s before, about 3.0 s after (first row), 400 rows by about 4.8 s; skeleton visible at about 1.3 s. Page API calls start at +0 to 35 ms in parallel (previously about +1.46 s, sequential).
 - Full-page reloads on sidebar navigation: 0 (window marker survived 9 navigations); app no longer hidden during navigation (previously 70-347 ms).
@@ -492,19 +526,19 @@ Effort: S = under half a day, M = one to two days, L = more.
 |---|---|---|---|
 | C1 | Write `docs/DESIGN.md`: MERN and NoSQL justification (the six sections listed in 2.1), architecture and data-flow diagrams, alternatives considered | S-M | 2.1, 2.6 |
 | C2 | Put the role and permission matrix (section 3.3) and the rate-limit table (3.2) into the paper/docs | S | 3.3, 3.2 |
-| C3 | Record consent on sign-up (`termsAcceptedAt` and policy version on the user) and add NPC complaint right, named contact, consent withdrawal and portability to the privacy page | S | 3.5 |
-| C4 | Protect login codes from the email cap: add a global/daily send counter that stops bulk sign-up, reset and share-code mail before the provider cap is reached and reserves headroom for login codes; keep `SIGNUP_MODE=invite` for the demo | M | 2.6, 3.2 |
+| C3 | Record consent on sign-up (`termsAcceptedAt` and policy version on the user) and add NPC complaint right, named contact, consent withdrawal and portability to the privacy page | S | 3.5 | **Done (17 October):** consent and policy version stored; NPC complaint right, consent withdrawal and portability added.
+| C4 | Protect login codes from the email cap: add a global/daily send counter that stops bulk sign-up, reset and share-code mail before the provider cap is reached and reserves headroom for login codes; keep `SIGNUP_MODE=invite` for the demo | M | 2.6, 3.2 | **Done (17 October):** `MAIL_DAILY_CAP` and `MAIL_BULK_SHARE` (see the 2.6 update).
 
 **Should fix before Oct 20**
 
 | # | Fix | Effort | Raises |
 |---|---|---|---|
-| S1 | Log lockouts, wrong-code bursts and 429s as scrubbed server-log lines with a hashed key (no addresses) and, for the owner, as account events | S | 3.1, 3.2 |
+| S1 | Log lockouts, wrong-code bursts and 429s as scrubbed server-log lines with a hashed key (no addresses) and, for the owner, as account events | S | 3.1, 3.2 | **Done (17 October):** `server/utils/securityLog.js`.
 | S2 | Add an HTTP-level test that sends operator, array and wrong-type payloads to every owner route (reuse the probe list in section 3.1) and asserts 4xx | S-M | 3.1 |
 | S3 | Add the two named cross-user cases from 3.3 (access token of share A on share B; emergency token on owner-only emergency routes) | S | 3.3 |
 | S4 | Upgrade `react-router-dom` to a version that clears GHSA-wrjc-x8rr-h8h6 (v7 is a breaking change; check routing code) or document why it is not exploitable (all `<Link>` targets are internal constants) | S-M | 3.4 |
 | S5 | Add charts to the Overview: activity per day (from the audit log), storage by file type, and a health-score trend; add one sentence stating the analytics objective on the page and in the docs | M | 2.4, 2.5 |
-| S6 | Add ESLint (with the rules the code already assumes) and fix what it flags; delete `FolderTile.jsx`, `FolderTile.module.css`, `documentSort.js`; remove the stale comment in `api/index.js:8-9` | S-M | 2.3 |
+| S6 | Add ESLint (with the rules the code already assumes) and fix what it flags; delete `FolderTile.jsx`, `FolderTile.module.css`, `documentSort.js`; remove the stale comment in `api/index.js:8-9` | S-M | 2.3 | **Done (17 October):** ESLint added; `FolderTile.jsx` and `documentSort.js` no longer exist.
 | S7 | Paginate `GET /api/documents` (cursor) or at least cap and sort on the server; keep the progressive rendering | M | 2.2, 2.6 |
 | S8 | Add an automated responsive check (Playwright at 360, 768, 1280 on the main pages) and commit the screenshots or results | M | 2.2 |
 | S9 | Commit the evidence folder (`test-results/` is git-ignored): at least the markdown test notes | S | 2.3, 3.x |

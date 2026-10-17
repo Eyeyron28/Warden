@@ -21,10 +21,10 @@ These show how we built the system. They do not show that anyone needs it. Part 
 | # | Item | What it must contain | Status |
 |---|---|---|---|
 | 1 | **Problem statement** | One clear paragraph: who has the problem, what the problem is, and why existing tools do not solve it well enough. | Not written |
-| 2 | **Evidence of the problem** | Real evidence from real people or real sources: survey answers, interviews, reports about lost or leaked documents, local news, school or office cases. Each piece needs a source. | Not collected [to confirm what the team has gathered outside the repo] |
+| 2 | **Evidence of the problem** | Real evidence from real people or real sources: survey answers, interviews, reports about lost or leaked documents, local news, school or office cases. Each piece needs a source. | Not collected in the repo |
 | 3 | **Research questions** | Three to five questions the survey and the system can answer. For example, how do students and staff store private documents now, what makes them stop trusting a tool, and would they use a vault like this. These are only examples to start from, not our questions. | Not written |
 | 4 | **Method** | Quantitative method (survey), sample (who and how many), how respondents were chosen, the questions, the dates, and how we protect respondents' privacy. Say how the survey follows the Data Privacy Act. | Not written |
-| 5 | **Survey instrument** | The exact questionnaire, and the consent text shown to respondents. | [to confirm whether it exists] |
+| 5 | **Survey instrument** | The exact questionnaire, and the consent text shown to respondents. | A Google Form, kept outside the repo. Copy the questions and the consent text into the paper. |
 | 6 | **Survey results and analysis** | Raw counts, percentages, a table or chart for each question, and a short plain reading of each. State the sample size and the limits (a small sample of classmates is not the public). | **No survey has been analyzed yet.** |
 | 7 | **Stakeholders** | Who uses it (owners, emergency contacts, people who receive share links), who runs it (us), who is affected (family members, schools, the National Privacy Commission as regulator). What each group needs from the system. | Not written. The role list in `docs/ROLES-AND-RATE-LIMITS.md` can help as a start. |
 | 8 | **Related systems** | A short comparison with tools people already use (cloud drives, messaging apps, password managers). What they do, what they do not, and where Warden is different or weaker. Be honest about where it is weaker. | Not written |

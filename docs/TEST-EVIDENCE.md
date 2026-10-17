@@ -79,9 +79,8 @@ transfer tray and its states (`transferTray.render.test.js`, `uploadLimits.test.
 - `docs/SCORING-AUDIT.md`: a read-only audit on 15 October 2026 with route tables, the 25 hostile requests, the orphan check after
   account deletion, secret scans of the working tree and all 96 commits, and the performance numbers. Some of its gaps were closed
   later (see the end of `docs/RUBRIC-MAP.md`).
-- An independent review on 10 October with no critical issue, no cross-user access found and 16 findings fixed was reported to us.
-  We could not find a written report of it in the repo [to confirm]. The commit `d7543a6` ("fix: security review findings") is the
-  fix commit we can point to.
+- The 10 October review was a read-only Claude Code review. It found no critical issue and no cross-user access, and 16 findings were
+  fixed. The only written record is the fix commit `d7543a6` ("fix: security review findings"). There is no separate report.
 
 ## What we could not verify on the live site
 
@@ -89,7 +88,7 @@ We did not test any of these against the real deployment, and we did not run the
 
 - Vercel's real routing, headers and the 4.5 MB body limit as Vercel enforces it.
 - HSTS and the `Secure` flag of the cookies on the live site. `vercel.json` does not set HSTS itself. The API sets it with helmet, and a
-  test checks the cookie flag. [to confirm with `curl -I` on the live URL]
+  test checks the cookie flag. [to confirm on the live site]
 - Real cold start time on Vercel.
 - Atlas M0 itself: connection counts, transactions, write speed, and the region.
 - Real Gmail delivery. Codes may land in Spam for new senders (see `DEPLOY.md` 9d).
