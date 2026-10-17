@@ -1002,6 +1002,54 @@ try {
       await context.close();
     }
 
+    // The shared tooltips near each edge of the screen (left, right, bottom): inside the viewport, at most 240 px wide.
+    for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }]) {
+      const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
+      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      const page = await context.newPage();
+      page.setDefaultTimeout(12000);
+      const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
+      try {
+        await page.goto(base + '/files', { waitUntil: 'networkidle' });
+        const found = [];
+        const probe = async (label, locator) => {
+          await page.mouse.move(1, 1);
+          await locator.scrollIntoViewIfNeeded().catch(() => {});
+          await locator.hover();
+          const tip = page.getByTestId('tooltip');
+          const shown = await tip.waitFor({ state: 'visible', timeout: 2500 }).then(() => true, () => false);
+          if (!shown) { found.push(`${label}: no tooltip`); return; }
+          const box = await tip.boundingBox();
+          if (box.x < 7.5 || box.y < 0 || box.x + box.width > size.width - 7.5 || box.y + box.height > size.height + 0.5) found.push(`${label}: the tooltip is outside the screen ${JSON.stringify({ x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) })}`);
+          if (box.width > 240.5) found.push(`${label}: the tooltip is ${Math.round(box.width)}px wide`);
+          if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `tooltip-${label.replace(/[^a-z]+/gi, '-').toLowerCase()}-${process.env.THEME || 'light'}-${size.name}.png`) });
+        };
+        await probe('right edge (Lock vault)', page.getByRole('button', { name: 'Lock vault' }));
+        if (size.width < 768) {
+          await probe('left edge (menu)', page.getByRole('button', { name: 'Open navigation menu' }));
+        } else {
+          await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+          await page.waitForTimeout(300);
+          await probe('left edge (sidebar)', page.getByRole('button', { name: 'Expand sidebar' }));
+          await probe('bottom left (Account)', page.locator('#app-sidebar a[href="/account"]'));
+        }
+        // the tray at the bottom right: a long tooltip from its status icon, and its close button
+        await page.getByRole('button', { name: 'New' }).click();
+        await page.getByRole('menuitem', { name: /Upload file/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Upload file' });
+        await dialog.locator('input[type=file]').setInputFiles({ name: 'edge-tip.txt', mimeType: 'text/plain', buffer: Buffer.from('edge') });
+        await dialog.getByRole('button', { name: /^Encrypt/ }).click();
+        await page.getByTestId('transfer-tray').waitFor();
+        await page.getByText(/Sealed/).first().waitFor({ timeout: 10000 });
+        await probe('bottom right (tray status icon)', page.getByTestId('status-icon').first());
+        await probe('bottom right (tray close)', page.getByRole('button', { name: 'Close the transfers' }));
+        record('Tooltips near the screen edges', found);
+      } catch (error) {
+        record('Tooltips near the screen edges', [`could not be checked: ${String(error.message).replace(/\s+/g, ' ').slice(0, 300)}`]);
+      }
+      await context.close();
+    }
+
     // Finished, and with the update bar: a context that has a service worker controller before the import starts.
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
