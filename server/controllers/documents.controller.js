@@ -8,6 +8,7 @@ const { rearmReminders } = require('../utils/reminderCleanup');
 const { documentScope, pathInScope, toVirtual, toReal } = require('../utils/emergency/scope');
 const Share = require('../models/Share');
 const { getUsage, assertCanStore } = require('../utils/storage');
+const { assertRoomForDocument } = require('../utils/uploadLimits');
 const { cleanStoredName, downloadName, contentDisposition } = require('../utils/fileNames');
 const { encryptFile, decryptFile } = require('../utils/crypto');
 const { encryptThumbnail, decryptThumbnail, hasThumbnail, PREVIEW_FAILURE_REASONS } = require('../utils/thumbnails');
@@ -215,6 +216,7 @@ const createDocument = asyncHandler(async (req, res) => {
   const wantedName = cleanStoredName(originalname);
   const quotaOutcome = assertCanStore(req.userId, buffer.length + (req.files?.thumb?.[0]?.buffer?.length ?? 0)).then(() => null, (error) => error);
   const earlierLookup = uploadKey ? findByUploadKey(req.userId, uploadKey) : null;
+  const roomOutcome = assertRoomForDocument(req.userId).then(() => null, (error) => error); // the document cap (a new version is not a new document)
   const topLevelName = !folder || !splitPath(folder).length ? freeName({ userId: req.userId, folder: toDocumentFolder(''), wanted: wantedName }) : null;
   topLevelName?.catch(() => {}); // awaited below if it is used; this keeps an unused early failure from being reported twice
 
@@ -222,6 +224,8 @@ const createDocument = asyncHandler(async (req, res) => {
   // nothing is stored, so nothing is refused).
   const earlier = await earlierLookup;
   if (earlier) return res.status(200).json(uploadAnswer(earlier, { replayed: true }));
+  const roomError = await roomOutcome;
+  if (roomError) throw roomError;
 
   // SHA-256 of the ORIGINAL plaintext. Distinct from the AES-GCM authTag
   // produced below: the authTag proves the ciphertext wasn't tampered

@@ -24,6 +24,7 @@ const EVENTS = new Set([
   'file_held', // quarantine: an upload was held (bucket = the reason codes, never a name)
   'file_refused', // quarantine: an upload was refused (bucket = the reason codes)
   'file_released', // quarantine: the owner released a held file (bucket = the reason codes)
+  'document_limit', // an upload was refused because the account holds the most files it may (count = the cap)
   'scan_error', // quarantine: the scanner itself failed and the file was saved unchecked (bucket = the error's name)
 ]);
 

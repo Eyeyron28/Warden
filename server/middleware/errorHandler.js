@@ -20,7 +20,9 @@ const PUBLIC_ERROR_CODES = new Set(['FOLDER_EXISTS', 'NAME_EXISTS', 'SESSION_INV
   // the kit and code checks).
   'NOT_YET', 'EXPIRED', 'NO_REQUEST', 'NOT_AVAILABLE', 'EMERGENCY_READ_ONLY',
   // Quarantine: a refused upload, a held file that cannot be opened, a release without the typed word.
-  'FILE_BLOCKED', 'USE_IMPORT', 'VERSION_REFUSED', 'QUARANTINED', 'RELEASE_CONFIRM']);
+  'FILE_BLOCKED', 'USE_IMPORT', 'VERSION_REFUSED', 'QUARANTINED', 'RELEASE_CONFIRM',
+  // Upload limits: too many uploads too fast (429, with Retry-After), or the account's document cap (409).
+  'UPLOAD_RATE_LIMITED', 'DOCUMENT_LIMIT']);
 
 // What a caller is told for any server-side failure. The real error stays in the server log, next to the request id.
 const GENERIC_SERVER_ERROR = 'Something went wrong on our side. Please try again.';
@@ -68,6 +70,7 @@ const errorHandler = (err, req, res, next) => {
   // code) is allowed again, so the client can show a countdown.
   if (Number.isFinite(err.retryAfterSeconds)) {
     errorBody.retryAfterSeconds = err.retryAfterSeconds;
+    if (status === 429) res.set('Retry-After', String(Math.max(1, Math.ceil(err.retryAfterSeconds))));
   }
   // Optional: a stable, machine-readable code for errors the client
   // branches on (e.g. FOLDER_EXISTS from folder create/rename/move).

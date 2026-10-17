@@ -1,6 +1,7 @@
 const Document = require('../models/Document');
 const TrashFolder = require('../models/TrashFolder');
 const DocumentVersion = require('../models/DocumentVersion');
+const { maxDocuments } = require('./uploadLimits');
 
 const MB = 1024 * 1024;
 const DEFAULT_QUOTA_MB = 25;
@@ -72,6 +73,10 @@ async function getUsage(userId) {
     fileBytes: files.bytes,
     fileCount: Math.max(0, files.count - held),
     heldCount: held,
+    // Every document the account holds (live, held and in Trash) against the most it may hold (utils/uploadLimits.js): the Upload dialog
+    // says so before sending when a batch would not fit.
+    documentCount: files.count + trashed.count,
+    documentLimit: maxDocuments(),
     trashBytes: trashed.bytes,
     trashCount: loose + trashedFolders,
     versionBytes: versions.bytes,

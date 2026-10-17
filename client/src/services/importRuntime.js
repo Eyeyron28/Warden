@@ -15,6 +15,12 @@ export const runtime = {
   runImport,
   // The finished import in words (screen readers): the real counts, held files never counted as imported.
   outcomeLine: (state) => outcomeText(outcomeOf(state)),
+  // An upload limit stopped the import: "Stopped: <why>. 5 files were imported, 1 held for review, 2 not saved, 40 not sent."
+  stoppedLine: (state, why) => {
+    const { imported, held, refused, other } = outcomeOf({ skipped: [], ignored: [], ...state });
+    const bits = [`${imported} ${imported === 1 ? 'file was' : 'files were'} imported`, held ? `${held} held for review` : '', refused ? `${refused} not saved` : '', other ? `${other} not imported` : ''].filter(Boolean);
+    return `Stopped: ${why.replace(/[.\s]+$/, '')}. ${bits.join(', ')}.`;
+  },
   loadJSZip: async () => (await import('jszip')).default,
   inspect: inspectZip,
   // The normal upload: the 4 MB cap, the quota, the type sniffing and - for a name already in use - the same-name counter.

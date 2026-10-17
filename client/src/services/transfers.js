@@ -153,6 +153,8 @@ export function createTransfersManager(deps) {
       row.startedAt = now();
       publish({ force: true });
       const runtime = await loadRuntime();
+      // The server already said "too many uploads" (or "too many files") to this batch: the rest are marked the same way, without a request.
+      if (batch?.limited && row.kind === 'upload') throw Object.assign(new Error(), { described: batch.limited });
       const onProgress = (percent) => {
         if (controller.signal.aborted) return;
         row.bytesDone = Math.round((row.size * percent) / 100);
@@ -196,6 +198,7 @@ export function createTransfersManager(deps) {
         finishRow(row, { phase: 'sealed', state: 'done', bytesDone: row.size, error: null, resultId: mine.documentId });
       } else {
         const described = describeTransferError(error);
+        if (described.limit && batch) batch.limited ??= described;
         finishRow(row, { phase: 'failed', state: 'failed', error: described });
       }
     } finally {
@@ -269,6 +272,7 @@ export function createTransfersManager(deps) {
       if (!row || row.phase !== 'failed' || !row.error?.retryable || !internal.get(id)) return;
       Object.assign(row, { phase: 'waiting', state: 'queued', bytesDone: 0, error: null, finishedAt: 0 });
       if (!batch) batch = { announcedStep: 0, total: 0, touched: false };
+      batch.limited = null; // a person pressing Retry asks again
       guardUnload(true);
       publish({ force: true });
       run(row);

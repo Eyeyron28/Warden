@@ -56,9 +56,9 @@ async function startLiveApp(name) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const RateLimit = mongoose.models.RateLimit;
 
-  /** One HTTP request to the app. Rate-limit counters are cleared first, so a long run is never throttled. */
-  async function api(method, path, { token, json, form, query, headers = {} } = {}) {
-    await RateLimit.deleteMany({});
+  /** One HTTP request to the app. Rate-limit counters are cleared first, so a long run is never throttled (`keepLimits` leaves them, for a test of a limit). */
+  async function api(method, path, { token, json, form, query, headers = {}, keepLimits = false } = {}) {
+    if (!keepLimits) await RateLimit.deleteMany({});
     const url = base + path + (query ? `?${new URLSearchParams(query)}` : '');
     const options = { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers } };
     if (json !== undefined) {

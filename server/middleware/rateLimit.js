@@ -110,11 +110,12 @@ async function budgetRetryAfterSeconds({ name, key, max }) {
   return left > 0 ? Math.ceil(left / 1000) : 0;
 }
 
-function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
+function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn, code, message } = {}) {
   if (!name || typeof name !== 'string') {
     throw new Error('createRateLimiter requires a `name`.');
   }
-  if (!Number.isFinite(max) || max <= 0) {
+  // `max` may be a function, read on every request (a limit an env variable can change); the others are checked here.
+  if (typeof max !== 'function' && (!Number.isFinite(max) || max <= 0)) {
     throw new Error('createRateLimiter requires a positive `max`.');
   }
 
@@ -127,9 +128,15 @@ function createRateLimiter({ name, max, windowMs = 60 * 1000, keyFn } = {}) {
 
       const doc = await incrementWindow(name, key, windowMs);
 
-      if (doc.count > max) {
-        const error = new Error('Too many requests. Please try again shortly.');
+      const limit = typeof max === 'function' ? max() : max;
+      if (doc.count > limit) {
+        const error = new Error(message || 'Too many requests. Please try again shortly.');
         error.status = 429;
+        // Optional: a code the client branches on, and when the window frees up (the error handler sends it as Retry-After).
+        if (code) {
+          error.code = code;
+          error.retryAfterSeconds = Math.max(1, Math.ceil((doc.windowExpiresAt.getTime() - Date.now()) / 1000));
+        }
         // For the security log (middleware/errorHandler.js): which limiter, how many, and what it counts by (hashed there).
         error.bucket = name;
         error.count = doc.count;

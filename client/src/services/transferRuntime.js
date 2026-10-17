@@ -3,9 +3,16 @@ import { invalidateThumbnail } from './thumbnailCache.js';
 import { uploadDocument, uploadNewVersion } from './documentsService.js';
 import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { quarantineCount } from './quarantineCount.js';
+import { limitCodeOf, limitedError, retrySeconds } from '../utils/uploadLimits.js';
 
 // Quarantine: a refused upload (nothing saved) is worded for the tray; a held one moves the sidebar badge.
+// An upload limit: "Not saved" with the sentence (utils/uploadLimits.js); the manager marks the rest of the batch the same way.
 const refusal = (error) => {
+  const limit = limitCodeOf(error);
+  if (limit) {
+    error.described = limitedError(limit, retrySeconds(error), error.response.data.error.message);
+    return error;
+  }
   const code = error?.response?.data?.error?.code;
   if (code !== 'FILE_BLOCKED' && code !== 'VERSION_REFUSED' && code !== 'USE_IMPORT') return error; // (USE_IMPORT: a zip by its bytes)
   const reasons = error.response.data.error.reasons;

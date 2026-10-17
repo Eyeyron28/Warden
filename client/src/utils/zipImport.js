@@ -1,6 +1,7 @@
 import { sanitizeDownloadName } from './fileNames.js';
 import { readZipEntries } from './zipNames.js';
 import { uniqueName } from './zipExport.js';
+import { limitCodeOf, limitMessage, retrySeconds } from './uploadLimits.js';
 
 /**
  * "Import .zip": a zip opened in the browser, its files uploaded through the NORMAL upload path
@@ -145,7 +146,10 @@ export function looksLikeZipBomb(bytes, limits = IMPORT_LIMITS) {
  * `onResult({ path, status, reason?, size, savedAs? })` is called once per file as it finishes ('imported' or 'failed'), so a
  * caller can keep a per-file report; `savedAs` is the final name when the server added a counter to it.
  *
- * @returns {Promise<{ uploaded: number, failures: Array<{ path: string, reason: string }>, cancelled: boolean, quotaHit: boolean }>}
+ * An upload limit from the server (too many uploads too fast, or the most documents an account may hold) stops the rest the same way:
+ * what was imported is kept, nothing more is sent, and `limitHit` says why ({ code, message }).
+ *
+ * @returns {Promise<{ uploaded: number, failures: Array<{ path: string, reason: string }>, cancelled: boolean, quotaHit: boolean, limitHit: { code: string, message: string } | null }>}
  */
 export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, signal, onProgress = () => {}, onResult = () => {}, concurrency = IMPORT_CONCURRENCY, limits = IMPORT_LIMITS }) {
   const zip = await JSZip.loadAsync(bytes);
@@ -154,6 +158,7 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
   let held = 0; // saved, but held in Quarantine (not counted as imported)
   let done = 0;
   let quotaHit = false;
+  let limitHit = null;
   const total = plan.files.length;
   const report = (current) => onProgress({ done, total, uploaded, current });
 
@@ -177,7 +182,7 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
   let next = 0;
   report('');
   const worker = async () => {
-    while (next < plan.files.length && !signal?.aborted && !quotaHit) {
+    while (next < plan.files.length && !signal?.aborted && !quotaHit && !limitHit) {
       const item = plan.files[next];
       next += 1;
       const shown = item.dir ? `${item.dir}/${item.name}` : item.name;
@@ -210,6 +215,12 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
           const reason = 'Your storage is full (the rest were not tried)';
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'failed', reason, size: item.size });
+        } else if (limitCodeOf(error)) {
+          const stop = limitCodeOf(error);
+          limitHit ??= { code: stop, message: limitMessage(stop, { seconds: retrySeconds(error), message: error.response.data.error.message }) };
+          const reason = `Not saved: ${limitHit.message}`;
+          failures.push({ path: shown, reason });
+          onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else if (code === 'USE_IMPORT') {
           // A zip that is only a zip by its bytes (renamed): the server refuses it, and the import says why.
           const reason = 'A zip inside a zip is not imported';
@@ -237,5 +248,15 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
       failures.push({ path: item.dir ? `${item.dir}/${item.name}` : item.name, reason: 'Not uploaded: your storage is full' });
     }
   }
-  return { uploaded, held, failures, cancelled: Boolean(signal?.aborted), quotaHit };
+  if (limitHit) {
+    // the files that were never sent: listed, so the report says what is still to do
+    for (let i = next; i < plan.files.length; i += 1) {
+      const item = plan.files[i];
+      const path = item.dir ? `${item.dir}/${item.name}` : item.name;
+      const reason = 'Not sent: the import stopped at the upload limit';
+      failures.push({ path, reason });
+      onResult({ path, status: 'failed', reason, size: item.size });
+    }
+  }
+  return { uploaded, held, failures, cancelled: Boolean(signal?.aborted), quotaHit, limitHit };
 }

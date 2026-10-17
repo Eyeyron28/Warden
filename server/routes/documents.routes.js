@@ -4,6 +4,7 @@ const router = express.Router();
 
 const requireSession = require('../middleware/requireSession');
 const createRateLimiter = require('../middleware/rateLimit');
+const { uploadRateLimit } = require('../utils/uploadLimits');
 const {
   createDocument,
   listDocuments,
@@ -106,7 +107,8 @@ router.get('/:id/versions/:versionId/download', versionDownloadLimit, downloadVe
 
 router.delete('/folders', deleteFolder);
 router.delete('/:id', deleteDocument);
-router.post('/', handleUpload, createDocument);
+// The speed limits run first, before the body is read, scanned or encrypted (a refused upload still counts).
+router.post('/', uploadRateLimit, handleUpload, createDocument);
 router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
 router.get('/folders', listFolders);

@@ -68,11 +68,21 @@ export const submitLabel = (count) => (count > 1 ? `Encrypt & upload ${count} fi
  * What the dialog shows and allows: the valid files, their total, the counter text, and the quota message. The upload button is
  * off with no valid file and while the valid files together do not fit in what is left (no partial batch is ever started).
  */
+/** The most documents an account may hold, when the storage meter has told us both numbers; '' when the batch fits or nothing is known. */
+function documentLimitMessage(usage, adding) {
+  const limit = Number(usage?.documentLimit);
+  const held = Number(usage?.documentCount);
+  if (!Number.isFinite(limit) || !Number.isFinite(held) || held + adding <= limit) return '';
+  const room = Math.max(0, limit - held);
+  const todo = 'Delete some files or empty the Trash.';
+  return room === 0 ? `You have reached the limit of ${limit} files. ${todo}` : `You can add ${room} more ${room === 1 ? 'file' : 'files'} (the limit is ${limit}). ${todo}`;
+}
+
 export function summarize(items, usage = null) {
   const valid = items.filter((row) => !row.error);
   const validBytes = valid.reduce((sum, row) => sum + row.file.size, 0);
   const totalBytes = items.reduce((sum, row) => sum + row.file.size, 0);
-  const quotaMessage = valid.length > 0 ? uploadFitsMessage(usage, validBytes) || '' : '';
+  const quotaMessage = valid.length > 0 ? uploadFitsMessage(usage, validBytes) || documentLimitMessage(usage, valid.length) : '';
   return {
     valid,
     validBytes,

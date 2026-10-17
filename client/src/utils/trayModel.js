@@ -68,6 +68,7 @@ function tipOfTransfer(t) {
       if (t.error?.refused) {
         return `Not saved: ${t.error.version ? 'this new version looks risky, so the current version is kept.' : reasonSentences(t.error.reasons) || 'the file was refused.'}`;
       }
+      if (t.error?.notSaved) return `Not saved: ${t.error.message}`;
       return `Could not finish: ${String(t.error?.message || 'something went wrong').replace(/[.\s]+$/, '')}.${t.error?.retryable ? ' You can try again.' : ''}`;
   }
 }
@@ -108,6 +109,7 @@ function rowOfTransferLine(t) {
         const zip = (t.error.reasons || []).some((r) => codeOf(r) === 'PLAIN_ZIP');
         return { ...common, failed: true, refused: true, refusedCount: 1, line: `Not saved${why ? `: ${why}` : ''}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: zip ? '/export' : null }, ...(zip ? { showLabel: 'Open Export / Import' } : {}) };
       }
+      if (t.error?.notSaved) return { ...common, failed: true, refused: true, refusedCount: 1, line: `Not saved: ${t.error.message}`, ring: RING.REFUSED, percent: 100, actions: { cancel: false, retry: Boolean(t.error.retryable), dismiss: true, show: null } };
       return { ...common, line: t.error?.message || 'Failed', ring: RING.FAILED, percent, failed: true, actions: { cancel: false, retry: Boolean(t.error?.retryable), dismiss: true, show: null } };
   }
 }

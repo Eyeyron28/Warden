@@ -50,7 +50,7 @@ function ImportReport({ job }) {
   ];
   const renamed = imported.filter((item) => item.savedAs);
   const heading =
-    job.status === 'cancelled' ? 'Import cancelled. ' : job.status === 'stopped' ? 'Import stopped. ' : job.status === 'failed' ? 'Import failed. ' : '';
+    job.status === 'cancelled' ? 'Import cancelled. ' : job.status === 'stopped' ? (job.limit ? '' : 'Import stopped. ') : job.status === 'failed' ? 'Import failed. ' : '';
   return (
     <div className={styles.summary} role="status" data-testid="import-report">
       {job.status === 'stopped' || job.status === 'failed' ? (

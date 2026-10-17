@@ -133,6 +133,30 @@ program in disguise or the standard antivirus test string is refused. Limits, st
 - A held file is stored and counts toward the storage quota until its owner deletes it.
 - If the scanner itself fails, the file is saved unchecked (and one security-log line is written): a scanner bug never costs a file.
 
+## Upload limits (count and speed)
+
+Uploads are limited per account in count and speed, in addition to the 4 MB and storage quota limits. Before this, nothing limited how
+many small files one signed-in account could create.
+
+| What | Per | Default | Env variable (optional) |
+|---|---|---|---|
+| Uploads in a minute (burst cap) | account | 120 | `UPLOAD_MINUTE_LIMIT` |
+| Uploads in an hour | account | 600 | `UPLOAD_HOURLY_LIMIT` |
+| Documents an account may hold (live, held and in Trash) | account | 2000 | `MAX_DOCUMENTS_PER_ACCOUNT` |
+
+- The counters live in the database (the same Mongo-backed limiter as the sign-in limits), not in memory, so every serverless instance sees
+  the same count. An env value that is not a positive whole number is ignored.
+- Every upload request counts, including ones the scanner then refuses and a repeated send of the same file (its `uploadKey` is inside the
+  body, which is read only after the check, so the check can run before anything heavy). A repeated send still stores nothing twice.
+- Over the speed limit the answer is 429 `UPLOAD_RATE_LIMITED` with `Retry-After`; the tray shows "Not saved" with "Try again in N minutes"
+  and a Retry button, and does not retry by itself. At the document cap the answer is 409 `DOCUMENT_LIMIT`. A zip import stops at either,
+  keeps what it already imported and reports the counts.
+- A new version of a file is not a new document. The document cap is checked just before encrypting, so two uploads racing at the
+  cap can both pass (it can be passed by the few files that are in flight at once).
+- A 224-file zip leaves room for two imports an hour (448 of 600). A zip may hold up to 1000 entries, so one that large uses most of an hour.
+- One security-log line is written for each limit hit (event, a short keyed hash, no email, address, token or file name), thinned like the
+  other floods.
+
 ## Lint
 
 `npm run lint` exists in `client` and `server` (ESLint, recommended rules only, no style rules). Both exit 0. The remaining

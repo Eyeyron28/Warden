@@ -167,7 +167,7 @@ export function createImportJobManager(deps) {
   async function execute({ plan, token }) {
     const controller = live.controller;
     try {
-      const { runImport: run, loadJSZip, inspect, uploadFile, createFolder: makeFolder, onFinished = () => {}, outcomeLine = () => '' } = await loadRuntime();
+      const { runImport: run, loadJSZip, inspect, uploadFile, createFolder: makeFolder, onFinished = () => {}, outcomeLine = () => '', stoppedLine = () => '' } = await loadRuntime();
       const JSZip = await loadJSZip();
       if (!live || live.controller !== controller) return;
       live.phase = 'validating';
@@ -221,6 +221,13 @@ export function createImportJobManager(deps) {
           announce: 'The import stopped because your session ended.',
         });
         onFinished({ uploaded: count, stopped: true });
+        return;
+      }
+      if (result.limitHit) {
+        // An upload limit: what was imported is kept, nothing more was sent, and the report says what happened to each file.
+        const message = stoppedLine({ results: live.results, uploaded }, result.limitHit.message);
+        finish({ status: 'stopped', uploaded, limit: true, message, announce: message });
+        onFinished({ uploaded, stopped: true, token });
         return;
       }
       const cancelled = result.cancelled;
