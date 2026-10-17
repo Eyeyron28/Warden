@@ -59,7 +59,7 @@ function ReleaseDialog({ item, busy = false, error = '', initialValue = '', onCa
           <button type="button" className={styles.secondary} onClick={onCancel}>
             Cancel
           </button>
-          <button type="submit" className={styles.danger} disabled={!ready} data-action="confirm-release">
+          <button type="submit" className={styles.danger} disabled={busy} aria-disabled={!ready || undefined} data-tip={ready ? 'Move this file out of quarantine' : 'Type RELEASE to enable'} data-action="confirm-release">
             {busy ? 'Releasing…' : 'Release file'}
           </button>
         </div>

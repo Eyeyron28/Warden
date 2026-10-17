@@ -8,6 +8,7 @@ import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import { formatBytes } from '../utils/listing.js';
 import { addFiles, overflowMessage, removeItem, submitLabel, summarize } from '../utils/uploadSelection.js';
 import styles from './UploadForm.module.css';
+import { shortName } from '../utils/ellipsis.js';
 
 /**
  * The Upload dialog's form: choose up to 10 files (the Choose button, or drop them on the dashed zone), see each one with its size
@@ -86,7 +87,15 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
         <X size={16} />
         <span>Cancel</span>
       </button>
-      <button type="submit" form="upload-form" className={styles.submitButton} disabled={!summary.canUpload || locked}>
+      {/* aria-disabled (not disabled) while there is nothing to send, so the reason can show on hover; handleSubmit refuses it too. */}
+      <button
+        type="submit"
+        form="upload-form"
+        className={styles.submitButton}
+        disabled={locked}
+        aria-disabled={!summary.canUpload || undefined}
+        data-tip={summary.canUpload ? 'Encrypt the files and save them to your vault' : 'Choose at least one file'}
+      >
         {locked ? 'Sending to the tray…' : submitLabel(summary.valid.length)}
       </button>
     </>
@@ -183,7 +192,7 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
                     Open Export / Import
                   </button>
                 )}
-                <button type="button" className={styles.remove} data-remove="true" onClick={() => remove(row, index)} disabled={locked} aria-label={`Remove ${row.file.name}`}>
+                <button type="button" className={styles.remove} data-remove="true" onClick={() => remove(row, index)} disabled={locked} aria-label={`Remove ${shortName(row.file.name)}`}>
                   <X size={14} weight="bold" />
                 </button>
               </li>

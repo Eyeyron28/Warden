@@ -7,6 +7,7 @@ import { listFolderChildren, peekFolderChildren } from '../services/documentsSer
 import { dragCarriesDocuments, idsFromDrag, moveDroppedDocuments } from '../utils/dragMove.js';
 import { JUST_ASKED_MS } from '../services/dataCache.js';
 import styles from './Sidebar.module.css';
+import { shortName } from '../utils/ellipsis.js';
 
 const ancestorsOf = (path) => {
   const parts = path.split('/').filter(Boolean);
@@ -128,7 +129,7 @@ function FolderTree({ current, active, version, onNavigate }) {
                     type="button"
                     className={styles.caretButton}
                     onClick={() => toggle(folder.path)}
-                    aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${folder.name}`}
+                    aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${shortName(folder.name)}`}
                   >
                     <CaretRight size={12} weight="bold" className={isOpen ? styles.caretOpen : ''} />
                   </button>

@@ -20,6 +20,7 @@ function SelectionBar({ count, actions, onClear }) {
             onClick={action.onClick}
             disabled={action.disabled}
             title={action.title}
+            data-tip={action.tip}
             aria-label={action.label}
           >
             {action.icon}

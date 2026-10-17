@@ -92,7 +92,7 @@ test('every dialog goes through ONE structure: a fixed header, a body that scrol
 test('the Upload dialog shows the name with a middle ellipsis, the full name as tooltip and accessible name, and no sideways scroll', () => {
   const form = strip(read('components/UploadForm.jsx'));
   assert.match(form, /<FileNameLabel name=\{row\.file\.name\} \/>/);
-  assert.match(form, /aria-label=\{`Remove \$\{row\.file\.name\}`\}/);
+  assert.match(form, /aria-label=\{`Remove \$\{shortName\(row\.file\.name\)\}`\}/);
   const style = css('components/UploadForm.module.css');
   assert.match(/\.fileButton \{([^}]*)\}/.exec(style)[1], /min-width: 0;/);
   assert.match(/\.rowName \{([^}]*)\}/.exec(style)[1], /min-width: 0;/);
@@ -177,7 +177,7 @@ test('pressing "Encrypt & upload" twice in the same moment sends ONE request', a
 test('every submit that creates something is guarded: Upload, Scan, new version, Import, Export / Import, New folder, Rename, Edit, Move, Share', () => {
   const form = strip(read('components/UploadForm.jsx'));
   assert.match(form, /if \(!summary\.canUpload \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
-  assert.match(form, /disabled=\{!summary\.canUpload \|\| locked\}/);
+  assert.match(form, /aria-disabled=\{!summary\.canUpload \|\| undefined\}/);
   // an upload is handed to the transfer tray at once: the dialog has nothing left to submit twice
   assert.match(strip(read('pages/FilesPage.jsx')), /transfers\.enqueue\(accepted\.map\(\(file\) => \(\{ kind: 'upload', file, folder: currentPath, expiryDate \}\)\)\);\s*setUploadOpen\(false\);/);
   assert.match(strip(read('components/scan/ScanDialog.jsx')), /if \(saving\.current\) return;\s*saving\.current = true;/);

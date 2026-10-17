@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import {
   DownloadSimple,
@@ -70,7 +69,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
   const onFiles = location.pathname.startsWith('/files');
   const currentFolder = onFiles ? params.get('path') || '' : '';
   const [treeOpen, setTreeOpen] = useState(true);
-  const [tip, setTip] = useState(null); // { text, top, left }
 
   const rail = collapsed && !drawer;
   const held = useQuarantineCount();
@@ -89,29 +87,14 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
 
   // (The held-files count rides on the top level of the folder tree, which is asked for before the rail can be chosen.)
 
-  // A tooltip left behind by a collapse/expand would point at nothing.
-  useEffect(() => setTip(null), [rail]);
-
   const hidden = drawer && !open;
   // Following a link closes the drawer even when it points at the page you are already on.
   const closeDrawer = () => {
     if (drawer) onClose();
   };
 
-  // Tooltip props for an icon in the rail (nothing when the labels are showing).
-  const tipFor = (text) =>
-    rail
-      ? {
-          onMouseEnter: (event) => showTip(event.currentTarget, text),
-          onFocus: (event) => showTip(event.currentTarget, text),
-          onMouseLeave: () => setTip(null),
-          onBlur: () => setTip(null),
-        }
-      : {};
-  const showTip = (element, text) => {
-    const rect = element.getBoundingClientRect();
-    setTip({ text, top: rect.top + rect.height / 2, left: rect.right + 10 });
-  };
+  // In the icon rail an icon is named (and, on hover or keyboard focus, explained) by the shared tooltips: aria-label and data-tip.
+  const tipFor = (text) => (rail ? { 'aria-label': text, 'data-tip': text } : {});
   const label = (text) => <span className={rail ? styles.srOnly : styles.itemLabel}>{text}</span>;
 
   return (
@@ -132,7 +115,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
             onClick={onToggleCollapsed}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-expanded={!collapsed}
-            {...tipFor(collapsed ? 'Expand sidebar' : 'Collapse sidebar')}
           >
             {collapsed ? <CaretDoubleRight size={20} weight="bold" /> : <CaretDoubleLeft size={20} weight="bold" />}
             {!collapsed && <span className={styles.itemLabel}>Collapse</span>}
@@ -223,13 +205,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           </NavLink>
         </div>
       </nav>
-      {tip &&
-        createPortal(
-          <div className={styles.tip} role="tooltip" style={{ top: tip.top, left: tip.left }}>
-            {tip.text}
-          </div>,
-          document.body
-        )}
     </>
   );
 }

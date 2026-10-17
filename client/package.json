@@ -14,6 +14,7 @@
     "check:transfers": "node scripts/check-transfers.mjs",
     "check:quarantine": "node scripts/check-quarantine.mjs",
     "check:multiupload": "node scripts/check-multiupload.mjs",
+    "check:tooltips": "node scripts/check-tooltips.mjs",
     "check:logout": "node scripts/check-logout.mjs"
   },
   "dependencies": {

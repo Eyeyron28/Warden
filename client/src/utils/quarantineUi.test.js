@@ -125,13 +125,15 @@ test('the release dialog explains the risk and keeps the button off until the wo
   assert.match(closed, /Only release a file you trust\./);
   assert.match(closed, /Type RELEASE to confirm/);
   assert.match(closed, /data-action="confirm-release"[^>]*>/);
-  assert.match(closed, /<button type="submit"[^>]*disabled=""[^>]*>Release file/, 'off while nothing is typed');
-  assert.match(ui.dialog({ item: item(), initialValue: 'release' }), /<button type="submit"[^>]*disabled=""/, 'the word is in capitals');
-  assert.match(ui.dialog({ item: item(), initialValue: 'RELEAS' }), /<button type="submit"[^>]*disabled=""/);
+  assert.match(closed, /<button type="submit"[^>]*aria-disabled="true"[^>]*>Release file/, 'off while nothing is typed');
+  assert.match(ui.dialog({ item: item(), initialValue: 'release' }), /<button type="submit"[^>]*aria-disabled="true"/, 'the word is in capitals');
+  assert.match(ui.dialog({ item: item(), initialValue: 'RELEAS' }), /<button type="submit"[^>]*aria-disabled="true"/);
   const ready = ui.dialog({ item: item(), initialValue: 'RELEASE' });
-  assert.doesNotMatch(ready, /<button type="submit"[^>]*disabled=""/, 'on once the word matches');
-  assert.doesNotMatch(ui.dialog({ item: item(), initialValue: '  RELEASE ' }), /<button type="submit"[^>]*disabled=""/, 'spaces around it do not count');
+  assert.doesNotMatch(ready, /<button type="submit"[^>]*aria-disabled="true"/, 'on once the word matches');
+  assert.doesNotMatch(ui.dialog({ item: item(), initialValue: '  RELEASE ' }), /<button type="submit"[^>]*aria-disabled="true"/, 'spaces around it do not count');
   assert.match(ui.dialog({ item: item(), initialValue: 'RELEASE', busy: true }), /disabled=""[^>]*>Releasing…/);
+  assert.match(closed, /data-tip="Type RELEASE to enable"/, 'the reason shows on hover');
+  assert.match(ready, /data-tip="Move this file out of quarantine"/);
   assert.match(ui.dialog({ item: item(), error: 'Could not release that file.' }), /role="alert"[^>]*>Could not release that file\./);
 });
 

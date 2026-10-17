@@ -149,7 +149,8 @@
   font-size: var(--fs-base);
 }
 
-.primary:disabled {
+.primary:disabled,
+.primary[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
 }

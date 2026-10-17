@@ -272,7 +272,7 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
           </button>
           {!readOnly && (
             <>
-              <button type="button" onClick={() => onShare(doc)} aria-label="Share">
+              <button type="button" onClick={() => onShare(doc)} aria-label="Share" data-tip="Create a share link for this file">
                 <ShareNetwork size={20} />
                 <span>Share</span>
               </button>

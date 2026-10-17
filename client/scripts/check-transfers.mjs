@@ -154,11 +154,11 @@ try {
   const file = (name, size = 4000) => ({ name, mimeType: 'text/plain', buffer: Buffer.from('x'.repeat(size)) });
   const tipOf = async (row) => {
     await row.getByTestId('status-icon').hover();
-    const box = page.getByTestId('status-tip');
+    const box = page.getByTestId('tooltip');
     await box.waitFor({ timeout: 2000 });
     const text = await box.innerText();
     await page.mouse.move(5, 5);
-    await box.waitFor({ state: 'detached', timeout: 2000 });
+    await box.waitFor({ state: 'hidden', timeout: 2000 });
     return text;
   };
   const openUpload = async () => {

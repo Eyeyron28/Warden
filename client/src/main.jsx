@@ -13,6 +13,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 
 import './styles/global.css';
 import App from './App.jsx';
+import './utils/tooltipBootstrap.js'; // tooltips for every icon-only control: loads its real code on the first hover or keyboard focus
 import UpdatePrompt from './components/UpdatePrompt.jsx';
 import TransferHost from './components/TransferHost.jsx';
 import { prefetchFirstScreen } from './services/prefetch.js';

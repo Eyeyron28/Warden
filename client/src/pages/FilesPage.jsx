@@ -762,7 +762,7 @@ function FilesPage() {
       disabled: busy || selectedFiles.length === 0 || selectedFolderPaths.length > 0,
       title: selectedFolderPaths.length > 0 ? 'Folders cannot be downloaded: select only files' : undefined,
     },
-    { key: 'share', label: 'Share', icon: <ShareNetwork size={18} />, onClick: handleBulkShare, disabled: busy },
+    { key: 'share', label: 'Share', tip: 'Create a share link for the selected files', icon: <ShareNetwork size={18} />, onClick: handleBulkShare, disabled: busy },
     {
       key: 'star',
       label: allStarred ? 'Remove star' : 'Star',
@@ -787,7 +787,7 @@ function FilesPage() {
     }));
 
   const backgroundMenuItems = () => [
-    { label: 'New folder', icon: icon(FolderSimplePlus), onSelect: () => setNewFolderOpen(true) },
+    { label: 'New folder', title: 'Create a folder in this location', icon: icon(FolderSimplePlus), onSelect: () => setNewFolderOpen(true) },
     { label: 'Upload file', icon: icon(UploadSimple), onSelect: () => setUploadOpen(true) },
     { label: 'Upload folder', icon: icon(UploadSimple), onSelect: () => folderInputRef.current?.click() },
   ];
@@ -868,7 +868,7 @@ function FilesPage() {
                 <SquaresFour size={16} weight="bold" />
               </button>
             </div>
-            <button type="button" className={styles.scanButton} onClick={() => setScanOpen(true)}>
+            <button type="button" className={styles.scanButton} onClick={() => setScanOpen(true)} data-tip="Scan a paper document with the camera into a PDF">
               <Camera size={16} weight="bold" />
               <span>Scan</span>
             </button>

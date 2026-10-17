@@ -208,15 +208,16 @@
     opacity var(--duration-fast) var(--ease-standard);
 }
 
-.submitButton:hover:not(:disabled) {
+.submitButton:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--color-accent-dim);
 }
 
-.submitButton:active:not(:disabled) {
+.submitButton:active:not(:disabled):not([aria-disabled='true']) {
   transform: scale(0.98);
 }
 
-.submitButton:disabled {
+.submitButton:disabled,
+.submitButton[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
 }

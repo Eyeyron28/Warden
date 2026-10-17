@@ -238,7 +238,7 @@ function ExportPage() {
 
           <div className={styles.cardFoot}>
             {e.phase !== 'running' && (
-              <button type="button" className={styles.primary} onClick={() => guardExport(startExport)}>
+              <button type="button" className={styles.primary} onClick={() => guardExport(startExport)} data-tip="The zip is not encrypted">
                 Download all my files (.zip)
               </button>
             )}
@@ -312,9 +312,16 @@ function ExportPage() {
             </div>
           )}
 
-          {i.phase === 'checked' && !running && (
-            <button type="button" className={`${styles.primary} ${styles.big}`} onClick={startImport} disabled={i.plan.files.length === 0 && i.plan.folders.length === 0}>
-              Import {plural(i.plan.files.length, 'file')}
+          {!running && (
+            // Always there; with no zip chosen it is aria-disabled (not disabled) so its reason can show on hover.
+            <button
+              type="button"
+              className={`${styles.primary} ${styles.big}`}
+              onClick={() => i.phase === 'checked' && startImport()}
+              aria-disabled={i.phase !== 'checked' || (i.plan.files.length === 0 && i.plan.folders.length === 0) || undefined}
+              data-tip={i.phase === 'checked' ? 'Add the files in this zip to your vault' : 'Choose a .zip first'}
+            >
+              {i.phase === 'checked' ? `Import ${plural(i.plan.files.length, 'file')}` : 'Import'}
             </button>
           )}
 

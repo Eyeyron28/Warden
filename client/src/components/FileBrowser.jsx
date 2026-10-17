@@ -12,6 +12,7 @@ import { useProgressiveList } from '../utils/useProgressiveList.js';
 import { idsFromDrag } from '../utils/dragMove.js';
 import { useFolderStyles } from '../services/folderStyles.js';
 import styles from './FileBrowser.module.css';
+import { shortName } from '../utils/ellipsis.js';
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_SLOP_PX = 10;
@@ -64,8 +65,7 @@ export function StarButton({ name, starred, onToggle }) {
         onToggle();
       }}
       aria-pressed={Boolean(starred)}
-      aria-label={`${starred ? 'Remove the star from' : 'Star'} ${name}`}
-      title={starred ? 'Starred' : 'Star'}
+      aria-label={`${starred ? 'Remove star' : 'Star'} ${shortName(name)}`}
     >
       <Star size={18} weight={starred ? 'fill' : 'regular'} />
     </button>
@@ -90,9 +90,8 @@ export function InfoButton({ name, onShow }) {
         event.stopPropagation();
         onShow(event.currentTarget);
       }}
-      aria-label={`Details for ${name}`}
+      aria-label={`Details for ${shortName(name)}`}
       aria-haspopup="dialog"
-      title="Details"
     >
       <Info size={18} />
     </button>
@@ -113,7 +112,7 @@ function ItemMenu({ item, menuItems, placeholder = false }) {
             onClick={toggle}
             aria-haspopup="menu"
             aria-expanded={open}
-            aria-label={`More actions for ${item.name}`}
+            aria-label={`More actions for ${shortName(item.name)}`}
           >
             <DotsThree size={22} weight="bold" />
           </button>
@@ -240,7 +239,7 @@ function FileBrowser({
           event.stopPropagation();
           selection.click(item.key, { shift: event.shiftKey });
         }}
-        aria-label={`Select ${item.name}`}
+        aria-label={`Select ${shortName(item.name)}`}
       />
     </span>
   );

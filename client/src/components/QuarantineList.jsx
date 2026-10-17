@@ -4,6 +4,7 @@ import FileNameLabel from './FileNameLabel.jsx';
 import { formatDate } from '../utils/formatDate.js';
 import { formatBytes } from '../utils/listing.js';
 import styles from './QuarantineList.module.css';
+import { shortName } from '../utils/ellipsis.js';
 
 export const SEVERITY_LABEL = Object.freeze({ low: 'Low', medium: 'Medium', high: 'High' });
 
@@ -66,11 +67,11 @@ export function QuarantineList({ state, items = [], error = '', busyId = null, o
             </ul>
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.release} onClick={() => onRelease?.(item)} disabled={busyId === item.id} aria-label={`Release ${item.name}`} data-action="release">
+            <button type="button" className={styles.release} onClick={() => onRelease?.(item)} disabled={busyId === item.id} aria-label={`Release ${shortName(item.name)}`} data-tip="Move this file out of quarantine" data-action="release">
               <LockKeyOpen size={18} aria-hidden="true" />
               Release
             </button>
-            <button type="button" className={styles.delete} onClick={() => onDelete?.(item)} disabled={busyId === item.id} aria-label={`Delete ${item.name}`} data-action="delete">
+            <button type="button" className={styles.delete} onClick={() => onDelete?.(item)} disabled={busyId === item.id} aria-label={`Delete ${shortName(item.name)}`} data-action="delete">
               <Trash size={18} aria-hidden="true" />
               Delete
             </button>

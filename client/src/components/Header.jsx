@@ -39,7 +39,7 @@ function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChan
 
       <div className={styles.actions}>
         <ThemeToggle />
-        <button type="button" className={styles.lockButton} onClick={onLock}>
+        <button type="button" className={styles.lockButton} onClick={onLock} aria-label="Lock vault" data-tip="Lock now and require your password again">
           <LockKey size={16} weight="bold" />
           <span>Lock vault</span>
         </button>

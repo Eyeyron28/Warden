@@ -155,7 +155,7 @@ test('empty: "Choose files", "or drop them here", the batch expiry label, and th
   assert.match(html, /or drop them here/);
   assert.match(html, /<input[^>]*type="file"[^>]*multiple/);
   assert.match(html, /Expiry date for all files \(optional\)/);
-  assert.match(html, /<button type="submit"[^>]*disabled=""[^>]*>Encrypt &amp; upload</);
+  assert.match(html, /<button type="submit"[^>]*aria-disabled="true"[^>]*>Encrypt &amp; upload</);
   assert.doesNotMatch(html, /upload-rows|upload-counter/);
 });
 
@@ -166,7 +166,7 @@ test('one file: a row with name, size and a Remove button; the button reads "Enc
   assert.match(html, /aria-label="Remove report\.pdf"/);
   assert.match(html, />Choose more</);
   assert.match(html, /<button type="submit"[^>]*>Encrypt &amp; upload<\/button>/);
-  assert.doesNotMatch(html, /<button type="submit"[^>]*disabled/);
+  assert.doesNotMatch(html, /<button type="submit"[^>]*(disabled|aria-disabled)/);
 });
 
 test('10 files: ten rows, "10 of 10", the limit reached, and the button counts them', () => {
@@ -195,7 +195,7 @@ test('error rows: the reason in the error style, the row still there, and not co
 test('quota error: the message with the room left, and the upload button off', () => {
   const html = render({ initialFiles: [f('a', 2 * MB), f('b', 2 * MB)], initialUsage: { availableBytes: 3 * MB } });
   assert.match(html, /data-testid="upload-quota-message"[^>]*>Not enough storage: this needs 4\.0 MB but only 3\.0 MB is free/);
-  assert.match(html, /<button type="submit"[^>]*disabled=""[^>]*>Encrypt &amp; upload 2 files</);
+  assert.match(html, /<button type="submit"[^>]*aria-disabled="true"[^>]*>Encrypt &amp; upload 2 files</);
 });
 
 test('a 255-character name: cut in the middle with the whole name as the tooltip; the rows scroll inside; nothing wider than the dialog', () => {

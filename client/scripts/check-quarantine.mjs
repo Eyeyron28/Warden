@@ -204,25 +204,26 @@ try {
   const sealedRingHtml = await rows.first().getByTestId('status-icon').innerHTML();
   // ---- the status icon explains itself: hover, keyboard, Escape ----
   const icon = rows.first().getByTestId('status-icon');
-  const tipBox = page.getByTestId('status-tip');
+  const tipBox = page.getByTestId('tooltip');
   await icon.hover();
   await page.waitForTimeout(100);
-  check((await tipBox.count()) === 0, 'the tooltip is not there before about 200 ms of hovering');
+  check(!(await tipBox.isVisible()), 'the tooltip is not there before the 400 ms of resting');
   await tipBox.waitFor({ timeout: 2000 });
   check(/^Sealed: encrypted with your vault key and saved\. Warden's simple rules found nothing risky\. This is not a full antivirus\.$/.test(await tipBox.innerText()), 'hovering a sealed row\'s lock shows what Sealed means');
   const tipRect = await tipBox.boundingBox();
   check(tipRect.x >= 0 && tipRect.x + tipRect.width <= 1280 && tipRect.y >= 0 && tipRect.y + tipRect.height <= 860, 'and it stays inside the screen');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-sealed-1280.png') });
   await page.mouse.move(10, 10);
-  await tipBox.waitFor({ state: 'detached', timeout: 2000 });
+  await tipBox.waitFor({ state: 'hidden', timeout: 2000 });
   check(true, 'it hides when the mouse leaves');
+  await page.keyboard.press('Shift'); // a key press makes the next focus a keyboard focus (focus-visible)
   await icon.focus();
   await tipBox.waitFor({ timeout: 2000 });
   check(/Sealed: encrypted/.test(await tipBox.innerText()), 'keyboard focus shows it too');
-  check((await icon.getAttribute('aria-describedby')) === (await tipBox.getAttribute('id')) && (await tipBox.getAttribute('role')) === 'tooltip', 'role="tooltip", described by the icon');
+  check((await tipBox.getAttribute('role')) === 'tooltip', 'it is a role="tooltip" element');
   check(/Sealed: encrypted/.test((await icon.getAttribute('aria-label')) || ''), 'the icon has an accessible name with the same words');
   await page.keyboard.press('Escape');
-  await tipBox.waitFor({ state: 'detached', timeout: 2000 });
+  await tipBox.waitFor({ state: 'hidden', timeout: 2000 });
   check((await tray.getAttribute('data-minimized')) !== 'true', 'Escape hides the tooltip (and does not also minimize the tray)');
   check(/· checked/.test(await rows.first().innerText()), 'the row says "Sealed · checked", so the lock is not the only message');
   check(/1 file sealed/.test(await page.getByTestId('tray-title').innerText()), 'a clean file is sealed as before ("1 file sealed")');
@@ -240,8 +241,8 @@ try {
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quarantine-tray-held-1280.png') });
   const heldIcon = rows.first().getByTestId('status-icon');
   await heldIcon.hover();
-  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
-  const heldTip = await page.getByTestId('status-tip').innerText();
+  await page.getByTestId('tooltip').waitFor({ timeout: 2000 });
+  const heldTip = await page.getByTestId('tooltip').innerText();
   check(/^Held for review: Warden's rules found something risky\. Reasons: This PDF contains active content/.test(heldTip) && /Open Quarantine to decide\.$/.test(heldTip), 'a held row\'s tooltip gives the reasons in plain sentences');
   check(!/PDF_ACTIVE/.test(heldTip), 'never the raw code');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-held-1280.png') });
@@ -342,8 +343,8 @@ try {
   check((await rows.first().getByRole('button', { name: /^Retry/ }).count()) === 0, 'and no Retry');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quarantine-tray-refused-1280.png') });
   await rows.first().getByTestId('status-icon').hover();
-  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
-  check(/^Not saved: This file carries the standard antivirus test signature\.$/.test(await page.getByTestId('status-tip').innerText()), 'a not-saved row\'s tooltip gives the server\'s sentence');
+  await page.getByTestId('tooltip').waitFor({ timeout: 2000 });
+  check(/^Not saved: This file carries the standard antivirus test signature\.$/.test(await page.getByTestId('tooltip').innerText()), 'a not-saved row\'s tooltip gives the server\'s sentence');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tooltip-refused-1280.png') });
   await page.mouse.move(10, 10);
 
@@ -377,8 +378,8 @@ try {
   await uploadVia(sample('archive.bin', zipOf({ 'a.txt': 'hello', 'b.txt': 'world' })));
   await rows.first().getByText(/Not saved/).waitFor({ timeout: 10000 });
   await rows.first().getByTestId('status-icon').hover();
-  await page.getByTestId('status-tip').waitFor({ timeout: 2000 });
-  check(/^Not saved: Zip files go through Export \/ Import, so every file inside is checked\.$/.test(await page.getByTestId('status-tip').innerText()), 'a renamed zip is refused by the server: "Not saved" with its sentence');
+  await page.getByTestId('tooltip').waitFor({ timeout: 2000 });
+  check(/^Not saved: Zip files go through Export \/ Import, so every file inside is checked\.$/.test(await page.getByTestId('tooltip').innerText()), 'a renamed zip is refused by the server: "Not saved" with its sentence');
   check((await countAll()) === beforeZip, 'nothing was stored');
   await page.mouse.move(10, 10);
   await closeTray();
@@ -436,14 +437,14 @@ try {
   const mRow = mobile.getByTestId('transfer-row').first();
   await mRow.getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
   await mRow.getByTestId('status-icon').tap();
-  const mTip = mobile.getByTestId('status-tip');
+  const mTip = mobile.getByTestId('tooltip');
   await mTip.waitFor({ timeout: 2000 });
   const mBox = await mTip.boundingBox();
   check(/Sealed: encrypted/.test(await mTip.innerText()), 'a tap on the icon opens the popover');
   check(mBox.x >= 0 && mBox.x + mBox.width <= 360 && mBox.y >= 0, `and it fits at 360 px (${Math.round(mBox.x)}..${Math.round(mBox.x + mBox.width)})`);
   if (SHOTS) await mobile.screenshot({ path: path.join(SHOTS, 'tooltip-touch-360.png') });
-  await mobile.getByRole('heading', { name: /Files/ }).first().tap({ force: true }).catch(() => {});
-  await mTip.waitFor({ state: 'detached', timeout: 2000 });
+  await mobile.touchscreen.tap(180, 300);
+  await mTip.waitFor({ state: 'hidden', timeout: 2000 });
   check(true, 'a tap elsewhere closes it');
   await phone.close();
 

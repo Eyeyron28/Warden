@@ -7,6 +7,7 @@ import { RING } from '../utils/trayModel.js';
 import { STOP_SEALING_PROMPT } from '../services/transfers.js';
 import { formatBytes } from '../utils/listing.js';
 import styles from './TransferTray.module.css';
+import { shortName } from '../utils/ellipsis.js';
 
 const R = 14;
 const C = 2 * Math.PI * R;
@@ -45,12 +46,12 @@ function Row({ row, onAction }) {
         </span>
         <span className={styles.actions}>
           {row.actions.cancel && (
-            <button type="button" className={styles.action} data-action="cancel" onClick={() => onAction(row, 'cancel')} aria-label={`Cancel ${row.name}`}>
+            <button type="button" className={styles.action} data-action="cancel" onClick={() => onAction(row, 'cancel')} aria-label={`Cancel ${shortName(row.name)}`}>
               Cancel
             </button>
           )}
           {row.actions.retry && (
-            <button type="button" className={styles.action} data-action="retry" onClick={() => onAction(row, 'retry')} aria-label={`Retry ${row.name}`}>
+            <button type="button" className={styles.action} data-action="retry" onClick={() => onAction(row, 'retry')} aria-label={`Retry ${shortName(row.name)}`}>
               Retry
             </button>
           )}
@@ -65,7 +66,7 @@ function Row({ row, onAction }) {
             </button>
           )}
           {row.actions.dismiss && (
-            <button type="button" className={styles.action} data-action="dismiss" onClick={() => onAction(row, 'dismiss')} aria-label={`Dismiss ${row.name}`}>
+            <button type="button" className={styles.action} data-action="dismiss" onClick={() => onAction(row, 'dismiss')} aria-label={`Dismiss ${shortName(row.name)}`}>
               Dismiss
             </button>
           )}

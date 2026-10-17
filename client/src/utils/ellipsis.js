@@ -10,3 +10,15 @@ export function splitForEllipsis(name, keep = 6) {
   const cut = Math.max(0, chars.length - tailLength);
   return { head: chars.slice(0, cut).join(''), tail: chars.slice(cut).join('') };
 }
+
+/**
+ * A file name for an accessible name or a tooltip: at most `max` characters (40), cut in the MIDDLE so the ending stays ("report-final...v3.pdf").
+ * Only used where the full name is already on screen, so nothing is lost.
+ */
+export function shortName(name, max = 40) {
+  const chars = [...String(name ?? '')];
+  if (chars.length <= max) return chars.join('');
+  const tail = Math.min(14, Math.floor((max - 1) / 2));
+  const head = max - 1 - tail;
+  return `${chars.slice(0, head).join('')}…${chars.slice(chars.length - tail).join('')}`;
+}
