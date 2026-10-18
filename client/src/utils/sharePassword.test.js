@@ -94,5 +94,7 @@ test('parseShareLink reads a pasted link and rejects anything else', () => {
 test('passwordProblem asks for a reasonable minimum', () => {
   assert.notEqual(passwordProblem('short'), '');
   assert.notEqual(passwordProblem('aaaaaaaaaa'), '');
+  assert.notEqual(passwordProblem('       a'), '');
+  assert.notEqual(passwordProblem('a-reasonable-passphrase '), '');
   assert.equal(passwordProblem('a-reasonable-passphrase'), '');
 });

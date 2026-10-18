@@ -46,7 +46,7 @@ function ExpiringBanner() {
       <CalendarX size={20} weight="fill" className={expired ? styles.iconBad : styles.iconWarn} aria-hidden="true" />
       <p className={styles.text}>
         <strong>{items.length === 1 ? '1 document needs attention' : `${items.length} documents need attention`}:</strong> {parts.join(', ')}.{' '}
-        <Link to="/overview#expiring" className={styles.link}>
+        <Link to="/files?expiring=1" className={styles.link}>
           Review
         </Link>
       </p>

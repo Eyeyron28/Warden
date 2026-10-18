@@ -118,6 +118,7 @@ export function toBase64Url(bytes) {
 
 /** Rough strength gate for the UI (the server cannot see the password). */
 export function passwordProblem(password) {
+  if (password !== password.trim()) return 'Remove the spaces at the start or end.';
   if (password.length < 8) return 'Use at least 8 characters.';
   if (/^(.)\1+$/.test(password)) return 'Choose something less repetitive.';
   return '';

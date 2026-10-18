@@ -12,6 +12,7 @@ import {
   Info,
   PencilSimple,
   Rows,
+  X,
   ShareNetwork,
   SquaresFour,
   Star,
@@ -199,10 +200,18 @@ function FilesPage() {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const isSearching = normalizedSearch.length > 0;
 
+  const expiringOnly = params.get('expiring') === '1';
+  const clearExpiring = () => {
+    const next = new URLSearchParams(params);
+    next.delete('expiring');
+    setParams(next, { replace: true });
+  };
+
   const visibleDocuments = useMemo(() => {
+    if (expiringOnly) return documents.filter((doc) => doc.expiryStatus === 'expired' || doc.expiryStatus === 'expiring_soon');
     if (isSearching) return documents.filter((doc) => doc.filename.toLowerCase().includes(normalizedSearch));
     return documents.filter((doc) => normalizeFolderPath(doc.folder) === currentPath);
-  }, [documents, currentPath, isSearching, normalizedSearch]);
+  }, [documents, currentPath, isSearching, normalizedSearch, expiringOnly]);
 
   const subfolderNames = useMemo(() => {
     if (isSearching) return [];
@@ -333,8 +342,27 @@ function FilesPage() {
 
   // Files dragged in from the computer: onto a folder tile they go into that folder, anywhere else into the open folder.
   const [dropActive, setDropActive] = useState(false);
-  const carriesComputerFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files') && !dragCarriesDocuments(event);
+  const modalIsOpen = () => Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'));
+  const carriesComputerFiles = (event) =>
+    Array.from(event.dataTransfer?.types || []).includes('Files') && !dragCarriesDocuments(event) && !modalIsOpen();
+
+  // A drag that ends anywhere (dropped elsewhere, cancelled, left the window) clears the highlight.
+  useEffect(() => {
+    if (!dropActive) return undefined;
+    const clear = () => setDropActive(false);
+    window.addEventListener('dragend', clear);
+    window.addEventListener('drop', clear);
+    return () => {
+      window.removeEventListener('dragend', clear);
+      window.removeEventListener('drop', clear);
+    };
+  }, [dropActive]);
   const handleComputerDrop = async (event) => {
+    if (modalIsOpen()) {
+      setDropActive(false);
+      if (Array.from(event.dataTransfer?.types || []).includes('Files')) event.preventDefault();
+      return;
+    }
     if (!carriesComputerFiles(event)) return;
     event.preventDefault();
     setDropActive(false);
@@ -841,6 +869,11 @@ function FilesPage() {
               <h1 className={styles.heading}>Results for “{searchTerm.trim()}”</h1>
             ) : (
               <FolderBreadcrumb path={currentPath} onNavigate={setCurrentPath} />
+            )}
+            {expiringOnly && (
+              <button type="button" className={styles.expiringChip} onClick={clearExpiring} aria-label="Remove the expiring filter">
+                Expired or expiring soon <X size={12} weight="bold" aria-hidden="true" />
+              </button>
             )}
             <span className={styles.count}>
               {loading ? 'Loading…' : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
