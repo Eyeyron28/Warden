@@ -248,4 +248,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseCsv, readUsers, mapRow, parseArgs, DB_NAME };
+module.exports = { parseCsv, readUsers, mapRow, parseArgs, connect, DB_NAME, SEED_SOURCE };
