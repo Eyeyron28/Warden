@@ -15,3 +15,7 @@ Thumbs.db
 *.pem
 # harmless demo files made by scripts/make-demo-samples.mjs
 demo-samples/
+
+# seed script input and output
+server/scripts/data/
+server/scripts/out/
