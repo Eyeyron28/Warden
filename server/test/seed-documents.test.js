@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  planTiers, makeRecords, makeRng, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS,
+  databasesToCount, planTiers, makeRecords, makeRng, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS,
 } = require('../scripts/seed-documents');
 
 test('the same rng seed gives the same plan; another seed gives a different one', () => {
@@ -52,4 +52,9 @@ test('every record has the seed tag, no file bytes, a unique name and an allowed
     assert.ok(!names.has(r.filename));
     names.add(r.filename);
   }
+});
+
+test('system databases are skipped when adding up the cluster size', () => {
+  assert.deepEqual(databasesToCount(['admin', 'local', 'config', 'warden_seed', 'warden']), ['warden_seed', 'warden']);
+  assert.deepEqual(databasesToCount([]), []);
 });

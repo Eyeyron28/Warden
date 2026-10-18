@@ -244,7 +244,15 @@ function printPlan(plan) {
 
 const printable = (doc) => JSON.stringify(doc, (key, value) => (key === 'encryptedBlob' ? '<empty Buffer, 0 bytes>' : value), 2);
 
-// Total dataSize + indexSize over every database in the cluster. Aborts (throws) if the list is not allowed.
+// System databases an Atlas user cannot read (or that are not part of the data).
+const SYSTEM_DATABASES = ['local', 'config', 'admin'];
+
+// Which of the listed database names are counted in the cluster size.
+function databasesToCount(names) {
+  return names.filter((name) => !SYSTEM_DATABASES.includes(name));
+}
+
+// dataSize + indexSize over every non-system database. Aborts (throws) if listing or any dbStats fails.
 async function clusterBytes(mongoose) {
   const client = mongoose.connection.getClient();
   let listed;
@@ -253,12 +261,19 @@ async function clusterBytes(mongoose) {
   } catch (error) {
     throw new Error(`Cannot list databases (${error.message}). The size budget cannot be checked, so the run is aborted.`);
   }
+  const counted = [];
   let total = 0;
-  for (const entry of listed.databases) {
-    const stats = await client.db(entry.name).command({ dbStats: 1 });
+  for (const name of databasesToCount(listed.databases.map((entry) => entry.name))) {
+    let stats;
+    try {
+      stats = await client.db(name).command({ dbStats: 1 });
+    } catch (error) {
+      throw new Error(`Cannot read the size of database "${name}" (${error.message}). The size budget cannot be checked, so the run is aborted.`);
+    }
+    counted.push(name);
     total += (stats.dataSize || 0) + (stats.indexSize || 0);
   }
-  return total;
+  return { total, counted };
 }
 
 async function ensureIndexes(collection) {
@@ -319,8 +334,9 @@ async function run(opts) {
     const owners = shuffled.slice(0, opts.limitUsers ?? shuffled.length).map((id, i) => ({ id, ...plan.accounts[i] }));
 
     await ensureIndexes(documents);
-    const before = await clusterBytes(mongoose);
+    const { total: before, counted } = await clusterBytes(mongoose);
     const limitBytes = opts.maxClusterMb * MB;
+    console.log(`Databases counted: ${counted.join(', ')}`);
     console.log(`Cluster size before: ${mb(before)} (limit ${opts.maxClusterMb} MB)`);
 
     const rng = makeRng(opts.rngSeed + 7);
@@ -345,7 +361,7 @@ async function run(opts) {
       if (batch.length === 0) continue;
       // Documents plus about the same again for the indexes.
       const estimate = batch.reduce((sum, doc) => sum + calculateObjectSize(doc), 0) * 2;
-      const current = await clusterBytes(mongoose);
+      const { total: current } = await clusterBytes(mongoose);
       if (current + estimate > limitBytes) {
         stoppedByBudget = true;
         stopReason = `Cluster at ${mb(current)} plus about ${mb(estimate)} for the next batch is above ${opts.maxClusterMb} MB.`;
@@ -360,7 +376,7 @@ async function run(opts) {
     const seconds = (Date.now() - started) / 1000;
 
     const stats = await db.command({ collStats: COLLECTION }).catch(() => null);
-    const after = await clusterBytes(mongoose);
+    const { total: after } = await clusterBytes(mongoose);
     const timings = withRecords.length ? await timeQueries(documents, withRecords, makeRng(opts.rngSeed + 99)) : null;
 
     report.push(
@@ -371,7 +387,9 @@ async function run(opts) {
       `- Accounts processed: ${position} of ${owners.length}`,
       stats ? `- Average bytes per record: ${(stats.size / Math.max(1, stats.count)).toFixed(0)}` : '- Collection stats not available',
       stats ? `- dataSize: ${stats.size} bytes, indexSize: ${stats.totalIndexSize} bytes` : '',
+      `- Databases counted: ${counted.join(', ')}`,
       `- Cluster total before: ${mb(before)}, after: ${mb(after)}`,
+      'Compare this total with Atlas Logical Size. They should be within about 10 percent.',
       `- Stopped by the size budget: ${stoppedByBudget ? `yes. ${stopReason}` : 'no'}`,
       timings
         ? `- Vault list query over ${timings.count} accounts: median ${timings.median.toFixed(1)} ms, 95th percentile ${timings.p95.toFixed(1)} ms (includes network time from this PC to Atlas)`
@@ -428,4 +446,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { planTiers, makeRecords, makeRng, parseArgs, tierCounts, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS };
+module.exports = { databasesToCount, planTiers, makeRecords, makeRng, parseArgs, tierCounts, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS };
