@@ -34,13 +34,14 @@ const MAX_ACCOUNT_BYTES = 25 * MB;
 const MAX_ACCOUNT_RECORDS = 2000;
 const DAY = 24 * 60 * 60 * 1000;
 
-// Share of accounts and record range per tier. Expected records at 100,000 accounts: about 54,900.
+// Share of accounts and record range per tier. Expected records at 100,000 accounts: about 91,000.
+// "none" takes whatever the other tiers leave (72.18 percent).
 const TIERS = {
-  none: { weight: 0.9486, min: 0, max: 0 },
-  light: { weight: 0.02, min: 1, max: 3 },
-  medium: { weight: 0.025, min: 4, max: 12 },
-  heavy: { weight: 0.006, min: 13, max: 60 },
-  full: { weight: 0.0004, min: 150, max: 300, minBytes: 20 * MB, maxBytes: 25 * MB },
+  none: { weight: 0.7218, min: 0, max: 0 },
+  light: { weight: 0.24, min: 1, max: 3 },
+  medium: { weight: 0.035, min: 4, max: 12 },
+  heavy: { weight: 0.003, min: 13, max: 60 },
+  full: { weight: 0.0002, min: 150, max: 300, minBytes: 20 * MB, maxBytes: 25 * MB },
 };
 const TIER_NAMES = Object.keys(TIERS);
 
@@ -298,21 +299,56 @@ async function timeQueries(collection, owners, rng) {
     if (!chosen.includes(owner)) chosen.push(owner);
   }
   const times = [];
+  const explains = [];
   for (const owner of chosen.slice(0, 200)) {
+    const pipeline = [
+      { $match: { userId: owner.id, deletedAt: null, 'quarantine.state': { $ne: 'held' } } },
+      { $sort: { createdAt: -1 } },
+      { $project: { filename: 1, folder: 1, docExpiresAt: 1, createdAt: 1, mimeType: 1, size: { $binarySize: '$encryptedBlob' } } },
+    ];
     const started = process.hrtime.bigint();
-    await collection
-      .aggregate([
-        { $match: { userId: owner.id, deletedAt: null, 'quarantine.state': { $ne: 'held' } } },
-        { $sort: { createdAt: -1 } },
-        { $project: { filename: 1, folder: 1, docExpiresAt: 1, createdAt: 1, mimeType: 1, size: { $binarySize: '$encryptedBlob' } } },
-      ])
-      .toArray();
+    await collection.aggregate(pipeline).toArray();
     times.push(Number(process.hrtime.bigint() - started) / 1e6);
+    explains.push(summarizeExplain(await collection.aggregate(pipeline).explain('executionStats')));
   }
   times.sort((a, b) => a - b);
   const at = (p) => times[Math.min(times.length - 1, Math.floor(p * times.length))];
-  return { count: times.length, median: at(0.5), p95: at(0.95) };
+  const plans = [...new Set(explains.map((e) => e.plan))];
+  return {
+    count: times.length,
+    median: at(0.5),
+    p95: at(0.95),
+    serverMedianMs: medianOf(explains.map((e) => e.millis)),
+    plans,
+    medianExamined: medianOf(explains.map((e) => e.examined)),
+    medianReturned: medianOf(explains.map((e) => e.returned)),
+  };
 }
+
+// Pulls the plan type and document counts out of an aggregate explain("executionStats") result.
+function summarizeExplain(explain) {
+  const cursor = explain.stages?.[0]?.$cursor;
+  const stats = explain.executionStats ?? cursor?.executionStats ?? {};
+  const planned = explain.queryPlanner ?? cursor?.queryPlanner ?? {};
+  const names = [];
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.stage === 'string') names.push(node.stage);
+    for (const value of Object.values(node)) if (value && typeof value === 'object') walk(value);
+  };
+  walk(planned.winningPlan);
+  return {
+    millis: stats.executionTimeMillis ?? null,
+    plan: names.includes('IXSCAN') ? 'IXSCAN' : names.includes('COLLSCAN') ? 'COLLSCAN' : 'unknown',
+    examined: stats.totalDocsExamined ?? null,
+    returned: stats.nReturned ?? null,
+  };
+}
+
+const medianOf = (values) => {
+  const sorted = values.filter((v) => typeof v === 'number').sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
+};
 
 const mb = (bytes) => `${(bytes / MB).toFixed(1)} MB`;
 
@@ -394,6 +430,9 @@ async function run(opts) {
       timings
         ? `- Vault list query over ${timings.count} accounts: median ${timings.median.toFixed(1)} ms, 95th percentile ${timings.p95.toFixed(1)} ms (includes network time from this PC to Atlas)`
         : '- No timings (no records inserted)',
+      timings ? `- Server executionTimeMillis (explain, median): ${timings.serverMedianMs} ms` : '',
+      timings ? `- Winning plan: ${timings.plans.join(', ')} (IXSCAN is an index scan, COLLSCAN reads the whole collection)` : '',
+      timings ? `- Median totalDocsExamined: ${timings.medianExamined}, median nReturned: ${timings.medianReturned}` : '',
       '',
       'Records hold no file bytes, so the app shows their size as 0. Atlas may take a minute or two to show the new size.',
       ''
@@ -446,4 +485,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { databasesToCount, planTiers, makeRecords, makeRng, parseArgs, tierCounts, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS };
+module.exports = { summarizeExplain, databasesToCount, planTiers, makeRecords, makeRng, parseArgs, tierCounts, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS };

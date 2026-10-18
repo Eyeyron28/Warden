@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  databasesToCount, planTiers, makeRecords, makeRng, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS,
+  summarizeExplain, databasesToCount, planTiers, makeRecords, makeRng, TIERS, EXTENSIONS, MAX_FILE, MAX_ACCOUNT_BYTES, MAX_ACCOUNT_RECORDS,
 } = require('../scripts/seed-documents');
 
 test('the same rng seed gives the same plan; another seed gives a different one', () => {
@@ -20,7 +20,8 @@ test('tier shares are within 1 percentage point of the weights', () => {
   }
   const total = Object.values(plan.accountsPerTier).reduce((a, b) => a + b, 0);
   assert.equal(total, 100000);
-  assert.ok(plan.expectedRecords > 45000 && plan.expectedRecords < 65000, `expected about 55,000, got ${plan.expectedRecords}`);
+  assert.equal(plan.accountsPerTier.full, 20);
+  assert.ok(plan.expectedRecords > 86000 && plan.expectedRecords < 96000, `expected about 91,000, got ${plan.expectedRecords}`);
 });
 
 test('every account stays under 25 MB, 4 MB per file and 2,000 records', () => {
@@ -57,4 +58,12 @@ test('every record has the seed tag, no file bytes, a unique name and an allowed
 test('system databases are skipped when adding up the cluster size', () => {
   assert.deepEqual(databasesToCount(['admin', 'local', 'config', 'warden_seed', 'warden']), ['warden_seed', 'warden']);
   assert.deepEqual(databasesToCount([]), []);
+});
+
+test('an explain result is summarised: plan type and documents examined against returned', () => {
+  const explain = {
+    queryPlanner: { winningPlan: { stage: 'FETCH', inputStage: { stage: 'IXSCAN' } } },
+    executionStats: { executionTimeMillis: 3, totalDocsExamined: 12, nReturned: 12 },
+  };
+  assert.deepEqual(summarizeExplain(explain), { millis: 3, plan: 'IXSCAN', examined: 12, returned: 12 });
 });
