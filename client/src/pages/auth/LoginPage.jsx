@@ -187,6 +187,7 @@ function LoginPage() {
       }
     >
       <form className={forms.form} onSubmit={handleSubmit} noValidate>
+        <p className={forms.hint}>* Required</p>
         {sessionNotice && !location.state?.passwordReset && (
           <div className={forms.notice} role="status">
             <Icon name="lock" />
@@ -236,7 +237,7 @@ function LoginPage() {
         </div>
 
         <div className={forms.field}>
-          <label htmlFor="login-email" className={forms.label}>
+          <label data-required htmlFor="login-email" className={forms.label}>
             Email
           </label>
           <SensitiveInput

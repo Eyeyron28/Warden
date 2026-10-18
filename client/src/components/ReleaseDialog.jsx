@@ -37,7 +37,7 @@ function ReleaseDialog({ item, busy = false, error = '', initialValue = '', onCa
           Warden cannot tell for sure whether this file is harmful. Once released it appears in My files, and can be opened, downloaded and
           shared like any other. <strong>Only release a file you trust.</strong>
         </p>
-        <label className={styles.label} htmlFor="release-word">
+        <label data-required className={styles.label} htmlFor="release-word">
           Type {RELEASE_WORD} to confirm
         </label>
         <input

@@ -135,7 +135,7 @@ function SignupCodeStep({ email, challenge: initial, onSubmitCode, onResend, onB
       )}
 
       <div className={forms.field}>
-        <label htmlFor="signup-code" className={forms.label}>
+        <label data-required htmlFor="signup-code" className={forms.label}>
           Code from your email
         </label>
         <input

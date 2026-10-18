@@ -391,3 +391,32 @@
   outline: 2px dashed var(--color-accent);
   outline-offset: -2px;
 }
+
+/* A laptop with a mouse: items and spacing shrink with the window height so Main to Account fit without scrolling;
+   a tall monitor keeps the full sizes. Touch, phones and the drawer keep the 44 px targets above. */
+@media (min-width: 900px) and (pointer: fine) {
+  .item {
+    min-height: clamp(32px, 5vh, 46px);
+    padding-block: var(--space-1);
+  }
+
+  .treeToggle {
+    height: clamp(32px, 5vh, 46px);
+  }
+
+  .scroll {
+    gap: clamp(var(--space-1), 1.2vh, var(--space-3));
+  }
+
+  .groupLabel {
+    padding-top: clamp(var(--space-1), 0.8vh, var(--space-2));
+  }
+
+  .childItem {
+    min-height: clamp(26px, 3.6vh, 34px);
+  }
+
+  .collapseButton {
+    min-height: clamp(32px, 4.4vh, 40px);
+  }
+}

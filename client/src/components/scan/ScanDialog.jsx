@@ -293,7 +293,7 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
             if (!work.busy) save();
           }}
         >
-          <label className={styles.field}>
+          <label className={styles.field} data-required>
             <span>Name</span>
             <input type="text" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} disabled={work.busy} required />
           </label>

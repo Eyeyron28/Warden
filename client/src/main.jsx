@@ -18,9 +18,11 @@ import UpdatePrompt from './components/UpdatePrompt.jsx';
 import TransferHost from './components/TransferHost.jsx';
 import { prefetchFirstScreen } from './services/prefetch.js';
 import { installSessionReset } from './services/sessionReset.js';
+import { watchRequiredControls } from './utils/requiredMark.js';
 
 // However a session ends (sign-out, Lock vault, expiry, a 401, another account), the previous visit is forgotten (services/sessionReset.js).
 installSessionReset();
+watchRequiredControls();
 
 // A stored session on a signed-in page: the first screen's requests start now, beside the session check.
 prefetchFirstScreen(window.location.pathname);

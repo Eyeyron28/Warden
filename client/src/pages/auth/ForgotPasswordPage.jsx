@@ -451,7 +451,7 @@ function ForgotPasswordPage() {
         <form className={forms.form} onSubmit={handleWipe} noValidate>
           {alert}
           <div className={forms.field}>
-            <label htmlFor="reset-confirm-email" className={forms.label}>
+            <label data-required htmlFor="reset-confirm-email" className={forms.label}>
               Type your account email to confirm
             </label>
             <SensitiveInput
@@ -507,7 +507,7 @@ function ForgotPasswordPage() {
           {alert}
         <div className={forms.row2}>
           <div className={forms.field}>
-            <label htmlFor="keyonly-email" className={forms.label}>
+            <label data-required htmlFor="keyonly-email" className={forms.label}>
               Email
             </label>
             <SensitiveInput
@@ -577,7 +577,7 @@ function ForgotPasswordPage() {
         <form className={forms.form} onSubmit={handleStart} noValidate>
           {alert}
           <div className={forms.field}>
-            <label htmlFor="forgot-email" className={forms.label}>
+            <label data-required htmlFor="forgot-email" className={forms.label}>
               Email
             </label>
             <SensitiveInput

@@ -1,4 +1,4 @@
-import { List, LockKey, MagnifyingGlass } from '@phosphor-icons/react';
+import { List, SignOut, MagnifyingGlass } from '@phosphor-icons/react';
 
 import wardenLogo from '../assets/warden_logo_badge.svg';
 import ThemeToggle from './ThemeToggle.jsx';
@@ -39,9 +39,9 @@ function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChan
 
       <div className={styles.actions}>
         <ThemeToggle />
-        <button type="button" className={styles.lockButton} onClick={onLock} aria-label="Lock vault" data-tip="Lock now and require your password again">
-          <LockKey size={16} weight="bold" />
-          <span>Lock vault</span>
+        <button type="button" className={styles.lockButton} onClick={onLock} aria-label="Log out" data-tip="Sign out on this device">
+          <SignOut size={16} weight="bold" />
+          <span>Log out</span>
         </button>
       </div>
     </header>

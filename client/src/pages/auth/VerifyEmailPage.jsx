@@ -77,7 +77,7 @@ function VerifyEmailPage() {
           </p>
         </div>
         <div className={forms.field}>
-          <label htmlFor="verify-email" className={forms.label}>
+          <label data-required htmlFor="verify-email" className={forms.label}>
             Email
           </label>
           <SensitiveInput

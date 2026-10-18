@@ -99,7 +99,7 @@ function EmergencyWizard({ demoMode, ownEmail, replace = false, onCancel, onCrea
             {errors.label && <p className={styles.error} role="alert">{errors.label}</p>}
           </div>
           <div className={styles.field}>
-            <label htmlFor="ea-email">Their email address</label>
+            <label data-required htmlFor="ea-email">Their email address</label>
             <input id="ea-email" type="email" value={form.email} autoComplete="off" inputMode="email" onChange={(event) => patch({ email: event.target.value })} aria-invalid={Boolean(errors.email)} />
             {errors.email && <p className={styles.error} role="alert">{errors.email}</p>}
           </div>

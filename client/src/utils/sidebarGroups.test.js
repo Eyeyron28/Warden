@@ -101,6 +101,7 @@ test('styles: the middle scrolls, the footer is pinned, small uppercase labels, 
   assert.match(css, /\.groupLabel \{[^}]*text-transform: uppercase;/);
   assert.match(css, /\.rail \.navGroup \+ \.navGroup \{[^}]*border-top: 1px solid var\(--color-border\);/);
   assert.match(css, /\.item \{[^}]*min-height: 46px;/);
+  assert.match(css, /\(pointer: fine\)[\s\S]*\.item \{[^}]*min-height: clamp\(/);
   const added = css.slice(css.indexOf('.scroll {'), css.indexOf('.footer {') + 200);
   assert.doesNotMatch(added, /#[0-9a-fA-F]{3,8}\b|rgba?\(/);
 });

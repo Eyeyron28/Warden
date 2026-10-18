@@ -73,7 +73,7 @@ function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = crea
           run(() => handleSubmit(event));
         }} noValidate>
         <div className={styles.field}>
-          <label htmlFor="new-folder-name" className={styles.label}>
+          <label data-required htmlFor="new-folder-name" className={styles.label}>
             Folder name
           </label>
           <input

@@ -39,7 +39,7 @@ function InviteCodeField({ id = 'signup-invite', value, onChange, onBlur, error,
   return (
     <div className={forms.field}>
       <div className={styles.labelRow}>
-        <label htmlFor={id} className={forms.label}>
+        <label data-required htmlFor={id} className={forms.label}>
           Invite code
         </label>
         <span className={styles.required}>Required</span>

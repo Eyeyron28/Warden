@@ -12,7 +12,28 @@ function TransferHostUi() {
   return (
     <>
       <TransferTray />
-      {t.signOutPrompt && (
+      {t.signOutPrompt?.confirm && (
+        <Modal
+          title="Log out?"
+          onClose={() => transfers.answerSignOut(false)}
+          footer={
+            <>
+              <button type="button" className={styles.dialogPlain} onClick={() => transfers.answerSignOut(false)} autoFocus>
+                Cancel
+              </button>
+              <button type="button" className={styles.dialogDanger} onClick={() => transfers.answerSignOut(true)}>
+                Log out
+              </button>
+            </>
+          }
+        >
+          <p className={styles.dialogText}>You will be signed out on this device. Your files stay in your vault.</p>
+          {t.signOutPrompt.working && (
+            <p className={styles.dialogHint}>Files still being sealed will be stopped. Files already sealed stay in your vault.</p>
+          )}
+        </Modal>
+      )}
+      {t.signOutPrompt && !t.signOutPrompt.confirm && (
         <Modal
           title="Stop and sign out?"
           onClose={() => transfers.answerSignOut(false)}

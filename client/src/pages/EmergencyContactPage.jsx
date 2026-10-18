@@ -135,7 +135,7 @@ function EmergencyContactPage() {
   const codeFields = (onSubmit, label) => (
     <form className={forms.form} onSubmit={onSubmit} noValidate>
       <div className={forms.field}>
-        <label htmlFor="ec-code" className={forms.label}>Code from your email</label>
+        <label data-required htmlFor="ec-code" className={forms.label}>Code from your email</label>
         <input
           id="ec-code"
           className={`${forms.input} ${forms.mono}`}
@@ -148,7 +148,7 @@ function EmergencyContactPage() {
         />
       </div>
       <div className={forms.field}>
-        <label htmlFor="ec-kit" className={forms.label}>Emergency Kit code</label>
+        <label data-required htmlFor="ec-kit" className={forms.label}>Emergency Kit code</label>
         <input
           id="ec-kit"
           className={`${forms.input} ${forms.mono}`}
@@ -173,11 +173,11 @@ function EmergencyContactPage() {
   const detailFields = (
     <>
       <div className={forms.field}>
-        <label htmlFor="ec-owner" className={forms.label}>The owner’s email</label>
+        <label data-required htmlFor="ec-owner" className={forms.label}>The owner’s email</label>
         <input id="ec-owner" type="email" className={forms.input} autoComplete="off" inputMode="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} />
       </div>
       <div className={forms.field}>
-        <label htmlFor="ec-contact" className={forms.label}>Your email</label>
+        <label data-required htmlFor="ec-contact" className={forms.label}>Your email</label>
         <input id="ec-contact" type="email" className={forms.input} autoComplete="off" inputMode="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
       </div>
     </>

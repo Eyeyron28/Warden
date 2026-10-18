@@ -275,6 +275,7 @@ function SignupPage() {
       }
     >
       <form className={forms.form} onSubmit={handleSubmit} noValidate>
+        <p className={forms.hint}>* Required</p>
         <div role="alert" aria-live="assertive">
           {formError && (
             <div className={forms.alert}>
@@ -302,7 +303,7 @@ function SignupPage() {
           )}
 
           <div className={forms.field}>
-            <label htmlFor="signup-email" className={forms.label}>
+            <label data-required htmlFor="signup-email" className={forms.label}>
               Email
             </label>
             <SensitiveInput

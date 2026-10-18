@@ -61,7 +61,7 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
           run(() => handleSubmit(event));
         }} noValidate>
         <div className={styles.field}>
-          <label htmlFor="rename-folder-name" className={styles.label}>
+          <label data-required htmlFor="rename-folder-name" className={styles.label}>
             Folder name
           </label>
           <input

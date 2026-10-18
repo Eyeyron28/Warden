@@ -33,7 +33,7 @@ function PasswordInput({
 
   return (
     <div className={forms.field}>
-      <label htmlFor={id} className={forms.label}>
+      <label data-required htmlFor={id} className={forms.label}>
         {label}
       </label>
       <div className={forms.passwordWrap}>

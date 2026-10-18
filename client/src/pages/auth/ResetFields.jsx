@@ -14,7 +14,7 @@ export function RecoveryKeyField({ id, value, onChange, onBlur, error, touched, 
   const shown = error || problem;
   return (
     <div className={forms.field}>
-      <label htmlFor={id} className={forms.label}>
+      <label data-required htmlFor={id} className={forms.label}>
         {label}
       </label>
       <SensitiveInput

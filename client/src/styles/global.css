@@ -153,3 +153,19 @@ html.update-bar-open.import-card-open body {
     scroll-behavior: auto !important;
   }
 }
+
+/* No visible scrollbars anywhere; wheel, touch and keyboard scrolling still work. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* A required field: a "*" after the label text (the text itself is unchanged). main.jsx also sets aria-required on its control. */
+label[data-required]::after {
+  content: ' *';
+  color: var(--color-danger);
+  font-weight: 600;
+}

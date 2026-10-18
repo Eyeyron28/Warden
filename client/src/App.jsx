@@ -107,7 +107,7 @@ function useSessionCheck() {
 }
 
 function App() {
-  // "Lock vault": with an import running it asks first (An import is running. Stop it and sign out?).
+  // "Log out": always asks first (one dialog, with an extra line when files are being sealed or an import is running).
   const handleLocked = useCallback(
     () =>
       transfers.requestSignOut(async () => {
@@ -120,7 +120,7 @@ function App() {
           forgetPreviousVisit({ reason: 'signout' });
           clearToken();
         }
-      }),
+      }, { confirm: true }),
     []
   );
 

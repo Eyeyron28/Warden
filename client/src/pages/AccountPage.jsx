@@ -243,7 +243,7 @@ function AccountPage() {
                 <span className={styles.emailEcho}>{accountEmail}</span>
               </p>
               <div className={forms.field}>
-                <label htmlFor="delete-email" className={forms.label}>
+                <label data-required htmlFor="delete-email" className={forms.label}>
                   Your email
                 </label>
                 <SensitiveInput

@@ -308,15 +308,16 @@ export function createTransfersManager(deps) {
     },
 
     /** Lock vault / sign out: runs `action` - after asking, when anything is being sealed or imported. Resolves true when it ran. */
-    requestSignOut(action) {
+    requestSignOut(action, { confirm = false } = {}) {
       const importing = importState().status === 'running';
-      if (!rows.some(isWorking) && !importing) return Promise.resolve(action()).then(() => true);
+      const working = importing || rows.some(isWorking);
+      if (!working && !confirm) return Promise.resolve(action()).then(() => true);
       if (pendingSignOut) return Promise.resolve(false);
       return new Promise((resolve) => {
         pendingSignOut = { action, resolve };
         state = {
           ...state,
-          signOutPrompt: { text: importing ? 'An import is running. Stop it and sign out?' : 'Files are still being sealed. Stop sealing and sign out?', importing },
+          signOutPrompt: { confirm, working, text: importing ? 'An import is running. Stop it and sign out?' : 'Files are still being sealed. Stop sealing and sign out?', importing },
         };
         emit();
       });
