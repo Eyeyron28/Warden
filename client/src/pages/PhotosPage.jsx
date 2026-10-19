@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DownloadSimple, Eye, Images, PencilSimple, ShareNetwork, Trash } from '@phosphor-icons/react';
+import { DownloadSimple, Eye, Images, PencilSimple, Rows, ShareNetwork, SquaresFour, Trash } from '@phosphor-icons/react';
 
 import FileBrowser, { SelectAllCheckbox, focusBrowserItem } from '../components/FileBrowser.jsx';
 import FilePreview from '../components/FilePreview.jsx';
@@ -16,6 +16,7 @@ import { formatDate } from '../utils/formatDate.js';
 import { formatBytes, groupByMonth } from '../utils/listing.js';
 import { useSelection } from '../utils/useSelection.js';
 import { getViewPrefs, setViewPref } from '../utils/viewPrefs.js';
+import { readPhotosView, writePhotosView } from '../utils/photosView.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './FilePages.module.css';
 import Banner from '../components/Banner.jsx';
@@ -29,6 +30,12 @@ const isSessionExpired = (err) => err?.response?.status === 401;
  * with a wrong name does. Older files are classified a few at a time, so the
  * page asks again while the server reports some still pending.
  */
+// List view columns (the grid has none): the date and the size, as in My files.
+const PHOTO_COLUMNS = [
+  { id: 'modified', label: 'Modified', width: 'clamp(110px, 14vw, 380px)' },
+  { id: 'size', label: 'Size', width: 'clamp(84px, 9vw, 240px)', align: 'right' },
+];
+
 function PhotosPage() {
   usePageMeta('Photos', 'Your photos.');
   const navigate = useNavigate();
@@ -41,6 +48,12 @@ function PhotosPage() {
   const [busy, setBusy] = useState(false);
   const [order, setOrder] = useState(() => (getViewPrefs().sort === 'oldest' ? 'oldest' : 'newest'));
   const [previewIndex, setPreviewIndex] = useState(null);
+  // List by default; the choice is kept in this browser (utils/photosView.js). The data is the same in both views.
+  const [view, setView] = useState(readPhotosView);
+  const changeView = (next) => {
+    setView(next);
+    writePhotosView(next);
+  };
   const [sharing, setSharing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -86,6 +99,7 @@ function PhotosPage() {
           document: doc,
           thumbDocument: doc,
           subtitle: `${formatDate(doc.createdAt)} · ${formatBytes(doc.size)}`,
+          cells: { modified: formatDate(doc.createdAt), size: formatBytes(doc.size) },
         })),
       })),
     [ordered]
@@ -220,6 +234,14 @@ function PhotosPage() {
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
             </select>
+            <div className={styles.viewToggle} role="group" aria-label="View">
+              <button type="button" className={styles.viewButton} onClick={() => changeView('list')} aria-label="List view" aria-pressed={view === 'list'}>
+                <Rows size={16} weight="bold" />
+              </button>
+              <button type="button" className={styles.viewButton} onClick={() => changeView('grid')} aria-label="Grid view" aria-pressed={view === 'grid'}>
+                <SquaresFour size={16} weight="bold" />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -240,7 +262,7 @@ function PhotosPage() {
       {groups.map((group) => (
         <section key={group.key} aria-label={group.label}>
           <h2 className={styles.monthHeading}>{group.label}</h2>
-          <FileBrowser items={group.items} view="grid" selection={selection} onOpen={openItem} menuFor={menuFor} onItemContextMenu={handleItemContextMenu} label={group.label} />
+          <FileBrowser items={group.items} view={view} columns={view === 'list' ? PHOTO_COLUMNS : undefined} selection={selection} onOpen={openItem} menuFor={menuFor} onItemContextMenu={handleItemContextMenu} label={group.label} />
         </section>
       ))}
 
