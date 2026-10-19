@@ -851,10 +851,8 @@ function FilesPage() {
       onDragLeave={dragHandlers.onDragLeave}
       onDrop={handleComputerDrop}
     >
-      {selection.count > 0 ? (
-        <SelectionBar count={selection.count} actions={selectionActions} onClear={selection.clear} />
-      ) : (
-        <div className={styles.toolbar}>
+      {/* The title stays; only the controls on the right become the selection bar. */}
+      <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             {isSearching ? (
               <h1 className={styles.heading}>Results for “{searchTerm.trim()}”</h1>
@@ -870,6 +868,9 @@ function FilesPage() {
               {loading ? 'Loading…' : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
             </span>
           </div>
+          {selection.count > 0 ? (
+            <SelectionBar count={selection.count} actions={selectionActions} onClear={selection.clear} />
+          ) : (
           <div className={styles.controls}>
             {view === 'grid' && items.length > 0 && (
               <label className={styles.selectAll}>
@@ -902,8 +903,8 @@ function FilesPage() {
               onFolderFilesSelected={handleUploadFolder}
             />
           </div>
+          )}
         </div>
-      )}
 
       {selection.count === 0 && <PreviewsNotice generator={previews} documents={documents} onRetried={refresh} />}
       {!searchTerm && <ExpiringBanner />}

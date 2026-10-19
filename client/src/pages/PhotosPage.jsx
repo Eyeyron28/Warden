@@ -212,10 +212,8 @@ function PhotosPage() {
 
   return (
     <div className={styles.page}>
-      {selection.count > 0 ? (
-        <SelectionBar count={selection.count} actions={actions} onClear={selection.clear} />
-      ) : (
-        <div className={styles.toolbar}>
+      {/* The title stays; only the controls on the right become the selection bar. */}
+      <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             <h1 className={styles.heading}>Photos</h1>
             <span className={styles.count}>
@@ -223,6 +221,9 @@ function PhotosPage() {
               {pending > 0 ? ` · sorting ${pending} more…` : ''}
             </span>
           </div>
+          {selection.count > 0 ? (
+            <SelectionBar count={selection.count} actions={actions} onClear={selection.clear} />
+          ) : (
           <div className={styles.controls}>
             {allItems.length > 0 && (
               <label className={styles.selectAll}>
@@ -243,8 +244,8 @@ function PhotosPage() {
               </button>
             </div>
           </div>
+          )}
         </div>
-      )}
 
       {actionError && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setActionError('')}>{actionError}</Banner>}
       {error && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setError('')}>{error}</Banner>}

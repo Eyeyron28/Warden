@@ -198,14 +198,15 @@ function TrashPage() {
 
   return (
     <div className={styles.page}>
-      {selection.count > 0 ? (
-        <SelectionBar count={selection.count} actions={actions} onClear={selection.clear} />
-      ) : (
-        <div className={styles.toolbar}>
+      {/* The title stays; only the controls on the right become the selection bar. */}
+      <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             <h1 className={styles.heading}>Trash</h1>
             <span className={styles.count}>{loading ? 'Loading…' : `${total} item${total === 1 ? '' : 's'}`}</span>
           </div>
+          {selection.count > 0 ? (
+            <SelectionBar count={selection.count} actions={actions} onClear={selection.clear} />
+          ) : (
           <div className={styles.controls}>
             {view === 'grid' && total > 0 && (
               <label className={styles.selectAll}>
@@ -233,8 +234,8 @@ function TrashPage() {
               Empty trash
             </button>
           </div>
+          )}
         </div>
-      )}
 
       <p className={styles.retention}>
         Deleted items stay here, still encrypted, for {data?.retentionDays ?? 30} days and are then permanently removed.

@@ -1,7 +1,8 @@
 .bar {
-  position: sticky;
-  top: calc(var(--header-height) + var(--space-2));
-  z-index: 5;
+  /* Sits in the page toolbar beside the title and fills the rest of the row; on a phone it wraps to its own row. */
+  flex: 1 1 360px;
+  box-sizing: border-box;
+  min-width: 0;
   box-shadow: var(--shadow-elevated);
   background-color: var(--color-surface);
   background-image: linear-gradient(var(--color-accent-wash), var(--color-accent-wash));
@@ -76,5 +77,12 @@
 
   .action {
     padding: 0 var(--space-2);
+  }
+}
+
+/* Phones and touch screens: 44px targets. */
+@media (max-width: 767px), (pointer: coarse) {
+  .action {
+    min-height: 44px;
   }
 }
