@@ -14,8 +14,8 @@ export const SECTIONS = [
     title: 'What Warden is',
     content: (
       <p>
-        Warden is a student capstone project that lets you store documents in an encrypted vault. It is offered
-        free of charge, for learning and demonstration, and it is not a commercial service.
+        Warden lets you store documents in an encrypted vault. It is offered free of charge and is not a
+        commercial service.
       </p>
     ),
   },
@@ -103,7 +103,7 @@ export const SECTIONS = [
 ];
 
 function TermsPage() {
-  usePageMeta('Terms', 'The terms for using Warden, a student capstone project provided as-is.');
+  usePageMeta('Terms', 'The terms for using Warden, provided as-is.');
   return (
     <LegalPage
       title="Terms of use"

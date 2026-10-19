@@ -118,7 +118,7 @@ export const FAQ_ITEMS = [
     question: 'Is it free?',
     answer: (
       <p>
-        Yes. Warden is a student capstone project with no paid plans. It&apos;s provided as-is, so keep your own
+        Yes. Warden has no paid plans. It&apos;s provided as-is, so keep your own
         copies of anything you can&apos;t afford to lose.
       </p>
     ),

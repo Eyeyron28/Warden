@@ -82,7 +82,6 @@ const LANDING = [
   'pages/public/HomePage.jsx',
   'pages/public/HomeBelow.jsx',
   'pages/public/homeFaq.jsx',
-  'pages/public/AboutSection.jsx',
   'pages/public/ContactSection.jsx',
   'components/site/EncryptionDemo.jsx',
   'components/site/HowItWorks.jsx',
@@ -92,7 +91,6 @@ const LANDING = [
 const LANDING_CSS = [
   'pages/public/HomePage.module.css',
   'pages/public/HomeBelow.module.css',
-  'pages/public/AboutSection.module.css',
   'pages/public/ContactSection.module.css',
   'components/site/EncryptionDemo.module.css',
   'components/site/HowItWorks.module.css',
@@ -110,8 +108,6 @@ test('the landing page loads nothing from outside: no external URL in its code o
     assert.doesNotMatch(text, /@import|url\(\s*['"]?(https?:)?\/\//, `${file}: no remote styles, fonts or images`);
     assert.doesNotMatch(text, /<(script|iframe|object|embed|link|img)\b[^>]*\b(src|href)=["'{]*(https?:)?\/\//, `${file}: no remote resource`);
   }
-  // The only outward link is the repository, and it is a link (not something that loads).
-  assert.match(strip(read('pages/public/AboutSection.jsx')), /href=\{REPO_URL\}[^>]*rel="noopener noreferrer"/);
 });
 
 test('no inline script, inline handler, eval or raw HTML on the landing page (the CSP forbids them)', () => {
@@ -174,7 +170,7 @@ test('the compare switch uses real radio buttons for the three viewpoints, the F
 test('the landing page keeps the identity: Free, student-built, the nav, the theme toggle, the magenta accent', () => {
   assert.match(read('pages/public/HomePage.jsx'), /Free, student-built/);
   const header = read('components/site/SiteHeader.jsx');
-  for (const label of ['About', 'Contact', 'Log in', 'Sign up', 'Switch to']) assert.ok(header.includes(label), label);
+  for (const label of ['Contact', 'Log in', 'Sign up', 'Switch to']) assert.ok(header.includes(label), label);
   assert.match(fs.readFileSync(path.join(src, 'styles', 'tokens.css'), 'utf8'), /--color-accent: #d45ebb;/);
 });
 
@@ -202,7 +198,7 @@ test('there is one navigation bar on the landing page: the header (no second sec
   const css = fs.readFileSync(path.join(src, 'styles', 'global.css'), 'utf8');
   assert.equal((css.match(/scroll-margin-top/g) || []).length, 1);
   assert.doesNotMatch(css, /scroll-padding-top/);
-  for (const file of ['pages/public/HomeBelow.module.css', 'pages/public/AboutSection.module.css', 'pages/public/ContactSection.module.css']) assert.doesNotMatch(read(file), /scroll-margin-top|scroll-padding-top/, file);
+  for (const file of ['pages/public/HomeBelow.module.css', 'pages/public/ContactSection.module.css']) assert.doesNotMatch(read(file), /scroll-margin-top|scroll-padding-top/, file);
 });
 
 test('the header About and Contact links scroll smoothly, also when the address is already theirs, and close the menu', () => {

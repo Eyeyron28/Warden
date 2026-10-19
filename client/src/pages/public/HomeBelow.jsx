@@ -6,7 +6,6 @@ import ProtectionCompare from '../../components/site/ProtectionCompare.jsx';
 import Reveal from '../../components/site/Reveal.jsx';
 import { FAQ_ITEMS } from './homeFaq.jsx';
 import { LIMITS } from './limits.js';
-import AboutSection from './AboutSection.jsx';
 import ContactSection from './ContactSection.jsx';
 import site from '../../components/site/site.module.css';
 import styles from './HomeBelow.module.css';
@@ -47,7 +46,7 @@ function Heading({ id, number, label, title, children }) {
  * Everything on the landing page below the hero. It is loaded as its own chunk (HomePage lazy-loads it after the first
  * paint), which keeps the first screen light. The section ids exist in HomePage already, so links to them work at once.
  */
-function HomeBelow({ cta }) {
+function HomeBelow() {
   return (
     <>
       <section id="how-it-works" {...SECTION_ATTRS} aria-labelledby="how-title">
@@ -160,7 +159,6 @@ function HomeBelow({ cta }) {
         </div>
       </section>
 
-      <AboutSection cta={cta} />
       <ContactSection />
     </>
   );

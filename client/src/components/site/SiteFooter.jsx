@@ -11,8 +11,7 @@ function SiteFooter({ compact = false }) {
         <div className={styles.about}>
           <p className={styles.name}>Warden</p>
           <p className={styles.disclaimer}>
-            A student capstone project ({PROJECT.program} {PROJECT.course}, {PROJECT.group}, {PROJECT.school}),
-            provided as-is. Keep your own copies of anything you can&apos;t afford to lose.
+            Provided as-is. Keep your own copies of anything you can&apos;t afford to lose.
           </p>
         </div>
 
@@ -26,7 +25,6 @@ function SiteFooter({ compact = false }) {
           </div>
           <div className={styles.column}>
             <p className={styles.heading}>Project</p>
-            <Link to="/#about">About</Link>
             <Link to="/#contact">Contact</Link>
           </div>
           <div className={styles.column}>

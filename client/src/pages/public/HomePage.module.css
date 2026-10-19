@@ -4,7 +4,7 @@
   width: 100%;
   max-width: var(--max-content-width);
   margin-inline: auto;
-  padding-inline: clamp(12px, 3vw, 40px);
+  padding-inline: clamp(16px, 4vw, 64px);
 }
 
 /* ---- Hero ---- */
@@ -142,7 +142,19 @@
   }
 }
 
-@media (min-width: 900px) {
+@media (max-width: 639px) {
+  .heroActions {
+    flex-direction: column;
+  }
+
+  .heroActions > * {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Two hero columns only when both fit without squeezing; a tablet stacks them. */
+@media (min-width: 1024px) {
   .heroGrid {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   }

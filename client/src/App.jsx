@@ -129,9 +129,8 @@ function App() {
       <Routes>
         <Route element={<PublicLayout />}>
           <Route index element={<HomePage />} />
-          {/* About and Contact are sections of the one-page landing site now;
-              the old URLs still work and land on the right section. */}
-          <Route path="about" element={<Navigate to="/#about" replace />} />
+          {/* Contact is a section of the one-page landing site; the old /about URL goes to the top of it. */}
+          <Route path="about" element={<Navigate to="/" replace />} />
           <Route path="contact" element={<Navigate to="/#contact" replace />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />

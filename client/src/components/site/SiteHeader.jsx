@@ -10,7 +10,6 @@ import site from './site.module.css';
 import styles from './SiteHeader.module.css';
 
 const NAV_LINKS = [
-  { to: '/#about', label: 'About', hash: '#about' },
   { to: '/#contact', label: 'Contact', hash: '#contact' },
 ];
 

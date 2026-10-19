@@ -25,7 +25,6 @@ const PAGES = [
   ...HOME_FILES,
   'pages/public/PrivacyPage.jsx',
   'components/site/retention.js',
-  'pages/public/AboutSection.jsx',
   'pages/public/TermsPage.jsx',
   'pages/public/limits.js',
   'components/ShareEditModal.jsx',
@@ -71,7 +70,7 @@ test('a share is not described as surviving the deletion of its original', () =>
 });
 
 test('the share key wording says where the key comes from and what the server does with it', () => {
-  for (const file of ['pages/public/HomePage.jsx', 'pages/public/PrivacyPage.jsx', 'pages/public/AboutSection.jsx', 'pages/public/limits.js']) {
+  for (const file of ['pages/public/HomePage.jsx', 'pages/public/PrivacyPage.jsx', 'pages/public/limits.js']) {
     const text = words(file);
     assert.match(text, /generated when you create the link/i, file);
     assert.match(text, /isn't sent to our server when someone opens the link/i, file);

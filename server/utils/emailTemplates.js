@@ -42,7 +42,7 @@ const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helve
 const MONO_STACK = "'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', 'Courier New', monospace";
 
 const FOOTER_AUTOMATED = 'This is an automated message from Warden. Please do not reply.';
-const FOOTER_PROJECT = 'Warden — a capstone project, PHINMA University of Pangasinan';
+const FOOTER_PROJECT = 'Warden';
 
 const NEVER_SHARE = 'Never share this code with anyone — Warden will never ask for it by phone, chat or email.';
 const IGNORE_IF_NOT_YOU =
