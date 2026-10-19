@@ -86,3 +86,13 @@
     height: 3.25rem;
   }
 }
+
+/* Reset password page only: bigger code boxes across the whole form width. */
+[data-reset-page] .group {
+  max-width: none;
+}
+
+[data-reset-page] .box {
+  height: 4rem;
+  font-size: 1.75rem;
+}

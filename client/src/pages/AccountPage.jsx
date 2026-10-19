@@ -137,7 +137,7 @@ function AccountPage() {
       wide
       layout="stacked"
     >
-      <div className={styles.stack}>
+      <div className={styles.appStack}>
         <ReminderSetting />
         <TrustedBrowsers />
 

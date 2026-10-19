@@ -15,12 +15,13 @@ import styles from './auth.module.css';
  * `layout="stacked"` opts out of the two columns (the Account page uses this frame
  * inside the app shell, where a big brand column would be out of place).
  */
-function AuthLayout({ title, subtitle, dial, children, footer, wide = false, layout = 'split' }) {
+function AuthLayout({ title, subtitle, dial, children, footer, wide = false, layout = 'split', resetPage = false }) {
   const split = layout === 'split';
   return (
     <div
       className={split ? `${site.container} ${styles.wrap} ${styles.split}` : styles.appFrame}
       data-auth-shell={split ? '' : undefined}
+      data-reset-page={resetPage ? '' : undefined}
     >
       {split && (
         <aside className={styles.brand} aria-hidden="true">

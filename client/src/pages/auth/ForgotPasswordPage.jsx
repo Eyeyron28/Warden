@@ -286,7 +286,7 @@ function ForgotPasswordPage() {
 
   if (step === 'newKey') {
     return (
-      <AuthLayout
+      <AuthLayout resetPage
         title="Save your new recovery key"
         subtitle="Your password is reset and your vault starts empty. Your old recovery key no longer works; this one replaces it."
         wide
@@ -304,7 +304,7 @@ function ForgotPasswordPage() {
 
   if (step === 'code' && challenge) {
     return (
-      <AuthLayout
+      <AuthLayout resetPage
         title="Enter the code"
         subtitle="If an account exists for this address, we've sent a 6-digit code. It works once."
         footer={loginFooter}
@@ -339,7 +339,7 @@ function ForgotPasswordPage() {
 
   if (step === 'choose') {
     return (
-      <AuthLayout title="How do you want to set your new password?" subtitle="Your code worked. Choose how to continue." footer={loginFooter} wide>
+      <AuthLayout resetPage title="How do you want to set your new password?" subtitle="Your code worked. Choose how to continue." footer={loginFooter} wide>
         <StepProgress current={3} />
         <div className={styles.stack}>
           <div className={styles.optionList} role="group" aria-label="Ways to set a new password">
@@ -362,7 +362,7 @@ function ForgotPasswordPage() {
 
   if (step === 'keep') {
     return (
-      <AuthLayout title="Use your recovery key" subtitle="Enter it, then choose a new password. Nothing is erased." footer={loginFooter} wide>
+      <AuthLayout resetPage title="Use your recovery key" subtitle="Enter it, then choose a new password. Nothing is erased." footer={loginFooter} wide>
         <StepProgress current={3} />
         <form className={forms.form} onSubmit={handleKeep} noValidate>
           {alert}
@@ -404,7 +404,7 @@ function ForgotPasswordPage() {
 
   if (step === 'wipeWarn') {
     return (
-      <AuthLayout title="Without your recovery key, your vault is erased" footer={loginFooter} wide>
+      <AuthLayout resetPage title="Without your recovery key, your vault is erased" footer={loginFooter} wide>
         <StepProgress current={3} />
         <div className={styles.stack}>
           <div className={styles.danger} role="alert">
@@ -446,7 +446,7 @@ function ForgotPasswordPage() {
 
   if (step === 'wipeForm') {
     return (
-      <AuthLayout title="Confirm and choose a new password" subtitle="Your vault will be erased and replaced." footer={loginFooter} wide>
+      <AuthLayout resetPage title="Confirm and choose a new password" subtitle="Your vault will be erased and replaced." footer={loginFooter} wide>
         <StepProgress current={3} />
         <form className={forms.form} onSubmit={handleWipe} noValidate>
           {alert}
@@ -497,7 +497,7 @@ function ForgotPasswordPage() {
 
   if (step === 'keyOnly') {
     return (
-      <AuthLayout
+      <AuthLayout resetPage
         title="Reset with your recovery key"
         subtitle="No email code is needed. Your vault is kept; nothing is erased. Use this only if you can’t get the code."
         footer={loginFooter}
@@ -561,7 +561,7 @@ function ForgotPasswordPage() {
 
   // ---- step 1: email ----
   return (
-    <AuthLayout
+    <AuthLayout resetPage
       title="Reset your password"
       subtitle="Enter your email and we’ll send a 6-digit code."
       footer={loginFooter}

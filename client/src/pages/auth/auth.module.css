@@ -169,6 +169,13 @@
 }
 
 .stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* The Account page's cards (only that page): one column, side by side from 1024px. */
+.appStack {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
@@ -191,13 +198,13 @@
 }
 
 @media (min-width: 1024px) {
-  .stack {
+  .appStack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1600px) {
-  .stack {
+  .appStack {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -671,4 +678,45 @@ button.inlineLink:disabled {
     white-space: nowrap;
     text-align: center;
   }
+}
+
+/* ---- Reset password page only (data-reset-page on the AuthLayout frame): bigger text, wider form ---- */
+[data-reset-page].split {
+  max-width: 1280px;
+}
+
+[data-reset-page] .column,
+[data-reset-page] .columnWide {
+  max-width: clamp(520px, 42vw, 640px);
+}
+
+[data-reset-page] .title {
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
+}
+
+[data-reset-page] .subtitle {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+[data-reset-page] .tryAnother .hint,
+[data-reset-page] .footer {
+  font-size: 0.9375rem;
+}
+
+[data-reset-page] .tryAnotherButton,
+[data-reset-page] .inlineLink {
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+[data-reset-page] .inlineLink {
+  display: inline-flex;
+  align-items: center;
+}
+
+[data-reset-page] .footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }

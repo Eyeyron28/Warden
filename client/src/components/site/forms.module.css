@@ -289,3 +289,30 @@
     display: none;
   }
 }
+
+/* ---- Reset password page only (AuthLayout sets data-reset-page): larger fields and text. ---- */
+[data-reset-page] .label {
+  font-size: 0.9375rem;
+}
+
+[data-reset-page] .input {
+  min-height: 52px;
+  padding: 14px 16px;
+  font-size: 1rem;
+}
+
+[data-reset-page] .passwordWrap .input {
+  padding-right: 60px;
+}
+
+[data-reset-page] .hint,
+[data-reset-page] .error {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+[data-reset-page] .alert,
+[data-reset-page] .notice,
+[data-reset-page] .checkboxRow {
+  font-size: 1rem;
+}

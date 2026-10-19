@@ -86,3 +86,15 @@
     flex: 3 1 0;
   }
 }
+
+/* Reset password page only: larger steps. */
+[data-reset-page] .step {
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+
+[data-reset-page] .marker {
+  width: 28px;
+  height: 28px;
+  font-size: 0.8125rem;
+}
