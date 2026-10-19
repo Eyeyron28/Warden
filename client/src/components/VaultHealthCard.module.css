@@ -1,8 +1,17 @@
+/* Vault health: a big score ring (with a glow and a light that circles it) and the checklist beside or under it.
+   Glow and motion exist on the ring only. */
+
+@property --n {
+  syntax: '<integer>';
+  inherits: false;
+  initial-value: 0;
+}
+
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: var(--space-4);
+  padding: clamp(16px, 2.2vw, 24px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-raised);
@@ -10,26 +19,55 @@
 }
 
 .heading {
-  font-size: var(--fs-lg);
+  font-size: clamp(1.375rem, 1.2rem + 0.6vw, 1.625rem);
 }
 
 .body {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--space-5);
-  align-items: flex-start;
 }
 
 .ringBox {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  align-self: center;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
+/* ---- the ring ---- */
+
+.ringWrap {
+  --ring: clamp(140px, 10vw + 70px, 240px);
+  --tone: var(--color-ok);
+  position: relative;
+  width: var(--ring);
+  height: var(--ring);
+  color: var(--tone);
+  cursor: default;
+  transition: transform 0.3s ease-out;
+}
+
+.ringWrap.ok {
+  --tone: var(--color-ok);
+}
+
+.ringWrap.warn {
+  --tone: var(--color-warn);
+}
+
+.ringWrap.bad {
+  --tone: var(--color-danger);
+}
+
 .ring {
-  width: 132px;
-  height: 132px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
 .track {
@@ -38,48 +76,144 @@
   stroke-width: 10;
 }
 
-.arc {
+.arc,
+.arcGlow {
   fill: none;
-  stroke-width: 10;
+  stroke: var(--tone);
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.4s ease;
 }
 
-.arc.ok,
-.icon.ok {
-  stroke: var(--color-ok);
-  color: var(--color-ok);
+.arc {
+  stroke-width: 10;
 }
 
-.arc.warn,
-.icon.warn {
-  stroke: var(--color-warn);
-  color: var(--color-warn);
+/* A blurred copy of the arc, under it: the glow. */
+.arcGlow {
+  stroke-width: 14;
+  filter: blur(5px);
+  opacity: 0.7;
 }
 
-.arc.bad,
-.icon.bad {
-  stroke: var(--color-danger);
-  color: var(--color-danger);
+/* The light that circles the ring: one small dot, turned around the centre. */
+.orbit {
+  transform-origin: 60px 60px;
+  transform-box: view-box;
 }
 
-/* the icons use `color`, not stroke */
-.icon.ok,
-.icon.warn,
-.icon.bad {
-  stroke: none;
-}
-
-.score {
+.dot {
   fill: var(--color-text);
-  font-size: 34px;
+  filter: drop-shadow(0 0 3px var(--tone)) drop-shadow(0 0 6px var(--tone));
+}
+
+/* The number: the real text is hidden here and read by tests; the visible one counts up with a CSS counter. */
+.num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0;
+  --n: var(--score);
+  counter-reset: n var(--n);
+}
+
+.num::after {
+  content: counter(n);
+  font-size: calc(var(--ring) * 0.4);
   font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
 }
 
 .outOf {
-  font-size: var(--fs-xs);
+  font-size: 0.875rem;
   color: var(--color-text-muted);
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .arc {
+    animation: draw 1.2s ease-out both;
+  }
+
+  .arcGlow {
+    animation: draw 1.2s ease-out both, pulse 3s ease-in-out 1.2s infinite;
+  }
+
+  .num {
+    animation: count 1.2s ease-out both;
+  }
+
+  .orbit {
+    animation: orbit 6s linear infinite;
+  }
+
+  .tapPulse .arcGlow {
+    animation: tap 0.5s ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit {
+    display: none;
+  }
+
+  .arcGlow {
+    opacity: 0.6;
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ringWrap:hover {
+    transform: scale(1.03);
+  }
+
+  .ringWrap:hover .orbit {
+    animation-duration: 2.5s;
+  }
+
+  .ringWrap:hover .arcGlow {
+    opacity: 1;
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 326.73;
+  }
+}
+
+@keyframes count {
+  from {
+    --n: 0;
+  }
+}
+
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes tap {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* ---- the checklist ---- */
 
 .list {
   list-style: none;
@@ -94,52 +228,79 @@
 .row {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding-block: var(--space-2);
+  gap: var(--space-4);
+  padding: 18px var(--space-2);
+  border-radius: var(--radius-md);
 }
 
 .row:not(:last-child) {
   border-bottom: 1px solid var(--color-border);
 }
 
+@media (hover: hover) {
+  .row:hover {
+    background: var(--color-surface-raised);
+  }
+}
+
 .icon {
   flex-shrink: 0;
+  width: clamp(28px, 2vw + 20px, 32px);
+  height: clamp(28px, 2vw + 20px, 32px);
+}
+
+.icon.ok {
+  color: var(--color-ok);
+}
+
+.icon.warn {
+  color: var(--color-warn);
+}
+
+.icon.bad {
+  color: var(--color-danger);
 }
 
 .text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
 
 .label {
   font-weight: 600;
-  font-size: var(--fs-sm);
+  font-size: clamp(1.0625rem, 1rem + 0.25vw, 1.25rem);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .status {
   margin-left: var(--space-2);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: 0.8125rem;
   font-weight: 400;
   color: var(--color-text-muted);
 }
 
 .detail {
-  font-size: var(--fs-xs);
+  font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
   color: var(--color-text-muted);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .fix {
   flex-shrink: 0;
-  padding: var(--space-1) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   color: var(--color-text);
-  font-size: var(--fs-sm);
+  font-size: 1rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -152,7 +313,7 @@
 
 .note {
   margin: 0;
-  font-size: var(--fs-xs);
+  font-size: 0.875rem;
   color: var(--color-text-muted);
   line-height: 1.5;
 }
@@ -160,17 +321,27 @@
 .error {
   margin: 0;
   color: var(--color-danger);
-  font-size: var(--fs-sm);
+  font-size: 1rem;
 }
 
-@media (max-width: 600px) {
+/* Wide: ring on the left, the rows fill the rest. */
+@media (min-width: 900px) {
   .body {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    gap: clamp(24px, 4vw, 64px);
   }
 
   .ringBox {
     align-self: center;
+  }
+}
+
+/* Phones: the status word drops under the title, the fix link goes on its own line. */
+@media (max-width: 599px) {
+  .status {
+    display: block;
+    margin-left: 0;
   }
 
   .row {
@@ -178,6 +349,6 @@
   }
 
   .fix {
-    margin-left: calc(22px + var(--space-3));
+    margin-left: calc(28px + var(--space-4));
   }
 }

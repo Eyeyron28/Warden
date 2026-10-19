@@ -32,6 +32,7 @@ export function ringTone(score) {
 function VaultHealthCard({ reloadKey = 0 }) {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState('');
+  const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,21 +59,43 @@ function VaultHealthCard({ reloadKey = 0 }) {
       {health && (
         <div className={styles.body}>
           <div className={styles.ringBox}>
-            <svg viewBox="0 0 120 120" className={styles.ring} role="img" aria-label={`Vault health score ${health.score} out of 100`}>
-              <circle cx="60" cy="60" r={RADIUS} className={styles.track} />
-              <circle
-                cx="60"
-                cy="60"
-                r={RADIUS}
-                className={`${styles.arc} ${styles[ringTone(health.score)]}`}
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={CIRCUMFERENCE * (1 - health.score / 100)}
-                transform="rotate(-90 60 60)"
-              />
-              <text x="60" y="60" className={styles.score} textAnchor="middle" dominantBaseline="central" data-testid="health-score">
+            {/* Tapping the ring plays one quick glow pulse (touch screens have no hover). */}
+            <div
+              className={`${styles.ringWrap} ${styles[ringTone(health.score)]} ${pulse ? styles.tapPulse : ''}`}
+              style={{ '--score': health.score }}
+              onClick={() => setPulse(true)}
+              onAnimationEnd={(event) => event.animationName.includes('tap') && setPulse(false)}
+            >
+              <svg viewBox="0 0 120 120" className={styles.ring} role="img" aria-label={`Vault health score ${health.score} out of 100`}>
+                <circle cx="60" cy="60" r={RADIUS} className={styles.track} />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={RADIUS}
+                  className={styles.arcGlow}
+                  aria-hidden="true"
+                  strokeDasharray={CIRCUMFERENCE}
+                  strokeDashoffset={CIRCUMFERENCE * (1 - health.score / 100)}
+                  transform="rotate(-90 60 60)"
+                />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={RADIUS}
+                  className={styles.arc}
+                  strokeDasharray={CIRCUMFERENCE}
+                  strokeDashoffset={CIRCUMFERENCE * (1 - health.score / 100)}
+                  transform="rotate(-90 60 60)"
+                />
+                <g className={styles.orbit} aria-hidden="true">
+                  <circle cx="60" cy="8" r="3.4" className={styles.dot} />
+                </g>
+              </svg>
+              {/* The real number is the text; the count-up is drawn by CSS on top (styles.num::after). */}
+              <span className={styles.num} aria-hidden="true" data-testid="health-score">
                 {health.score}
-              </text>
-            </svg>
+              </span>
+            </div>
             <span className={styles.outOf}>out of 100</span>
           </div>
 
@@ -81,7 +104,7 @@ function VaultHealthCard({ reloadKey = 0 }) {
               const Icon = STATUS_ICON[item.status] || CheckCircle;
               return (
                 <li key={item.id} className={styles.row} data-status={item.status} data-testid={`health-${item.id}`}>
-                  <Icon size={22} weight="fill" className={`${styles.icon} ${styles[item.status]}`} aria-hidden="true" />
+                  <Icon size={30} weight="fill" className={`${styles.icon} ${styles[item.status]}`} aria-hidden="true" />
                   <div className={styles.text}>
                     <span className={styles.label}>
                       {item.label} <span className={styles.status}>{STATUS_WORD[item.status]}</span>
