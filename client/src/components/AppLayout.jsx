@@ -9,6 +9,7 @@ import { PageSkeleton } from './Skeletons.jsx';
 import RouteErrorBoundary from './RouteErrorBoundary.jsx';
 import { ShellContext } from './ShellContext.js';
 import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
+import { hasFiles } from '../utils/fileDrag.js';
 import { useMediaQuery } from '../utils/useMediaQuery.js';
 import styles from './AppLayout.module.css';
 
@@ -47,6 +48,18 @@ function AppLayout({ onLocked }) {
 
   const showToast = useCallback((message) => setToast({ id: Date.now(), message }), []);
   const refreshSidebar = useCallback(() => setSidebarVersion((version) => version + 1), []);
+
+  // A file dropped anywhere else must never be opened by the browser: while the app is open, a drag that carries files is
+  // always handled (the drop zones still take their files; everything else just ignores the drop).
+  useEffect(() => {
+    const guard = (event) => hasFiles(event) && event.preventDefault();
+    window.addEventListener('dragover', guard);
+    window.addEventListener('drop', guard);
+    return () => {
+      window.removeEventListener('dragover', guard);
+      window.removeEventListener('drop', guard);
+    };
+  }, []);
 
   // A background import finished (or files moved elsewhere): the folder tree in the sidebar is read again.
   useEffect(() => {

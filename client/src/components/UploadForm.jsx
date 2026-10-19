@@ -6,6 +6,8 @@ import FileNameLabel from './FileNameLabel.jsx';
 import { getStorage } from '../services/documentsService.js';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import { formatBytes } from '../utils/listing.js';
+import { hasFiles } from '../utils/fileDrag.js';
+import { useFileDrag } from '../utils/useFileDrag.js';
 import { addFiles, overflowMessage, removeItem, submitLabel, summarize } from '../utils/uploadSelection.js';
 import styles from './UploadForm.module.css';
 import { shortName } from '../utils/ellipsis.js';
@@ -25,7 +27,7 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
   const [usage, setUsage] = useState(initialUsage);
   const [expiryDate, setExpiryDate] = useState('');
   const [locked, setLocked] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const { active: dragOver, reset: clearDrag, handlers: dragHandlers } = useFileDrag(hasFiles);
   const [announce, setAnnounce] = useState('');
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -101,7 +103,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
     </>
   );
 
-  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
 
   return (
     <form id="upload-form" className={styles.form} onSubmit={handleSubmit} aria-busy={locked}>
@@ -113,7 +114,7 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
           if (!hasFiles(event)) return;
           event.preventDefault();
           event.stopPropagation();
-          setDragOver(true);
+          dragHandlers.onDragEnter(event);
         }}
         onDragOver={(event) => {
           if (!hasFiles(event)) return;
@@ -121,17 +122,15 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
           event.stopPropagation();
           // eslint-disable-next-line no-param-reassign
           event.dataTransfer.dropEffect = 'copy';
-          if (!dragOver) setDragOver(true);
+          dragHandlers.onDragOver(event);
         }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(false);
-        }}
+        onDragLeave={dragHandlers.onDragLeave}
         onDrop={(event) => {
           if (!hasFiles(event)) return;
           event.preventDefault();
           // The Files page behind the dialog also takes dropped files: this drop belongs to the dialog alone (one copy, not two).
           event.stopPropagation();
-          setDragOver(false);
+          clearDrag();
           take(Array.from(event.dataTransfer.files));
         }}
       >

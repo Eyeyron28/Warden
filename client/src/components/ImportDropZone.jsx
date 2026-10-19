@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { FileZip, UploadSimple } from '@phosphor-icons/react';
 
+import { hasFiles } from '../utils/fileDrag.js';
+import { useFileDrag } from '../utils/useFileDrag.js';
 import styles from './ImportDropZone.module.css';
 
 /** Only a .zip is taken (by name, or by type when the system gives one). */
@@ -17,11 +19,10 @@ export const NOT_A_ZIP = (name) => `Only a .zip file can be imported. “${name}
  */
 export function ImportDropZone({ dragOver: forcedOver = false, chosen = null, error = '', disabled = false, onFile, children }) {
   const input = useRef(null);
-  const [over, setOver] = useState(false);
+  const { active: over, reset: clearDrag, handlers: dragHandlers } = useFileDrag(hasFiles);
   const active = (forcedOver || over) && !disabled;
   const state = error ? 'invalid' : chosen ? 'chosen' : active ? 'dragover' : 'idle';
 
-  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
   const take = (file) => {
     if (file) onFile?.(file);
   };
@@ -34,22 +35,20 @@ export function ImportDropZone({ dragOver: forcedOver = false, chosen = null, er
       onDragEnter={(event) => {
         if (disabled || !hasFiles(event)) return;
         event.preventDefault();
-        setOver(true);
+        dragHandlers.onDragEnter(event);
       }}
       onDragOver={(event) => {
         if (disabled || !hasFiles(event)) return;
         event.preventDefault();
         // eslint-disable-next-line no-param-reassign
         event.dataTransfer.dropEffect = 'copy';
-        if (!over) setOver(true);
+        dragHandlers.onDragOver(event);
       }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOver(false);
-      }}
+      onDragLeave={dragHandlers.onDragLeave}
       onDrop={(event) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
-        setOver(false);
+        clearDrag();
         if (disabled) return;
         take(event.dataTransfer.files?.[0]);
       }}

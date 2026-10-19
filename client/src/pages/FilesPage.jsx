@@ -61,6 +61,8 @@ import {
   batchTrashDocuments,
 } from '../services/documentsService.js';
 import { DOCUMENTS_CHANGED, describeMove, dragCarriesDocuments } from '../utils/dragMove.js';
+import { hasFiles } from '../utils/fileDrag.js';
+import { useFileDrag } from '../utils/useFileDrag.js';
 import { validateUpload } from '../utils/transferRules.js';
 import { transfers } from '../services/transfers.js';
 import { ZIP_MESSAGE, ZIP_REFUSAL, isZipName, zipsNotAdded } from '../utils/uploadSelection.js';
@@ -342,31 +344,20 @@ function FilesPage() {
   };
 
   // Files dragged in from the computer: onto a folder tile they go into that folder, anywhere else into the open folder.
-  const [dropActive, setDropActive] = useState(false);
   const modalIsOpen = () => Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'));
-  const carriesComputerFiles = (event) =>
-    Array.from(event.dataTransfer?.types || []).includes('Files') && !dragCarriesDocuments(event) && !modalIsOpen();
+  const carriesComputerFiles = (event) => hasFiles(event) && !dragCarriesDocuments(event) && !modalIsOpen();
+  // The highlight clears on every way a drag can end (utils/useFileDrag.js).
+  const { active: dropActive, reset: clearDrop, handlers: dragHandlers } = useFileDrag(carriesComputerFiles);
 
-  // A drag that ends anywhere (dropped elsewhere, cancelled, left the window) clears the highlight.
-  useEffect(() => {
-    if (!dropActive) return undefined;
-    const clear = () => setDropActive(false);
-    window.addEventListener('dragend', clear);
-    window.addEventListener('drop', clear);
-    return () => {
-      window.removeEventListener('dragend', clear);
-      window.removeEventListener('drop', clear);
-    };
-  }, [dropActive]);
   const handleComputerDrop = async (event) => {
     if (modalIsOpen()) {
-      setDropActive(false);
+      clearDrop();
       if (Array.from(event.dataTransfer?.types || []).includes('Files')) event.preventDefault();
       return;
     }
     if (!carriesComputerFiles(event)) return;
     event.preventDefault();
-    setDropActive(false);
+    clearDrop();
     const tile = event.target.closest?.('[data-file-key^="folder:"]');
     const target = tile ? tile.dataset.fileKey.slice('folder:'.length) : currentPath;
     const entries = Array.from(event.dataTransfer.items || []);
@@ -850,15 +841,14 @@ function FilesPage() {
     <div
       className={`${styles.page} ${dropActive ? styles.dropActive : ''}`}
       onContextMenu={handleAreaContextMenu}
+      onDragEnter={dragHandlers.onDragEnter}
       onDragOver={(event) => {
         if (!carriesComputerFiles(event)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
-        if (!dropActive) setDropActive(true);
+        dragHandlers.onDragOver(event);
       }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setDropActive(false);
-      }}
+      onDragLeave={dragHandlers.onDragLeave}
       onDrop={handleComputerDrop}
     >
       {selection.count > 0 ? (

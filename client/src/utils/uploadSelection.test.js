@@ -218,7 +218,7 @@ test('the dialog hands the valid files over once, keeps the lock, announces poli
   assert.match(form, /role="status" aria-live="polite"/);
   assert.match(form, /event\.key === 'Delete' \|\| event\.key === 'Backspace'/);
   assert.doesNotMatch(form, /autoFocus|\.focus\(\)/, 'no focus is moved except to keep the place after a removal');
-  assert.match(form, /onDrop=\{[\s\S]*?event\.stopPropagation\(\);\s*setDragOver\(false\);/, 'a drop on the zone does not also reach the Files page behind the dialog');
+  assert.match(form, /onDrop=\{[\s\S]*?event\.stopPropagation\(\);\s*clearDrag\(\);/, 'a drop on the zone does not also reach the Files page behind the dialog');
   assert.match(form, /type="file"\s+multiple/);
   const page = strip(read('pages/FilesPage.jsx'));
   assert.match(page, /transfers\.enqueue\(accepted\.map\(\(file\) => \(\{ kind: 'upload', file, folder: currentPath, expiryDate \}\)\)\)/);
