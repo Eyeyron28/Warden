@@ -13,8 +13,13 @@
   max-width: 520px;
 }
 
+/* Stacked layout: the small dial is centred over the form column (the wrapper is full width, the dial itself is not)
+   and sized from the screen: about 120px at 360px wide, 180px at most. The two-column layout hides this one. */
 .dial {
-  margin-bottom: var(--space-5);
+  --dial-override: clamp(120px, 12vw + 77px, 180px);
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
 }
 
 /* The wrapper around title, helper text and form: one block, so the desktop layout can centre it. */
