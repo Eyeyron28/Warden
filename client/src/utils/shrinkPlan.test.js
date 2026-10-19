@@ -9,7 +9,8 @@ const photo = (name, size, type = 'image/jpeg') => ({ name, size, type, lastModi
 
 test('the steps go quality first, then smaller pictures, and the target is 90 percent of the limit', () => {
   assert.deepEqual(SHRINK_STEPS.slice(0, 4).map((s) => s.quality), [0.85, 0.75, 0.65, 0.55]);
-  assert.ok(SHRINK_STEPS.slice(0, 4).every((s) => s.maxSide === null));
+  assert.ok(SHRINK_STEPS.slice(0, 4).every((s) => s.maxSide === 4096), 'no step draws wider than a phone canvas allows');
+  assert.ok(SHRINK_STEPS.every((s) => s.maxSide <= 4096));
   assert.deepEqual(SHRINK_STEPS.slice(4).map((s) => s.maxSide), [4000, 3000, 2400, 1800]);
   assert.ok(SHRINK_STEPS.slice(4).every((s) => s.quality === 0.75));
   assert.equal(shrinkTarget(4 * 1024 * 1024), Math.floor(4 * 1024 * 1024 * 0.9));
@@ -20,6 +21,7 @@ test('a step never enlarges a picture and keeps its proportions', () => {
   assert.deepEqual(stepSize(1200, 800, 4000), { width: 1200, height: 800 });
   assert.deepEqual(stepSize(6000, 4000, 3000), { width: 3000, height: 2000 });
   assert.deepEqual(stepSize(4000, 6000, 1800), { width: 1200, height: 1800 });
+  assert.deepEqual(stepSize(8000, 6000, 4096), { width: 4096, height: 3072 });
 });
 
 test('the new name is the base name with .jpg and never reads as a double extension', () => {
@@ -39,6 +41,8 @@ test('only a JPEG, PNG or WebP over the limit, and not absurdly large, can be ma
   assert.equal(canShrink(photo('a.webp', limit + 1, 'image/webp'), limit), true);
   assert.equal(canShrink(photo('a.jpg', limit), limit), false, 'already within the limit');
   assert.equal(canShrink(photo('a.jpg', MAX_INPUT_BYTES + 1), limit), false, 'over 60 MB');
+  assert.equal(canShrink(photo('IMG_1.HEIC', limit + 1, 'image/heic'), limit), true, 'a phone HEIC photo');
+  assert.equal(canShrink(photo('IMG_2.heic', limit + 1, ''), limit), true, 'HEIC with no type: the extension decides');
   assert.equal(canShrink(photo('a.gif', limit + 1, 'image/gif'), limit), false);
   assert.equal(canShrink(photo('a.pdf', limit + 1, 'application/pdf'), limit), false);
   assert.equal(canShrink(photo('a.zip', limit + 1, 'application/zip'), limit), false);

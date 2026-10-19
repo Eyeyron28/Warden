@@ -4,12 +4,15 @@ export const MAX_INPUT_BYTES = 60 * 1024 * 1024;
 export const MAX_PIXELS = 100 * 1000 * 1000;
 export const TARGET_SHARE = 0.9;
 
-// Quality first, then a smaller picture. Each step starts again from the original, and the first result that fits wins.
+// Phones refuse canvases of more than about 16.7 million pixels (and then draw nothing), so no step draws larger than 4096 px
+// on its long side. Quality first, then a smaller picture; each step starts again from the original and the first result that
+// fits wins.
+export const MAX_DRAW_SIDE = 4096;
 export const SHRINK_STEPS = [
-  { quality: 0.85, maxSide: null },
-  { quality: 0.75, maxSide: null },
-  { quality: 0.65, maxSide: null },
-  { quality: 0.55, maxSide: null },
+  { quality: 0.85, maxSide: MAX_DRAW_SIDE },
+  { quality: 0.75, maxSide: MAX_DRAW_SIDE },
+  { quality: 0.65, maxSide: MAX_DRAW_SIDE },
+  { quality: 0.55, maxSide: MAX_DRAW_SIDE },
   { quality: 0.75, maxSide: 4000 },
   { quality: 0.75, maxSide: 3000 },
   { quality: 0.75, maxSide: 2400 },
@@ -19,10 +22,10 @@ export const SHRINK_STEPS = [
 /** The size the result has to be at or under: 90 percent of the limit. */
 export const shrinkTarget = (limitBytes) => Math.floor(limitBytes * TARGET_SHARE);
 
-const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const PHOTO_EXTENSION = /\.(jpe?g|png|webp)$/i;
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const PHOTO_EXTENSION = /\.(jpe?g|png|webp|heic|heif)$/i;
 
-/** A JPEG, PNG or WebP photo (by type, or by extension when the browser gives no type). */
+/** A JPEG, PNG, WebP or HEIC photo (by type, or by extension when the browser gives no type). */
 export const isShrinkablePhoto = (file) => PHOTO_TYPES.has(String(file?.type || '').toLowerCase()) || (!file?.type && PHOTO_EXTENSION.test(String(file?.name || '')));
 
 /** Offered only for a supported photo that is over the limit and not absurdly large. */
