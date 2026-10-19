@@ -45,7 +45,7 @@
   --tone: var(--color-ok);
   position: relative;
   width: var(--ring);
-  height: var(--ring);
+  aspect-ratio: 1 / 1;
   color: var(--tone);
   cursor: default;
   transition: transform 0.3s ease-out;
@@ -105,27 +105,49 @@
   filter: drop-shadow(0 0 3px var(--tone)) drop-shadow(0 0 6px var(--tone));
 }
 
-/* The number: the real text is hidden here and read by tests; the visible one counts up with a CSS counter. */
-.num {
+/* The centre of the ring: one layer, number over "out of 100", both centred. The number is sized from the ring so even
+   "100" stays inside the inner circle (the stroke leaves about 78% of the ring as the inner diameter). */
+.center {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--ring) * 0.02);
+  text-align: center;
+}
+
+/* The real text stays in the page (zero size); the counter below draws the visible number in the same box. */
+.num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   --n: var(--score);
   counter-reset: n var(--n);
 }
 
 .num::after {
   content: counter(n);
-  font-size: calc(var(--ring) * 0.4);
+  font-size: calc(var(--ring) * 0.32);
   font-weight: 700;
   line-height: 1;
   color: var(--color-text);
 }
 
+/* Three digits are wider, so they get a smaller size. */
+.num[data-wide]::after {
+  font-size: calc(var(--ring) * 0.26);
+}
+
 .outOf {
-  font-size: 0.875rem;
+  font-size: max(13px, calc(var(--ring) * 0.075));
+  line-height: 1;
+  white-space: nowrap;
   color: var(--color-text-muted);
 }
 
@@ -328,12 +350,15 @@
 @media (min-width: 900px) {
   .body {
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     gap: clamp(24px, 4vw, 64px);
   }
 
+  /* Top of the card, beside the first rows; it stays in view while a long list scrolls. */
   .ringBox {
-    align-self: center;
+    align-self: flex-start;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-4));
   }
 }
 

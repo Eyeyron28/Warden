@@ -22,5 +22,5 @@ test('the glow layers are hidden from assistive tech, and reduced motion shows a
   // All motion sits inside no-preference; the reduce block hides the orbit and keeps a steady glow.
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?animation: orbit 6s linear infinite;/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.orbit \{\s*display: none;/);
-  assert.doesNotMatch(css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}\n/, ''), /animation:\s*(draw|pulse|orbit|count)/);
+  assert.doesNotMatch(css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\r?\n\}\r?\n/, ''), /animation:\s*(draw|pulse|orbit|count)/);
 });

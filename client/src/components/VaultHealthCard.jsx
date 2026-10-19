@@ -91,12 +91,15 @@ function VaultHealthCard({ reloadKey = 0 }) {
                   <circle cx="60" cy="8" r="3.4" className={styles.dot} />
                 </g>
               </svg>
-              {/* The real number is the text; the count-up is drawn by CSS on top (styles.num::after). */}
-              <span className={styles.num} aria-hidden="true" data-testid="health-score">
-                {health.score}
-              </span>
+              {/* One centered layer inside the ring. The real number is the text of the first span (read by tests); CSS draws the
+                  same number from a counter in that same box, so the count-up ends exactly where the final number sits. */}
+              <div className={styles.center} aria-hidden="true">
+                <span className={styles.num} data-wide={health.score >= 100 ? '' : undefined} data-testid="health-score">
+                  {health.score}
+                </span>
+                <span className={styles.outOf}>out of 100</span>
+              </div>
             </div>
-            <span className={styles.outOf}>out of 100</span>
           </div>
 
           <ul className={styles.list}>
