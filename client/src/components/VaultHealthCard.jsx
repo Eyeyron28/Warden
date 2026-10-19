@@ -18,6 +18,9 @@ const ACTION_LABEL = {
   trash_near_purge: 'Open Trash',
 };
 
+// Where a row's fix button goes: the server's path, except expired documents, which have their own page.
+const fixPath = (item) => (item.id === 'expired_docs' ? '/expired' : item.actionPath);
+
 const STATUS_ICON = { ok: CheckCircle, warn: WarningCircle, bad: XCircle };
 const STATUS_WORD = { ok: 'OK', warn: 'Needs a look', bad: 'Needs action' };
 const RADIUS = 52;
@@ -115,7 +118,7 @@ function VaultHealthCard({ reloadKey = 0 }) {
                     <span className={styles.detail}>{item.detail}</span>
                   </div>
                   {item.status !== 'ok' && (
-                    <Link to={item.actionPath} className={styles.fix}>
+                    <Link to={fixPath(item)} className={styles.fix}>
                       {ACTION_LABEL[item.id] || 'Fix this'}
                     </Link>
                   )}

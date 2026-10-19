@@ -38,7 +38,8 @@ const REVIEWED = new Map([
   ['App.jsx', ['"/emergency?ended=1"', '"/login"']], // string literals
   ['components/emergency/EmergencyShell.jsx', ['{redirect}', '{item.to}']], // emergencyRedirect(location.pathname) returns one of the app's own fixed paths; items are a constant list
   ['components/site/SiteHeader.jsx', ['{link.to}']], // NAV_LINKS, constants
-  ['components/VaultHealthCard.jsx', ['{item.actionPath}']], // fixed paths written by the server (utils/vaultHealth.js)
+  ['components/VaultHealthCard.jsx', ['{fixPath(item)}']], // fixed paths written by the server (utils/vaultHealth.js), or /expired
+  ['pages/ExpiredPage.jsx', ['{openLink(doc)}']], // the same fixed start as the Overview's
   ['pages/OverviewPage.jsx', ['{openLink(doc)}']], // always "/files?path=" + encodeURIComponent(...): a fixed start
   ['components/DriveList.jsx', ['{openLink(doc)}']], // the same helper, in the Starred and Recent lists
   ['pages/ExportPage.jsx', ['{filesLink(job.destination)}']], // filesLink(): "/files" + an encoded ?path= (utils/importCard.js)

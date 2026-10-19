@@ -171,6 +171,12 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
               <ShieldCheck size={ICON} weight="regular" aria-hidden="true" />
               {label('Devices & activity')}
             </NavLink>
+            <NavLink to="/expired" className={navClass} onClick={closeDrawer} {...tipFor('Expired documents')}>
+              <svg width={ICON} height={ICON} viewBox="0 0 256 256" className={styles.shield} aria-hidden="true">
+                <path d="M40 48h176v168H40zm0 48h176M88 28v32m80-32v32m-64 80 48 48m0-48-48 48" />
+              </svg>
+              {label('Expired documents')}
+            </NavLink>
             <NavLink to="/export" className={navClass} onClick={closeDrawer} {...tipFor('Export / Import')}>
               <DownloadSimple size={ICON} weight="regular" aria-hidden="true" />
               {label('Export / Import')}

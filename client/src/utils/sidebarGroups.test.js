@@ -47,6 +47,7 @@ const ORDER = [
   ['/shared', 'Shared'],
   ['/overview', 'Overview'],
   ['/devices', 'Devices &amp; activity'],
+  ['/expired', 'Expired documents'],
   ['/export', 'Export / Import'],
   ['/emergency-access', 'Emergency Access'],
   ['/quarantine', 'Quarantine'],
@@ -79,7 +80,7 @@ test('Trash is the last item of System, after Emergency Access and Quarantine; O
   const system = html.slice(html.indexOf('data-group="System"'), html.indexOf('data-testid="sidebar-footer"'));
   assert.deepEqual([...system.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/emergency-access', '/quarantine', '/trash']);
   const management = html.slice(html.indexOf('data-group="Management"'), html.indexOf('data-group="System"'));
-  assert.deepEqual([...management.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/overview', '/devices', '/export']);
+  assert.deepEqual([...management.matchAll(/href="([^"]+)"/g)].map((m) => m[1]), ['/overview', '/devices', '/expired', '/export']);
 });
 
 test('the rail keeps names for screen readers (labels hidden visually) and the folder tree toggle is gone; expanded shows it', () => {

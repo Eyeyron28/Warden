@@ -265,4 +265,5 @@ function OverviewPage() {
   );
 }
 
+export { default as ExpiredPage } from './ExpiredPage.jsx';
 export default OverviewPage;
