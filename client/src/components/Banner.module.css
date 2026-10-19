@@ -1,0 +1,42 @@
+/* Room on the right for the Dismiss button, so long text wraps before it and never runs under it. */
+.withClose {
+  position: relative;
+  padding-right: 44px;
+  overflow-wrap: anywhere;
+}
+
+.close {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  margin-block: auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+}
+
+.close:hover {
+  background: var(--color-surface-raised);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Phones and touch screens: a 44px target. */
+@media (max-width: 767px), (pointer: coarse) {
+  .withClose {
+    min-height: 44px;
+  }
+
+  .close {
+    right: 0;
+    width: 44px;
+    height: 44px;
+  }
+}

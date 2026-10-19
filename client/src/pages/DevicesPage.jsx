@@ -29,6 +29,7 @@ import { extractErrorMessage } from '../services/api.js';
 import { GROUP_OPTIONS, describeEvent, formatManila, iconKind, manilaDayBoundary, placeText } from '../utils/activityText.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './DevicesPage.module.css';
+import Banner from '../components/Banner.jsx';
 
 const ICONS = { emergency: Lifebuoy, account: UserCircle, sharing: ShareNetwork, download: DownloadSimple, upload: UploadSimple, trash: Trash, vault: Eye };
 
@@ -218,7 +219,7 @@ function DevicesPage() {
           <button type="button" className={styles.review} onClick={review}>Review</button>
         </div>
       )}
-      {notice && <p className={styles.notice} role="status">{notice}</p>}
+      {notice && <Banner as="p" className={styles.notice} role="status" onDismiss={() => setNotice('')}>{notice}</Banner>}
 
       <section className={styles.card} aria-labelledby="devices-title">
         <div className={styles.cardHead}>

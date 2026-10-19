@@ -18,6 +18,7 @@ import { useSelection } from '../utils/useSelection.js';
 import { getViewPrefs, setViewPref } from '../utils/viewPrefs.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './FilePages.module.css';
+import Banner from '../components/Banner.jsx';
 
 const isSessionExpired = (err) => err?.response?.status === 401;
 
@@ -223,8 +224,8 @@ function PhotosPage() {
         </div>
       )}
 
-      {actionError && <p className={styles.banner} role="alert">{actionError}</p>}
-      {error && <p className={styles.banner} role="alert">{error}</p>}
+      {actionError && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setActionError('')}>{actionError}</Banner>}
+      {error && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setError('')}>{error}</Banner>}
 
       {!loading && !error && photos.length === 0 && pending === 0 && (
         <div className={styles.empty}>

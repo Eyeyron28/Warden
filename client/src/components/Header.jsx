@@ -4,7 +4,7 @@ import wardenLogo from '../assets/warden_logo_badge.svg';
 import ThemeToggle from './ThemeToggle.jsx';
 import styles from './Header.module.css';
 
-function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChange }) {
+function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChange, showSearch = true }) {
   return (
     <header className={styles.header}>
       <div className={styles.left}>
@@ -25,17 +25,19 @@ function Header({ onLock, onToggleNav, navOpen = false, searchTerm, onSearchChan
         </div>
       </div>
 
-      <div className={styles.searchWrap}>
-        <MagnifyingGlass size={16} className={styles.searchIcon} />
-        <input
-          type="search"
-          className={styles.searchInput}
-          value={searchTerm}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search your documents"
-          aria-label="Search documents"
-        />
-      </div>
+      {showSearch && (
+        <div className={styles.searchWrap}>
+          <MagnifyingGlass size={16} className={styles.searchIcon} />
+          <input
+            type="search"
+            className={styles.searchInput}
+            value={searchTerm}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search your documents"
+            aria-label="Search documents"
+          />
+        </div>
+      )}
 
       <div className={styles.actions}>
         <ThemeToggle />

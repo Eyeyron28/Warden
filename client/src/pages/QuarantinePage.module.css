@@ -2,9 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  max-width: 900px;
+  width: 100%;
   min-width: 0;
-  padding: var(--space-5) var(--space-5) var(--space-7);
+  padding-bottom: var(--space-7);
 }
 
 .header {
@@ -23,11 +23,4 @@
   max-width: 62ch;
   color: var(--color-text-muted);
   line-height: 1.5;
-}
-
-@media (max-width: 479px) {
-  .page {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
-  }
 }

@@ -1,26 +1,25 @@
 import { useEffect, useRef } from 'react';
 import { X } from '@phosphor-icons/react';
 
-import FileNameLabel from './FileNameLabel.jsx';
 import { splitNamedTitle } from '../utils/namedTitle.js';
 import { useFocusTrap } from '../utils/useFocusTrap.js';
 import styles from './Modal.module.css';
 
 function Title({ title }) {
   const named = splitNamedTitle(title);
-  if (!named) {
-    return (
-      <h2 className={styles.title} title={title}>
-        {title}
-      </h2>
-    );
-  }
-  const { before, name, after } = named;
+  // One line of plain text in one font and size. The name is a plain span (stronger weight only); a long title is cut
+  // at the end with an ellipsis and the full text is the tooltip.
   return (
-    <h2 className={`${styles.title} ${styles.namedTitle}`} title={title}>
-      <span className={styles.titleText}>{before}</span>
-      <FileNameLabel name={name} className={styles.titleName} />
-      <span className={styles.titleText}>{after}</span>
+    <h2 className={styles.title} title={title}>
+      {named ? (
+        <>
+          {named.before}
+          <span className={styles.titleName}>{named.name}</span>
+          {named.after}
+        </>
+      ) : (
+        title
+      )}
     </h2>
   );
 }

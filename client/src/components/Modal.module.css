@@ -57,19 +57,9 @@
   white-space: nowrap;
 }
 
-.namedTitle {
-  display: flex;
-  align-items: baseline;
-}
-
-.titleText {
-  flex: none;
-  white-space: pre;
-}
-
+/* The name inside a title: same font and size, a little stronger. */
 .titleName {
-  flex: 0 1 auto;
-  min-width: 0;
+  font-weight: 600;
 }
 
 .closeButton {

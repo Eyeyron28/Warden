@@ -70,7 +70,7 @@ test('every dialog goes through ONE structure: a fixed header, a body that scrol
   assert.match(modal, /className=\{styles\.body\}/);
   assert.match(modal, /footer && <div className=\{styles\.footer\}>/);
   assert.match(modal, /splitNamedTitle\(title\)/);
-  assert.match(modal, /<FileNameLabel name=\{name\}/);
+  assert.match(modal, /<span className=\{styles\.titleName\}>\{named\.name\}<\/span>/);
   const style = css('components/Modal.module.css');
   const rule = (name) => new RegExp(`\\.${name} \\{([^}]*)\\}`).exec(style)[1];
   assert.match(rule('dialog'), /display: flex;/);

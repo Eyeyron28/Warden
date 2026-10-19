@@ -11,6 +11,7 @@ import forms from '../components/site/forms.module.css';
 import auth from './auth/auth.module.css';
 import styles from './SharesPage.module.css';
 import pageStyles from './FilePages.module.css';
+import Banner from '../components/Banner.jsx';
 
 const MB = 1024 * 1024;
 const formatMb = (bytes) => `${bytes < 10 * MB ? (bytes / MB).toFixed(1) : Math.round(bytes / MB)}MB`;
@@ -111,10 +112,10 @@ function SharesPage() {
         </p>
 
         {error && (
-          <div className={forms.alert} role="alert">
+          <Banner className={forms.alert} role="alert" onDismiss={() => setError('')}>
             <Icon name="alert" />
             <p>{error}</p>
-          </div>
+          </Banner>
         )}
 
         {usage && (

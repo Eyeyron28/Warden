@@ -84,6 +84,7 @@ import {
   pathStillExists,
 } from '../utils/folderPath.js';
 import styles from './FilePages.module.css';
+import Banner from '../components/Banner.jsx';
 
 // The scanner (camera input, crop, Document mode, PDF writer) is loaded the first time Scan is pressed.
 const ScanDialog = lazy(() => import('../components/scan/ScanDialog.jsx'));
@@ -917,8 +918,8 @@ function FilesPage() {
       {selection.count === 0 && <PreviewsNotice generator={previews} documents={documents} onRetried={refresh} />}
       {!searchTerm && <ExpiringBanner />}
       {selection.count === 0 && !currentPath && !searchTerm && <FrequentFiles />}
-      {actionError && <p className={styles.banner} role="alert">{actionError}</p>}
-      {listError && <p className={styles.banner} role="alert">{listError}</p>}
+      {actionError && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setActionError('')}>{actionError}</Banner>}
+      {listError && <Banner as="p" className={styles.banner} role="alert" onDismiss={() => setListError('')}>{listError}</Banner>}
 
       {!loading && vaultIsEmpty && !listError && (
         <div className={styles.empty}>

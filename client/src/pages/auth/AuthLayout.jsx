@@ -18,7 +18,10 @@ import styles from './auth.module.css';
 function AuthLayout({ title, subtitle, dial, children, footer, wide = false, layout = 'split' }) {
   const split = layout === 'split';
   return (
-    <div className={`${site.container} ${styles.wrap} ${split ? styles.split : ''}`} data-auth-shell={split ? '' : undefined}>
+    <div
+      className={split ? `${site.container} ${styles.wrap} ${styles.split}` : styles.appFrame}
+      data-auth-shell={split ? '' : undefined}
+    >
       {split && (
         <aside className={styles.brand} aria-hidden="true">
           <div className={styles.brandDial}>

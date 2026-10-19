@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 
 import Header from './Header.jsx';
 import Sidebar from './Sidebar.jsx';
@@ -20,7 +20,6 @@ import styles from './AppLayout.module.css';
  */
 function AppLayout({ onLocked }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const isDrawer = useMediaQuery('(max-width: 767px)');
   const [navOpen, setNavOpen] = useState(false);
   // Collapsed icon rail (desktop). Kept in memory only: a reload starts expanded.
@@ -29,9 +28,13 @@ function AppLayout({ onLocked }) {
   const [sidebarVersion, setSidebarVersion] = useState(0);
   const [toast, setToast] = useState(null);
 
+  // Search belongs to My Files only: the bar is hidden elsewhere, and a leftover term is cleared.
+  const onFilesPage = location.pathname === '/files';
+
   // The drawer closes whenever the route (or the folder shown) changes.
   useEffect(() => {
     setNavOpen(false);
+    if (location.pathname !== '/files') setSearchTermState('');
   }, [location.pathname, location.search]);
 
   // A resize up to the desktop layout leaves no drawer open behind it.
@@ -39,14 +42,8 @@ function AppLayout({ onLocked }) {
     if (!isDrawer) setNavOpen(false);
   }, [isDrawer]);
 
-  const setSearchTerm = useCallback(
-    (term) => {
-      setSearchTermState(term);
-      // Search looks through your files: typing from another page takes you there.
-      if (term && !location.pathname.startsWith('/files')) navigate('/files');
-    },
-    [location.pathname, navigate]
-  );
+  // Search only exists on My Files (the bar is hidden elsewhere), so typing never needs to navigate.
+  const setSearchTerm = setSearchTermState;
 
   const showToast = useCallback((message) => setToast({ id: Date.now(), message }), []);
   const refreshSidebar = useCallback(() => setSidebarVersion((version) => version + 1), []);
@@ -71,6 +68,7 @@ function AppLayout({ onLocked }) {
           navOpen={navOpen}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
+          showSearch={onFilesPage}
         />
         <EmergencyBanner />
         <div className={styles.body}>
