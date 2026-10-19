@@ -58,6 +58,9 @@ export function addFiles(items, files, nextId = items.reduce((max, row) => Math.
 
 export const removeItem = (items, id) => items.filter((row) => row.id !== id);
 
+/** Puts another file (the smaller version of a photo) in a row; the row is checked again like a new one. */
+export const replaceFile = (items, id, file) => items.map((row) => (row.id === id ? { ...row, file, error: rowError(file), duplicate: false, zip: false } : row));
+
 /** "Only 10 files at a time. 3 were not added." */
 export const overflowMessage = (overflow) => (overflow > 0 ? `Only ${MAX_FILES_PER_UPLOAD} files at a time. ${overflow} ${overflow === 1 ? 'was' : 'were'} not added.` : '');
 

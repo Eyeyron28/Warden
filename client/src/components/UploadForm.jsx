@@ -8,7 +8,9 @@ import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import { formatBytes } from '../utils/listing.js';
 import { hasFiles } from '../utils/fileDrag.js';
 import { useFileDrag } from '../utils/useFileDrag.js';
-import { addFiles, overflowMessage, removeItem, submitLabel, summarize } from '../utils/uploadSelection.js';
+import { addFiles, overflowMessage, removeItem, replaceFile, submitLabel, summarize } from '../utils/uploadSelection.js';
+import { MAX_FILE_BYTES } from '../utils/transferRules.js';
+import { canShrink } from '../utils/shrinkPlan.js';
 import styles from './UploadForm.module.css';
 import { shortName } from '../utils/ellipsis.js';
 
@@ -29,6 +31,8 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
   const [locked, setLocked] = useState(false);
   const { active: dragOver, reset: clearDrag, handlers: dragHandlers } = useFileDrag(hasFiles);
   const [announce, setAnnounce] = useState('');
+  // "Make it smaller" per row: { status: 'working' } | { status: 'ready', result } | { status: 'failed', message }
+  const [shrink, setShrink] = useState({});
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const chooseRef = useRef(null);
@@ -68,6 +72,35 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
       const buttons = listRef.current?.querySelectorAll('[data-remove]');
       (buttons?.[index] || buttons?.[index - 1] || chooseRef.current)?.focus?.();
     });
+  };
+
+  const clearShrink = (id) => setShrink((current) => {
+    const { [id]: dropped, ...rest } = current;
+    return dropped ? rest : current;
+  });
+
+  // The photo is re-encoded in this tab (the code loads only now). Nothing replaces the original until the person agrees.
+  const startShrink = async (row) => {
+    setShrink((current) => ({ ...current, [row.id]: { status: 'working' } }));
+    let outcome;
+    try {
+      const { shrinkToJpeg } = await import('../utils/shrinkImage.js');
+      outcome = await shrinkToJpeg(row.file, MAX_FILE_BYTES);
+    } catch {
+      outcome = { ok: false, message: 'Could not make this image smaller.' };
+    }
+    setShrink((current) => {
+      if (current[row.id]?.status !== 'working') return current; // cancelled meanwhile
+      return { ...current, [row.id]: outcome.ok ? { status: 'ready', result: outcome, before: row.file.size } : { status: 'failed', message: outcome.message } };
+    });
+  };
+
+  const applySmaller = (row) => {
+    const result = shrink[row.id]?.result;
+    if (!result || lock.current) return;
+    setItems((current) => replaceFile(current, row.id, result.file));
+    clearShrink(row.id);
+    setAnnounce(`${row.file.name} replaced by a smaller version.`);
   };
 
   const handleSubmit = async (event) => {
@@ -186,6 +219,40 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
                 </span>
                 <span className={styles.rowSize}>{formatBytes(row.file.size)}</span>
                 {row.error && <span className={styles.rowReason}>{row.error}</span>}
+                {row.file.size > MAX_FILE_BYTES && !row.zip && (
+                  <div className={styles.shrinkBox}>
+                    {!canShrink(row.file, MAX_FILE_BYTES) && <span className={styles.shrinkNote}>This file type does not shrink much. The limit is 4 MB.</span>}
+                    {canShrink(row.file, MAX_FILE_BYTES) && !shrink[row.id] && (
+                      <button type="button" className={styles.shrinkButton} onClick={() => startShrink(row)} disabled={locked}>
+                        Make it smaller
+                      </button>
+                    )}
+                    {shrink[row.id]?.status === 'working' && (
+                      <>
+                        <span className={styles.shrinkNote}>Making it smaller…</span>
+                        <button type="button" className={styles.shrinkButton} onClick={() => clearShrink(row.id)}>
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                    {shrink[row.id]?.status === 'failed' && <span className={styles.shrinkNote}>{shrink[row.id].message}</span>}
+                    {shrink[row.id]?.status === 'ready' && (
+                      <>
+                        <span className={styles.shrinkNote}>
+                          {formatBytes(shrink[row.id].before)} to {formatBytes(shrink[row.id].result.file.size)}, saved as JPEG, lower quality. Re-encoding drops camera metadata (EXIF, location).
+                        </span>
+                        <span className={styles.shrinkActions}>
+                          <button type="button" className={styles.shrinkButton} onClick={() => applySmaller(row)}>
+                            Use smaller version
+                          </button>
+                          <button type="button" className={styles.shrinkButton} onClick={() => clearShrink(row.id)}>
+                            Cancel
+                          </button>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
                 {row.zip && onOpenImport && (
                   <button type="button" className={styles.openImport} data-action="open-import" onClick={onOpenImport}>
                     Open Export / Import
