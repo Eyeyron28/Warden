@@ -8,20 +8,27 @@ import { deleteDocument, listExpiringDocuments } from '../services/documentsServ
 import { extractErrorMessage } from '../services/api.js';
 import { formatDateTime } from '../utils/formatDate.js';
 import { expiryPhrase } from '../utils/expiry.js';
+import { firstFive } from '../utils/firstFive.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './OverviewPage.module.css';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const folderLabel = (folder) => (!folder || folder === 'root' ? 'My files' : folder);
+// How each card words its row (the dialog uses the same functions).
+const viewedCount = (d) => plural(d.viewCount, 'view');
+const downloadedCount = (d) => plural(d.downloadCount, 'download');
+const lastOpened = (d) => `last ${formatDateTime(d.lastOpenedAt)}`;
+const openedAt = (d) => formatDateTime(d.lastOpenedAt);
+const inFolder = (d) => folderLabel(d.folder);
 const openLink = (doc) => `/files?path=${encodeURIComponent(doc.folder && doc.folder !== 'root' ? doc.folder : '')}&open=${encodeURIComponent(doc.id)}`;
 
-function FileList({ items, count, empty, extra }) {
-  if (!items.length) return <p className={styles.empty}>{empty}</p>;
+// The rows of a list: the same in a card and in its "View all" dialog. onPick runs when a file is clicked.
+function FileRows({ items, count, extra, onPick }) {
   return (
     <ol className={styles.list}>
       {items.map((doc) => (
         <li key={doc.id} className={styles.row}>
-          <Link to={openLink(doc)} className={styles.fileLink}>{doc.filename}</Link>
+          <Link to={openLink(doc)} className={styles.fileLink} title={doc.filename} onClick={onPick}>{doc.filename}</Link>
           <span className={styles.meta}>
             {count(doc)}
             {extra ? ` · ${extra(doc)}` : ''}
@@ -29,6 +36,22 @@ function FileList({ items, count, empty, extra }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+// At most five rows; with more, "View all (n)" opens the whole list (the page already has it, so no request).
+function FileList({ items, count, empty, extra, onViewAll }) {
+  if (!items.length) return <p className={styles.empty}>{empty}</p>;
+  const { shown, more, total } = firstFive(items);
+  return (
+    <>
+      <FileRows items={shown} count={count} extra={extra} />
+      {more && (
+        <button type="button" className={styles.viewAll} onClick={(event) => onViewAll(event.currentTarget)}>
+          View all ({total})
+        </button>
+      )}
+    </>
   );
 }
 
@@ -42,6 +65,7 @@ function OverviewPage() {
   const [error, setError] = useState('');
   const [cleanup, setCleanup] = useState(null); // { items, selected:Set, busy, message }
   const [expiring, setExpiring] = useState(null);
+  const [viewAll, setViewAll] = useState(null); // { title, items, count, extra }
 
   const load = useCallback(async () => {
     setError('');
@@ -143,17 +167,17 @@ function OverviewPage() {
       <div className={styles.grid}>
         <section className={styles.card} aria-labelledby="ov-viewed">
           <h2 id="ov-viewed" className={styles.heading}>Most viewed</h2>
-          <FileList items={data.mostViewed} count={(d) => plural(d.viewCount, 'view')} extra={(d) => `last ${formatDateTime(d.lastOpenedAt)}`} empty="Nothing viewed yet. Open a file and it shows up here." />
+          <FileList items={data.mostViewed} count={viewedCount} extra={lastOpened} empty="Nothing viewed yet. Open a file and it shows up here." onViewAll={() => setViewAll({ title: 'Most viewed', items: data.mostViewed, count: viewedCount, extra: lastOpened })} />
         </section>
 
         <section className={styles.card} aria-labelledby="ov-downloaded">
           <h2 id="ov-downloaded" className={styles.heading}>Most downloaded</h2>
-          <FileList items={data.mostDownloaded} count={(d) => plural(d.downloadCount, 'download')} extra={(d) => `last ${formatDateTime(d.lastOpenedAt)}`} empty="Nothing downloaded yet." />
+          <FileList items={data.mostDownloaded} count={downloadedCount} extra={lastOpened} empty="Nothing downloaded yet." onViewAll={() => setViewAll({ title: 'Most downloaded', items: data.mostDownloaded, count: downloadedCount, extra: lastOpened })} />
         </section>
 
         <section className={styles.card} aria-labelledby="ov-recent">
           <h2 id="ov-recent" className={styles.heading}>Recently opened</h2>
-          <FileList items={data.recentlyOpened} count={(d) => formatDateTime(d.lastOpenedAt)} extra={(d) => folderLabel(d.folder)} empty="Nothing opened yet." />
+          <FileList items={data.recentlyOpened} count={openedAt} extra={inFolder} empty="Nothing opened yet." onViewAll={() => setViewAll({ title: 'Recently opened', items: data.recentlyOpened, count: openedAt, extra: inFolder })} />
         </section>
 
         <section className={styles.card} aria-labelledby="ov-stale">
@@ -188,6 +212,12 @@ function OverviewPage() {
           <Link to="/shared" className={styles.textLink}>Manage share links</Link>
         </section>
       </div>
+
+      {viewAll && (
+        <Modal title={`${viewAll.title} (${viewAll.items.length})`} onClose={() => setViewAll(null)}>
+          <FileRows items={viewAll.items} count={viewAll.count} extra={viewAll.extra} onPick={() => setViewAll(null)} />
+        </Modal>
+      )}
 
       {cleanup && (
         <Modal title="Review and clean up" onClose={() => !cleanup.busy && setCleanup(null)} wide>

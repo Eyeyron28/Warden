@@ -36,6 +36,16 @@ function Modal({ title, onClose, children, footer = null, wide = false, size = '
   const dialogRef = useRef(null);
   useFocusTrap(dialogRef, true);
 
+  // The page behind does not scroll while a dialog is open; the previous setting comes back on every way of closing.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => {
+      root.style.overflow = before;
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
