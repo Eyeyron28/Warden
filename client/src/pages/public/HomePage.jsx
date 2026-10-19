@@ -86,7 +86,7 @@ function HomePage() {
           <div className={styles.heroCopy}>
             <p className={styles.kicker}>Encrypted document vault</p>
             <h1 id="home-title" className={styles.heroTitle}>
-              A vault for the documents you can&apos;t afford to lose, or leak.
+              A vault for the <span>documents</span> you can&apos;t afford to lose, or leak.
             </h1>
             <p className={styles.heroLede}>
               Your files are stored as ciphertext, and the key is locked by your password and your recovery key. The server can still see

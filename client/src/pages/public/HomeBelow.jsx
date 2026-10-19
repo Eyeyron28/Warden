@@ -1,4 +1,8 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+
+import { startTypewriter } from '../../components/site/typeWord.js';
+import '../../components/site/typeWord.css';
 
 import Faq from '../../components/site/Faq.jsx';
 import HowItWorks from '../../components/site/HowItWorks.jsx';
@@ -47,6 +51,9 @@ function Heading({ id, number, label, title, children }) {
  * paint), which keeps the first screen light. The section ids exist in HomePage already, so links to them work at once.
  */
 function HomeBelow() {
+  // Starts the typed word in the heading above (the page shows the static word until this chunk is here).
+  useEffect(() => startTypewriter(document.querySelector('#home-title span'), site.srOnly), []);
+
   return (
     <>
       <section id="how-it-works" {...SECTION_ATTRS} aria-labelledby="how-title">

@@ -176,3 +176,13 @@
     border-left: 1px solid var(--color-border);
   }
 }
+
+/* ---- Heading with a typed word ---- */
+
+/* The word has its own line, one line tall always, so the heading never reflows while it changes. The typed copy is the accent colour. */
+.heroTitle > span:last-child {
+  display: block;
+  min-height: 1.06em;
+  white-space: nowrap;
+  color: var(--color-accent);
+}

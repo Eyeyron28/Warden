@@ -1,0 +1,24 @@
+/* The blinking cursor after the typed word: only while the typing runs (the code sets data-typing). Accent colour, CSS only. Plain CSS so it ships with the typing code. */
+#home-title [data-typing]::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  margin-left: 3px;
+  vertical-align: -0.05em;
+  background: var(--color-accent);
+  animation: type-blink 1s steps(1) infinite;
+}
+
+@keyframes type-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #home-title [data-typing]::after {
+    display: none;
+    animation: none;
+  }
+}
