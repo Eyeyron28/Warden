@@ -94,6 +94,30 @@ function checkSessionOnce() {
   return sessionCheck;
 }
 
+/**
+ * The landing page for a visitor who already has a session (another tab of this browser, or this one): straight to My Files,
+ * the same place the login page sends a signed-in visitor. It never waits for the answer: the landing page shows as usual
+ * and the redirect happens only when the existing session check says the session is valid. Nobody without a session
+ * triggers a request (picking a token up from another tab is a message between tabs, not a server call).
+ */
+function LandingGate({ children }) {
+  const token = useSessionToken();
+  const mode = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
+  const [result, setResult] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve(getToken() || adoptTokenFromOtherTabs())
+      .then((held) => held && checkSessionOnce())
+      .then((outcome) => !cancelled && setResult(outcome));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Only a token this tab holds and the server accepted: not while checking, and not after a log out clears the token.
+  if (token && !mode.emergency && result === 'valid') return <Navigate to="/files" replace />;
+  return children;
+}
+
 function useSessionCheck() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -128,7 +152,7 @@ function App() {
     <Suspense fallback={null}>
       <Routes>
         <Route element={<PublicLayout />}>
-          <Route index element={<HomePage />} />
+          <Route index element={<LandingGate><HomePage /></LandingGate>} />
           {/* Contact is a section of the one-page landing site; the old /about URL goes to the top of it. */}
           <Route path="about" element={<Navigate to="/" replace />} />
           <Route path="contact" element={<Navigate to="/#contact" replace />} />
