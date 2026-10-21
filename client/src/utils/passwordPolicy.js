@@ -112,7 +112,7 @@ function validatePassword(password) {
   return { valid: errors.length === 0, errors };
 }
 
-const STRENGTH_LABELS = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'];
+const STRENGTH_LABELS = ['Very Weak', 'Weak', 'Fair', 'Strong'];
 
 function calculatePasswordStrength(password) {
   if (typeof password !== 'string' || password.length === 0) {
@@ -135,9 +135,8 @@ function calculatePasswordStrength(password) {
   let score;
   if (points <= 1) score = 0;
   else if (points <= 3) score = 1;
-  else if (points <= 4) score = 2;
-  else if (points <= 5) score = 3;
-  else score = 4;
+  else if (points === 4) score = 2;
+  else score = 3;
 
   return { score, label: STRENGTH_LABELS[score] };
 }

@@ -3,14 +3,11 @@ import { Check, X } from '@phosphor-icons/react';
 import { calculatePasswordStrength, getRequirementChecklist } from '../utils/passwordPolicy.js';
 import styles from './PasswordStrengthMeter.module.css';
 
-const SEGMENT_COUNT = 5;
-
 const SCORE_COLORS = [
   'var(--color-danger)',
   'var(--color-danger)',
   'var(--color-text-faint)',
   'var(--color-accent-dim)',
-  'var(--color-accent)',
 ];
 
 function PasswordStrengthMeter({ password }) {
@@ -21,7 +18,7 @@ function PasswordStrengthMeter({ password }) {
   return (
     <div className={styles.meter}>
       <div className={styles.segments} role="img" aria-label={hasValue ? `Password strength: ${label}` : 'Password strength'}>
-        {Array.from({ length: SEGMENT_COUNT }).map((_, index) => (
+        {SCORE_COLORS.map((_, index) => (
           <span
             key={index}
             className={styles.segment}
