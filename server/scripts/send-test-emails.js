@@ -31,6 +31,7 @@ const samples = [
   ['sign-in-code', templates.signInCode({ code: '482916', ttlMinutes })],
   ['delete-account-code', templates.deleteAccountCode({ code: '482916', ttlMinutes })],
   ['password-reset-code', templates.passwordResetCode({ code: '482916', ttlMinutes })],
+  ['password-change-code', templates.passwordChangeCode({ code: '482916', ttlMinutes })],
   ['share-code', templates.shareCode({ code: '482916', ttlMinutes })],
   ['sign-up-code', templates.signupCode({ code: '482916', ttlMinutes })],
   ['verify-email-resend', templates.verifyEmailResend({ verifyUrl })],

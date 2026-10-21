@@ -15,7 +15,7 @@ const {
   buildChallengeToken,
 } = require('./otp');
 
-const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', emergencySetup: 'emergency-setup' };
+const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', passwordChange: 'password-change', emergencySetup: 'emergency-setup' };
 
 const MAX_ATTEMPTS = 5;
 const MAX_RESENDS = 3;
@@ -41,6 +41,7 @@ function emailFor(purpose, code, ttlMinutes) {
   const input = { code, ttlMinutes };
   if (purpose === PURPOSES.passwordReset) return templates.passwordResetCode(input);
   if (purpose === PURPOSES.deleteAccount) return templates.deleteAccountCode(input);
+  if (purpose === PURPOSES.passwordChange) return templates.passwordChangeCode(input);
   if (purpose === PURPOSES.emergencySetup) return templates.emergencyOwnerSetupCode(input);
   return templates.signInCode(input);
 }
