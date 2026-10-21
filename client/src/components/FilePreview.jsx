@@ -38,7 +38,6 @@ const TYPE_LABELS = {
   'video/webm': 'WebM video',
 };
 
-/** A reader-friendly type, from what the BYTES are - not from the file name. */
 function describeType(sniff) {
   if (!sniff) return '…';
   if (sniff.mime && TYPE_LABELS[sniff.mime]) return TYPE_LABELS[sniff.mime];
@@ -66,20 +65,6 @@ const REASONS = {
 const isEditable = (target) =>
   target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
-/**
- * Full-screen file viewer. The file is fetched through the authenticated API
- * as raw bytes and its type is decided by sniffing them (utils/previewType.js)
- * against an allowlist - never from the stored name or a declared type. Images,
- * audio and video are shown from object URLs over Blobs typed from that
- * allowlist; PDFs go through pdf.js onto a canvas; text is shown as text;
- * .docx runs in a sandboxed iframe. HTML and SVG are never rendered.
- *
- * Left/Right arrows (and the side buttons) move through `files`, Esc closes,
- * focus stays inside while it is open and returns afterwards (the parent
- * focuses the item it came from). Everything held in memory belongs to this
- * component: bytes go when the file changes or the viewer closes, object URLs
- * are revoked by the viewers, and locking the vault closes it.
- */
 function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, onSetExpiry, onTrash, onLoaded, readOnly = false }) {
   const doc = files[index];
   const overlayRef = useRef(null);
@@ -95,7 +80,6 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
 
   useFocusTrap(overlayRef, true);
 
-  // The page behind must not scroll while the viewer is open.
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -106,7 +90,6 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
 
   const close = useCallback(() => onClose(doc), [onClose, doc]);
 
-  // Locking the vault (or a session ending) closes the viewer and drops the bytes.
   useEffect(
     () =>
       subscribeToken((token) => {
@@ -175,7 +158,6 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [go, close]);
 
-  // The file went away under us (trashed from here): the parent already moved on.
   if (!doc) return null;
 
   const handleDownload = async () => {
@@ -185,11 +167,8 @@ function FilePreview({ files, index, onIndexChange, onClose, onShare, onRename, 
       let bytes = bytesRef.current;
       let name = nameRef.current;
       if (!bytes || readOnly) {
-        // A read-only (Emergency Access) session cannot record a download from cached bytes, so it always asks for the
-        // file as a download: the server logs it.
         ({ bytes, filename: name } = await fetchDocumentBytes(doc.id, { purpose: 'download' }));
       } else {
-        // Saved from what the preview already holds: tell the server so it still counts as a download.
         recordDownload(doc.id);
       }
       downloadBytes(bytes, name ?? doc.filename);

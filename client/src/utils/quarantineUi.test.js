@@ -61,8 +61,6 @@ test.before(async () => {
 const reason = (code, text = `${code} in plain words.`) => ({ code, text });
 const item = (patch = {}) => ({ id: 'a1', name: 'form.pdf', folder: 'root', size: 2048, heldAt: '2026-10-16T01:00:00Z', severity: 'medium', reasons: [reason('PDF_ACTIVE')], ...patch });
 
-// ---------- the page: every state ----------
-
 test('loading: a skeleton with a status role, no rows', () => {
   const html = ui.list({ state: 'loading' });
   assert.match(html, /data-testid="quarantine-loading"/);
@@ -91,7 +89,6 @@ test('list: name, size, date and the reasons in plain words, with Release and De
     items: [item(), item({ id: 'b2', name: 'macro.docm', severity: 'high', reasons: [reason('OFFICE_MACRO'), reason('TYPE_MISMATCH')] }), item({ id: 'c3', name: 'odd.txt', severity: 'low', reasons: [reason('TYPE_MISMATCH')] })],
   });
   assert.equal((html.match(/data-testid="quarantine-row"/g) || []).length, 3);
-  // No pill or label for the severity: the reasons say why a file is held.
   assert.doesNotMatch(html, />(Low|Medium|High)</);
   assert.doesNotMatch(html, /chip/);
   assert.match(html, /2\.0 KB/);
@@ -113,8 +110,6 @@ test('while one is being handled its buttons are disabled', () => {
   const html = ui.list({ state: 'list', items: [item()], busyId: 'a1' });
   assert.equal((html.match(/disabled=""/g) || []).length, 2);
 });
-
-// ---------- the release dialog ----------
 
 test('the release dialog explains the risk and keeps the button off until the word RELEASE is typed', () => {
   const closed = ui.dialog({ item: item() });
@@ -141,15 +136,12 @@ test('matchesReleaseWord is exact', () => {
   for (const [typed, ok] of [['RELEASE', true], [' RELEASE ', true], ['release', false], ['Release', false], ['RELEASED', false], ['', false], [null, false]]) assert.equal(ui.matchesReleaseWord(typed), ok, String(typed));
 });
 
-// ---------- the sidebar badge ----------
-
 for (const [label, props] of [['expanded', {}], ['collapsed', { collapsed: true }], ['drawer', { drawer: true, open: true }]]) {
   test(`sidebar badge, ${label}: the count shows on Quarantine when something is held and is gone when nothing is`, () => {
     const withBadge = ui.sidebar(props, 3);
     assert.match(withBadge, /href="\/quarantine"[^>]*>[\s\S]*?data-testid="quarantine-badge"[^>]*>3</);
     assert.equal((withBadge.match(/data-testid="quarantine-badge"/g) || []).length, 1);
     assert.doesNotMatch(ui.sidebar(props, 0), /quarantine-badge/);
-    // still between Emergency Access and Trash, in the same group
     const order = [...withBadge.matchAll(/href="(\/[a-z-]+)"/g)].map((m) => m[1]);
     assert.deepEqual(order.slice(order.indexOf('/emergency-access'), order.indexOf('/trash') + 1), ['/emergency-access', '/quarantine', '/trash']);
   });
@@ -162,8 +154,6 @@ test('the badge is only memory, resets for another session, and rides on an answ
   assert.match(strip(read('services/documentsService.js')), /if \(path === ''\) quarantineCount\.set\(data\?\.heldCount\);/);
   assert.doesNotMatch(strip(read('components/Sidebar.jsx')), /api\.|fetch\(|listHeld/, 'the sidebar asks for nothing of its own');
 });
-
-// ---------- the transfer tray ----------
 
 const row = (patch) => ({ id: 1, kind: 'upload', name: 'form.pdf', size: 2000, phase: 'sealed', state: 'done', bytesDone: 2000, error: null, destination: '', resultId: 'x', savedAs: null, ...patch });
 
@@ -212,11 +202,8 @@ test('a refused upload is worded for the tray by the (lazy) runtime; the main co
   assert.match(runtime, /uploadDocument: watched\(uploadDocument\)/);
   assert.match(runtime, /uploadNewVersion: watched\(uploadNewVersion\)/);
   assert.deepEqual(describeTransferError({ described: { message: 'Not saved', refused: true } }), { message: 'Not saved', refused: true });
-  // a refusal can never be retried, however it is worded
   assert.equal(buildTray({ rows: [row({ phase: 'failed', error: { refused: true, retryable: false, reasons: [] } })], announce: '' }, { status: 'idle', results: [], skipped: [], ignored: [] }).rows[0].actions.retry, false);
 });
-
-// ---------- the zip import counts ----------
 
 test('zip import: each file is judged by the server; imported, held and refused are counted apart', async () => {
   const entries = ['ok.txt', 'risky.svg', 'bad.txt', 'plain.png'];
@@ -250,8 +237,6 @@ test('the import report on the Export / Import page counts imported, held and no
   assert.match(strip(read('services/importRuntime.js')), /if \(stored\?\.held\) quarantineCount\.bump\(1\)/);
 });
 
-// ---------- details and activity ----------
-
 test('Details: "Scan: clean (rules v1, date)", "Not scanned", "Released after review", and the other states', () => {
   assert.match(ui.scanLine({ verdict: 'clean', version: 1, at: '2026-10-16T01:00:00Z', state: null }), /^Clean \(rules v1, [A-Z][a-z]{2} \d{1,2}, 2026\)$/);
   assert.equal(ui.scanLine(null), 'Not scanned');
@@ -267,8 +252,6 @@ test('the activity log has plain wording and an icon for the three new events', 
   assert.equal(describeEvent({ type: 'file_refused' }), 'Refused an upload');
   for (const type of ['file_held', 'file_released', 'file_refused']) assert.ok(iconKind(type));
 });
-
-// ---------- lazy loading and wording ----------
 
 test('everything new is lazy: the page is its own chunk, and the main bundle imports only the badge store and the route', () => {
   const app = strip(read('App.jsx'));

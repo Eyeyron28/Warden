@@ -15,7 +15,6 @@ import { getViewPrefs, setViewPref } from '../utils/viewPrefs.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './FilePages.module.css';
 
-// A selection that never selects: the shared browser needs one, a read-only one has none.
 const NO_SELECTION = Object.freeze({
   count: 0,
   header: 'none',
@@ -30,12 +29,6 @@ const COLUMNS = [
   { id: 'size', label: 'Size', width: 'clamp(84px, 9vw, 240px)', align: 'right' },
 ];
 
-/**
- * The contact's Files: the same list and preview as the owner's, with everything that changes anything taken away.
- * Open / Preview and Download are all there is. The paths shown start at the folder the owner chose (the server
- * never sends the names above it). A 403 or 404 is an ordinary "This item isn't available." with a way back, never
- * a broken page.
- */
 function EmergencyFilesPage() {
   usePageMeta('Files', 'Read-only emergency access.');
   const [params, setParams] = useSearchParams();
@@ -143,7 +136,6 @@ function EmergencyFilesPage() {
     }
   };
 
-  // Only these two, in the "..." menu.
   const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
   const menuFor = (item) =>
     item.kind === 'folder'

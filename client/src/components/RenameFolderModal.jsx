@@ -8,12 +8,6 @@ import { getFolderStyles } from '../services/folderStyles.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './NewFolderModal.module.css';
 
-/**
- * Rename from a folder tile's "⋯" menu. Same rules and same error
- * behavior as New folder: a clash with a sibling (any casing) is a 409
- * FOLDER_EXISTS shown under the input, and the dialog stays open with the
- * typed value. Everything nested inside follows the new name server-side.
- */
 function RenameFolderModal({ path, onClose, onRenamed }) {
   const currentName = path.split('/').pop();
   const [name, setName] = useState(currentName);
@@ -42,7 +36,6 @@ function RenameFolderModal({ path, onClose, onRenamed }) {
     setSubmitting(true);
     setError('');
     try {
-      // Only what changed is sent: a new name, a new look, or both.
       const { path: newPath } = await renameFolder(path, trimmed === currentName ? undefined : trimmed, styleChanged ? style : {});
       onRenamed(path, newPath);
       onClose();

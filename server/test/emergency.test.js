@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// Emergency Access: the 2-of-2 key split, the time gate, "deny wins", neutral answers, limits, the deny token,
-// the owner's API, the audit chain, the daily job and cleanup. (The allowlist and scope tests: emergency-allowlist.test.js.)
-// Security model, in plain words: utils/emergency/config.js. Everything here runs against in-memory models.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -26,7 +21,6 @@ const withEnv = async (name, value, fn) => {
 };
 const everything = () => JSON.stringify(world.tables, (k, v) => (v && v.type === 'Buffer' ? Buffer.from(v.data).toString('hex') + '|' + Buffer.from(v.data).toString('base64') : v)) + JSON.stringify(world.mails);
 
-// ---------- the key split ----------
 test('key split: E = K1 xor K2; the database alone cannot unwrap; only the right K1 does; K1 is stored nowhere', async () => {
   W.reset();
   W.seedVault();
@@ -43,7 +37,6 @@ test('key split: E = K1 xor K2; the database alone cannot unwrap; only the right
   assert.equal(k1.length, 32);
   const access = W.accessRow();
 
-  // the construction: unwrap works with K1 xor the stored K2, and with nothing else
   const e = Buffer.alloc(32);
   for (let i = 0; i < 32; i += 1) e[i] = k1[i] ^ access.k2[i];
   assert.deepEqual(unwrapKey(access.wrappedDek, e, access.wrappedDekIv, access.wrappedDekAuthTag), DEK);
@@ -56,15 +49,12 @@ test('key split: E = K1 xor K2; the database alone cannot unwrap; only the right
   assert.equal(kitLib.kitMatches(access, crypto.randomBytes(32)), false);
   assert.equal(kitLib.kitMatches(null, k1), false);
 
-  // K1 is not in any collection (hex, base64, kit text), any email or any log line
   const all = everything();
   assert.ok(!all.includes(k1.toString('hex')) && !all.includes(k1.toString('base64')), 'K1 not stored in any encoding');
   assert.ok(!all.toUpperCase().includes(made.kit.replace(/-/g, '').slice(0, 20)) && !all.includes(made.kit), 'the kit text is not stored or mailed');
   assert.ok(!lines.join('\n').includes(made.kit), 'not logged');
   assert.ok(!JSON.stringify(world.tables.auditevents).includes(k1.toString('hex')));
-  // the owner's mail says it happened and nothing more
   assert.match(W.lastMailTo(OWNER_EMAIL).subject, /Emergency access was set up/);
-  // the status call has no secrets in it
   const status = await call(E.status, W.owner());
   const shown = JSON.stringify(status.json);
   assert.ok(!/k2|kitHash|kitSalt|wrappedDek|"kit"/.test(shown), 'status shows configuration only');
@@ -90,25 +80,21 @@ test('regenerating the kit invalidates the old one, cancels a request, ends sess
   assert.equal(W.requestRows()[0].status, 'cancelled');
   assert.match(W.lastMailTo(OWNER_EMAIL).subject, /You replaced your emergency access kit/);
   assert.match(W.lastMailTo(CONTACT_EMAIL).subject, /kit was replaced/);
-  // the old kit cannot start anything, even with a valid code
   assert.equal((await W.contactRequests(first.kit)).status, 401);
   assert.equal((await W.contactRequests(out.json.kit)).status, 201);
 });
 
-// ---------- the owner's API ----------
 test('setup needs a fresh emailed code for that action, and refuses bad input before using it', async () => {
   W.reset();
   const { folders } = W.seedVault();
   const base = { contactEmail: CONTACT_EMAIL, contactLabel: 'Sam', waitMinutes: 4320, scope: { mode: 'all' } };
 
-  // no code, a wrong code, a code made for another action
   assert.equal((await call(E.setup, W.owner({ body: base }))).error?.status, 401);
   const fresh = await W.ownerCode('setup');
   assert.equal((await call(E.setup, W.owner({ body: { ...base, ...fresh, code: '000000' } }))).error?.status, 401);
   const other = await W.ownerCode('revoke');
   assert.equal((await call(E.setup, W.owner({ body: { ...base, ...other } }))).error?.status, 401, 'a revoke code cannot set up');
 
-  // validation happens BEFORE the code is spent
   const spendable = await W.ownerCode('setup');
   const bad = async (patch, message) => {
     const out = await call(E.setup, W.owner({ body: { ...base, ...spendable, ...patch } }));
@@ -125,15 +111,12 @@ test('setup needs a fresh emailed code for that action, and refuses bad input be
   const foreign = W.addFolder('Theirs', W.BOB);
   await bad({ scope: { mode: 'folders', folderIds: [String(foreign._id)] } }, "another account's folder");
   await bad({ scope: { mode: 'everything' } }, 'unknown mode');
-  // ...so the same code still works for a good request
   const ok = await call(E.setup, W.owner({ body: { ...base, ...spendable, scope: { mode: 'folders', folderIds: [String(folders.taxes._id)] } } }));
   assert.equal(ok.status, 201, ok.error?.message);
   assert.ok(ok.json.kit && ok.json.kitVersion === 1);
   assert.equal(ok.json.scope.folders[0].path, 'Taxes');
-  // already configured
   const again = await W.ownerCode('setup');
   assert.equal((await call(E.setup, W.owner({ body: { ...base, ...again } }))).error?.status, 409);
-  // a code is single use: the one just spent on the setup is gone
   assert.equal((await call(E.revoke, W.owner({ body: spendable }))).error?.status, 401);
 });
 
@@ -159,14 +142,12 @@ test('the waiting period is 3, 7 or 14 days; 2 minutes only in demo mode; a clie
   await withEnv('EMERGENCY_DEMO_MODE', 'TRUE ', async () => assert.equal(config.demoMode(), true));
   await withEnv('EMERGENCY_DEMO_MODE', 'yes', async () => assert.equal(config.demoMode(), false, 'only the exact word true'));
 
-  // the release time comes from the server clock and the stored wait, whatever the client sends
   W.reset();
   const made = await W.setupEmergency({ waitMinutes: 4320 });
   const before = Date.now();
   const sent = await W.contactRequests(made.kit, { releaseAt: '2000-01-01T00:00:00Z', waitMinutes: 2, now: '2000-01-01', requestedAt: '2000-01-01', at: 0 });
   assert.equal(sent.status, 201);
   const row = W.requestRows()[0];
-  // The wait is counted from the moment the owner was told, never from anything the client sent.
   assert.ok(row.ownerNotifiedAt instanceof Date && row.ownerNotifiedAt.getTime() >= row.requestedAt.getTime());
   const wait = row.releaseAt.getTime() - row.ownerNotifiedAt.getTime();
   assert.equal(wait, 4320 * 60 * 1000, 'the stored wait decides, not the request');
@@ -174,7 +155,6 @@ test('the waiting period is 3, 7 or 14 days; 2 minutes only in demo mode; a clie
   assert.equal(row.claimExpiresAt.getTime() - row.releaseAt.getTime(), config.claimDays() * 864e5);
 });
 
-// ---------- the time gate ----------
 test('time gate: start-session is refused before releaseAt even with the right kit and a valid code, and works after', async () => {
   W.reset();
   W.seedVault();
@@ -185,10 +165,8 @@ test('time gate: start-session is refused before releaseAt even with the right k
   assert.equal(early.error?.status, 409);
   assert.equal(early.error?.code, 'NOT_YET');
   assert.equal(W.world.tables.sessions.length, 0, 'no session exists');
-  // an attempt that fails on timing does not burn the owner's request or the contact's kit
   assert.equal(W.requestRows()[0].status, 'pending');
 
-  // time passes (the database says so; nothing the client sends can)
   const forged = await W.contactStarts(made.kit, { releaseAt: '2000-01-01', now: Date.now() + 1e10 });
   assert.equal(forged.error?.code, 'NOT_YET', 'a forged time changes nothing');
   W.makeReleasable();
@@ -199,7 +177,6 @@ test('time gate: start-session is refused before releaseAt even with the right k
   assert.equal(world.tables.sessions.filter((s) => s.emergency).length, 1);
   const ends = new Date(started.json.endsAt).getTime() - Date.now();
   assert.ok(ends > 3.9 * 3600 * 1000 && ends <= 4 * 3600 * 1000 + 5000, 'at most 4 hours');
-  // the owner is told, on the chain
   assert.match(W.lastMailTo(OWNER_EMAIL).subject, /started a session/);
 });
 
@@ -218,14 +195,13 @@ test('a request nobody claims in time expires; an expired one cannot start a ses
   assert.equal(world.tables.sessions.length, 0);
 });
 
-// ---------- deny wins ----------
 test('deny before release prevents start-session; a request denied by the owner needs 24 hours before another', async () => {
   W.reset();
   W.seedVault();
   const made = await W.setupEmergency({ waitMinutes: 2 });
   assert.equal((await W.contactRequests(made.kit)).status, 201);
   const row = W.requestRows()[0];
-  W.makeReleasable(row); // the wait is over but nobody has started a session yet
+  W.makeReleasable(row);
 
   const denied = await call(E.denyRequest, W.owner({ params: { id: String(row._id) } }));
   assert.equal(denied.status, 200);
@@ -237,7 +213,6 @@ test('deny before release prevents start-session; a request denied by the owner 
   assert.ok(start.error, 'start-session is refused after a denial');
   assert.equal(world.tables.sessions.length, 0);
 
-  // 24-hour cooldown (shown only to a contact who has proved who they are)
   const soon = await W.contactRequests(made.kit);
   assert.equal(soon.error?.status, 429);
   assert.match(soon.error.message, /24 hours/);
@@ -289,7 +264,6 @@ test('the one-click deny link: single use, hashed at rest, can only deny, generi
   assert.ok(!everything().includes(`"${token}"`) && !JSON.stringify(world.tables.emergencyrequests).includes(token), 'the token itself is not stored');
   assert.equal(row.denyTokenHash, W.sha256(token));
 
-  // a wrong token: same page, nothing happens
   const wrong = await call(E.denyByToken, { params: { token: 'A'.repeat(43) } });
   assert.equal(wrong.status, 200);
   assert.equal(row.status, 'pending');
@@ -297,7 +271,6 @@ test('the one-click deny link: single use, hashed at rest, can only deny, generi
   assert.equal(junk.status, 200);
   assert.equal(junk.body, wrong.body, 'the same page for any outcome');
 
-  // the right token denies once
   const first = await call(E.denyByToken, { params: { token } });
   assert.equal(first.status, 200);
   assert.equal(first.body, wrong.body);
@@ -311,7 +284,6 @@ test('the one-click deny link: single use, hashed at rest, can only deny, generi
   assert.equal(W.world.mails.length, mailsAfterFirst, 'a second click does nothing');
   assert.equal(world.tables.auditevents.filter((e) => e.type === 'emergency_denied').length, 1);
 
-  // it cannot do anything but deny: not start a session, not approve, not touch a released request
   W.reset();
   W.seedVault();
   const made2 = await W.setupEmergency({ waitMinutes: 2 });
@@ -326,14 +298,12 @@ test('the one-click deny link: single use, hashed at rest, can only deny, generi
   assert.equal(W.world.tables.sessions.filter((s) => s.emergency).length, 1, 'a session is untouched by it');
 });
 
-// ---------- neutral answers ----------
 test('anti-enumeration: unknown owner, wrong contact, wrong kit and wrong code all look the same', async () => {
   W.reset();
   W.seedVault();
   const made = await W.setupEmergency({ waitMinutes: 2 });
   const validCode = await W.contactCode();
 
-  // request-code: always 200 with the same body; a code goes out only for a real match
   const askers = [
     { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL },
     { ownerEmail: 'nobody@example.com', contactEmail: CONTACT_EMAIL },
@@ -353,7 +323,6 @@ test('anti-enumeration: unknown owner, wrong contact, wrong kit and wrong code a
   assert.equal(W.mailsTo('nobody@example.com').length, 0);
   assert.ok(!W.world.mails.some((m) => m.to === OWNER_EMAIL && /code/i.test(m.subject) && /emergency access/i.test(m.subject) && m.subject.includes('request emergency access')), 'the owner is not sent the contact code');
 
-  // request / start-session: the same 401 for every kind of wrong
   const kitGood = made.kit;
   const kitWrong = kitLibWrongKit();
   const freshCode = await W.contactCode({ ip: '203.0.113.77' });
@@ -390,7 +359,6 @@ test('lockouts: failures count against the connection and the details it typed, 
   const made = await W.setupEmergency({ waitMinutes: 2 });
   const wrong = kitLibWrongKit();
 
-  // five guesses at one code kill it, even for the correct number afterwards
   const code = await W.contactCode();
   for (let i = 0; i < 5; i += 1) {
     const out = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: String((Number(code) + 1 + i) % 1000000).padStart(6, '0'), kit: made.kit }, { ip: `203.0.113.${100 + i}` });
@@ -399,8 +367,6 @@ test('lockouts: failures count against the connection and the details it typed, 
   const dead = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code, kit: made.kit }, { ip: '203.0.113.120' });
   assert.equal(dead.error?.status, 401, 'the code is gone after five guesses');
 
-  // Eight more failures from OTHER connections do not lock the owner's real contact (F6): a stranger who only knows the
-  // owner's address can no longer shut the contact out.
   for (let i = 0; i < 8; i += 1) {
     await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: `203.0.113.${130 + i}` });
   }
@@ -411,7 +377,6 @@ test('lockouts: failures count against the connection and the details it typed, 
   W.seedVault();
   const again = await W.setupEmergency({ waitMinutes: 2 });
 
-  // The same connection repeating the same details is locked after eight failures (even with the right kit afterwards)...
   const statuses = [];
   for (let i = 0; i < 9; i += 1) {
     statuses.push((await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '198.51.100.7' })).error?.status);
@@ -421,14 +386,12 @@ test('lockouts: failures count against the connection and the details it typed, 
   const locked = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: lockedCode, kit: again.kit }, { ip: '198.51.100.7' });
   assert.equal(locked.error?.status, 429, 'locked for that connection, even with the right kit and a live code');
   assert.equal(W.requestRows().length, 0);
-  // ...and says the same for an address that does not exist (it counts attempts, not accounts)
   const unknown = [];
   for (let i = 0; i < 9; i += 1) {
     unknown.push((await W.publicCall(E.request, { ownerEmail: 'ghost@example.com', contactEmail: CONTACT_EMAIL, code: '123456', kit: wrong }, { ip: '192.0.2.77' })).error?.status);
   }
   assert.deepEqual(unknown, [401, 401, 401, 401, 401, 401, 401, 401, 429], 'a made-up address locks after the same number of tries');
 
-  // one connection that keeps failing is locked too (coarser limit), whichever owner it names
   W.reset();
   const many = [];
   for (let i = 0; i < 27; i += 1) {
@@ -436,7 +399,6 @@ test('lockouts: failures count against the connection and the details it typed, 
   }
   assert.equal(many[0], 401);
   assert.equal(many.at(-1), 429, 'per-connection lockout');
-  // an IPv6 connection is counted by its /64, so rotating the low bits does not buy a new budget
   W.reset();
   const v6 = [];
   for (let i = 0; i < 27; i += 1) {
@@ -458,7 +420,6 @@ test('code emails: at most five an hour per owner address, and a code can only b
   }
   assert.equal(sent, 5, 'five codes, then silence');
 
-  // a "request" code cannot start a session and a "session" code cannot make a request
   W.reset();
   W.seedVault();
   const made2 = await W.setupEmergency({ waitMinutes: 2 });
@@ -481,11 +442,9 @@ test('one open request at a time, and a request needs the kit AND a fresh code',
   const direct = await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code: W.codeFrom(W.lastMailTo(CONTACT_EMAIL)), kit: made.kit });
   assert.equal(direct.error?.status, 409, 'even a valid request code cannot open a second request');
   assert.equal(W.requestRows().length, 1);
-  // a code alone, or a kit alone, is not enough
   const code = await W.contactCode();
   assert.equal((await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code })).error?.status, 401);
   assert.equal((await W.publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, kit: made.kit })).error?.status, 401);
-  // the receipt and the owner's notice went out at once
   assert.match(W.mailsTo(CONTACT_EMAIL).find((m) => /received your emergency access request/.test(m.subject))?.subject || '', /received/);
   assert.equal(W.mailsTo(OWNER_EMAIL).filter((m) => /Someone requested emergency access/.test(m.subject)).length, 1);
 });
@@ -511,7 +470,6 @@ test('the owner can approve early (fresh code) and revoke (fresh code), and revo
   assert.equal(started.status, 200);
   assert.equal(world.tables.sessions.filter((s) => s.emergency).length, 1);
 
-  // revoke: needs a code, destroys the key material, cancels everything, ends the session NOW
   assert.equal((await call(E.revoke, W.owner({ body: {} }))).error?.status, 401);
   const revokeCode = await W.ownerCode('revoke');
   const revoked = await call(E.revoke, W.owner({ body: revokeCode }));
@@ -525,11 +483,9 @@ test('the owner can approve early (fresh code) and revoke (fresh code), and revo
   assert.equal((await W.contactRequests(made.kit)).status, 401, 'a revoked setup answers like an unknown one');
   const status = await call(E.status, W.owner());
   assert.equal(status.json.configured, false);
-  // ...and it can be set up again afterwards
   assert.equal((await W.setupEmergency({ waitMinutes: 2 })).kitVersion, 1);
 });
 
-// ---------- the vault key ----------
 test('a password change keeps the wrapped DEK working; any change of the vault key invalidates the setup', async () => {
   W.reset();
   W.seedVault();
@@ -537,7 +493,6 @@ test('a password change keeps the wrapped DEK working; any change of the vault k
   const { finalizeReset } = require('../utils/accountReset');
   const { fingerprintDEK } = require('../utils/crypto');
 
-  // password change / new recovery key: the SAME vault key is re-wrapped, so emergency access still opens it
   const user = world.tables.users.find((u) => String(u._id) === String(ALICE));
   user.dekFingerprint = fingerprintDEK(DEK);
   user.save = async () => user;
@@ -545,7 +500,6 @@ test('a password change keeps the wrapped DEK working; any change of the vault k
   assert.ok(W.accessRow(), 'still set up');
   assert.deepEqual(kitLib.unwrapWithKit(W.accessRow(), kitLib.parseKit(made.kit)), DEK);
 
-  // a different vault key (the start-over path): the setup is removed, sessions and requests with it, the owner told
   await W.contactRequests(made.kit);
   W.makeReleasable();
   assert.equal((await W.contactStarts(made.kit)).status, 200);
@@ -559,7 +513,6 @@ test('a password change keeps the wrapped DEK working; any change of the vault k
   assert.equal(user.dekFingerprint, fingerprintDEK(newDek));
 });
 
-// ---------- the audit chain ----------
 test('every emergency event is on the owner’s chain with actor "emergency", ids only, and the chain stays intact', async () => {
   W.reset();
   const { docs } = W.seedVault();
@@ -575,7 +528,7 @@ test('every emergency event is on the owner’s chain with actor "emergency", id
   await call(W.D.viewDocument, { userId: via.req.userId, dek: via.req.dek, emergency: via.req.emergency, params: { id: String(docs.tax24._id) }, query: { for: 'silent' } });
   const owner = W.owner();
   const requestId = W.requestRows()[0]._id;
-  await call(E.denyRequest, W.owner({ params: { id: String(requestId) } })); // too late: refused, records nothing
+  await call(E.denyRequest, W.owner({ params: { id: String(requestId) } }));
 
   const types = world.tables.auditevents.map((e) => e.type);
   assert.deepEqual(types, [
@@ -590,7 +543,6 @@ test('every emergency event is on the owner’s chain with actor "emergency", id
   const chain = await verifyChain(ALICE);
   assert.equal(chain.ok, true, chain.reason);
   assert.equal(chain.checked, 7);
-  // editing an event's actor breaks it (the field is signed)
   world.tables.auditevents[1].actor = null;
   assert.equal((await verifyChain(ALICE)).ok, false);
   assert.ok(owner);
@@ -614,7 +566,6 @@ test('the activity timeline flags a started emergency session and shows the acto
   assert.equal(filtered.json.events.length, out.json.events.filter((e) => e.type.startsWith('emergency')).length);
 });
 
-// ---------- the daily job ----------
 test('the daily job: one reminder a day while pending, one "wait ended" notice each, expiry; running twice does nothing more', async () => {
   W.reset();
   W.seedVault();
@@ -623,10 +574,8 @@ test('the daily job: one reminder a day while pending, one "wait ended" notice e
   const row = W.requestRows()[0];
   const count = (pattern, to) => W.mailsTo(to).filter((m) => pattern.test(m.subject)).length;
 
-  // day 0: nothing yet
   let out = await service.runMaintenance({ now: new Date() });
   assert.deepEqual(out, { reminders: 0, released: 0, expired: 0 });
-  // a day later: one reminder, and only one however often it runs
   const day1 = new Date(Date.now() + 25 * 3600 * 1000);
   out = await service.runMaintenance({ now: day1 });
   assert.equal(out.reminders, 1);
@@ -636,7 +585,6 @@ test('the daily job: one reminder a day while pending, one "wait ended" notice e
   assert.equal((await service.runMaintenance({ now: day2 })).reminders, 1, 'and again a day after that');
   assert.ok(!W.world.mails.slice(-2).some((m) => /deny\//.test(m.text)), 'reminders carry no one-click link');
 
-  // the wait ends: the contact is told once, the owner is told once
   row.releaseAt = new Date(Date.now() - 1000);
   out = await service.runMaintenance({ now: new Date() });
   assert.equal(out.released, 1);
@@ -645,12 +593,10 @@ test('the daily job: one reminder a day while pending, one "wait ended" notice e
   assert.equal(count(/The waiting period ended/, OWNER_EMAIL), 1);
   assert.equal(world.tables.auditevents.filter((e) => e.type === 'emergency_released').length, 1);
   assert.equal(row.status, 'pending', 'still deniable until a session starts');
-  // starting a session does not repeat the notice
   assert.equal((await W.contactStarts(made.kit)).status, 200);
   assert.equal(count(/Emergency access is now available/, CONTACT_EMAIL), 1);
   assert.equal(world.tables.auditevents.filter((e) => e.type === 'emergency_released').length, 1);
 
-  // nobody claims a different request in time: it expires
   W.reset();
   W.seedVault();
   const made2 = await W.setupEmergency({ waitMinutes: 2 });
@@ -672,7 +618,6 @@ test('the reminders cron route also runs the emergency upkeep (no second cron en
   assert.match(route, /runEmergencyMaintenance\(\)/);
 });
 
-// ---------- cleanup ----------
 test('account deletion and the vault wipe remove the setup, its requests, codes and emergency sessions', async () => {
   const { deleteAccountData } = require('../utils/accountDeletion');
   const { wipeVault } = require('../utils/accountReset');
@@ -683,8 +628,7 @@ test('account deletion and the vault wipe remove the setup, its requests, codes 
     await W.contactRequests(made.kit);
     W.makeReleasable();
     await W.contactStarts(made.kit);
-    await W.contactCode(); // leaves a live session-code behind
-    // an ordinary login session of the same account, which a wipe is not responsible for removing here
+    await W.contactCode();
     assert.equal(world.tables.emergencyaccesses.length, 1);
     assert.ok(world.tables.sessions.some((s) => s.emergency));
     if (how === 'delete') await deleteAccountData(ALICE, { transaction: false });
@@ -696,7 +640,6 @@ test('account deletion and the vault wipe remove the setup, its requests, codes 
   }
 });
 
-// ---------- emails ----------
 test('every emergency email is generic: no file name, a unique subject, https links only', async () => {
   W.reset();
   const { docs } = W.seedVault();

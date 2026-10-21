@@ -9,11 +9,6 @@ const MIN_CRON_SECRET_LENGTH = 16;
 
 const read = (name) => (process.env[name] ?? '').trim();
 
-/**
- * What is wrong with the environment for a production deployment, as a list of
- * `{ name, problem }`. Names only: a value is never put in a message, because
- * these are secrets and the message ends up in logs.
- */
 function productionConfigProblems() {
   const problems = [];
   const add = (name, problem) => problems.push({ name, problem });
@@ -53,8 +48,6 @@ function productionConfigProblems() {
     if (!Number.isFinite(quota) || quota <= 0) add('STORAGE_QUOTA_MB', 'must be a positive number');
   }
 
-  // The secret Vercel Cron presents to the daily jobs (reminders, Trash clean-up, Emergency Access upkeep). Without it
-  // the routes answer 404 and none of that ever runs, silently - so production refuses to start without a real one.
   const cronSecret = read('CRON_SECRET');
   if (!cronSecret) add('CRON_SECRET', 'missing (the daily reminder and clean-up jobs could not run)');
   else if (cronSecret.length < MIN_CRON_SECRET_LENGTH) add('CRON_SECRET', `must be at least ${MIN_CRON_SECRET_LENGTH} characters`);
@@ -64,13 +57,11 @@ function productionConfigProblems() {
     if (!Number.isFinite(hours) || hours < 1 || hours > 168) add('SESSION_ABSOLUTE_HOURS', 'must be a number of hours from 1 to 168');
   }
 
-  // The key that signs the activity log (a missing or short key must stop the server, not weaken the log).
   for (const { name, problem } of auditConfigProblems()) add(name, problem);
 
   return problems;
 }
 
-/** Throws (naming variables only) when production is misconfigured. No-op outside production. */
 function assertProductionConfig() {
   if (!isProduction()) return;
   const problems = productionConfigProblems();

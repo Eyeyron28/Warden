@@ -1,24 +1,5 @@
-/**
- * Drives the whole Emergency Access flow end to end against a THROWAWAY database, with a real HTTP server and real
- * waiting periods (EMERGENCY_DEMO_MODE, a 2-minute wait). DEMO ONLY.
- *
- *   cd server
- *   MONGO_URI="mongodb://127.0.0.1:27017/warden_demo" node scripts/emergency-demo.js            # real 2-minute waits (~5 minutes)
- *   MONGO_URI="..." node scripts/emergency-demo.js --fast                                       # backdates the clock in the database instead
- *
- * Safety: it will NOT read server/.env (dotenv is switched off for this process), it refuses to run without an
- * explicit MONGO_URI, and every email is captured in memory instead of being sent (so no real mailbox is ever
- * contacted and no SMTP setting is needed). It prints the database NAME, never the URI. The account it makes is
- * deleted at the end.
- *
- * What it shows, in order: setup (folder scope) -> contact request -> start-session refused before the wait ->
- * owner denies -> start-session refused, 24-hour cooldown -> request again -> wait -> start-session -> read a file
- * inside the scope -> fail to read one outside it -> fail to delete / upload / open anything else ->
- * the owner's audit timeline and "Verify log".
- */
 const Module = require('module');
 
-// 1. No .env, ever: dotenv becomes a no-op for everything loaded after this line.
 const originalLoad = Module._load;
 Module._load = function patched(request, ...rest) {
   if (request === 'dotenv') return { config: () => ({}) };
@@ -36,7 +17,7 @@ Object.assign(process.env, {
   EMERGENCY_DEMO_MODE: 'true',
   SIGNUP_MODE: 'open',
   PUBLIC_APP_URL: 'https://warden.example.com',
-  SMTP_HOST: '', SMTP_PORT: '', SMTP_USER: '', SMTP_PASS: '', // (mail is captured below anyway)
+  SMTP_HOST: '', SMTP_PORT: '', SMTP_USER: '', SMTP_PASS: '',
 });
 delete process.env.VERCEL;
 delete process.env.OTP_ENABLED;
@@ -44,7 +25,6 @@ delete process.env.OTP_ENABLED;
 const path = require('path');
 const crypto = require('crypto');
 
-// 2. Capture mail instead of sending it.
 const outbox = [];
 const emailModulePath = require.resolve('../utils/email');
 const realEmail = require(emailModulePath);
@@ -77,7 +57,7 @@ async function api(method, route, { token, body, form, ip } = {}) {
   const response = await fetch(base + route, { method, headers, body: payload });
   const text = await response.text();
   let json = null;
-  try { json = JSON.parse(text); } catch { /* html page */ }
+  try { json = JSON.parse(text); } catch {  }
   return { status: response.status, json, text };
 }
 const message = (r) => r.json?.error?.message || r.json?.message || '';
@@ -85,7 +65,7 @@ const show = (label, r, extra = '') => say(`  ${label.padEnd(58)} -> HTTP ${r.st
 const lastCodeTo = (address) => {
   const mails = outbox.filter((m) => m.to === address);
   const found = mails.length ? /(?<![\d-])(\d{6})(?![\d-])/.exec(mails.at(-1).text) : null;
-  return found ? found[1] : '000000'; // no code was sent (for example the setup was turned off)
+  return found ? found[1] : '000000';
 };
 const subjectsTo = (address) => outbox.filter((m) => m.to === address).map((m) => m.subject);
 
@@ -102,8 +82,6 @@ async function ownerCode(token, action) {
   return { challengeToken: started.json.challengeToken, code: lastCodeTo(OWNER) };
 }
 
-// The real limit is five code emails an hour per owner address; the demo takes longer than a few minutes of mail, so it
-// clears that one counter where it says an hour has passed (the lockout counters are left alone).
 async function hourPasses(why) {
   const result = await mongoose.connection.db.collection('ratelimits').deleteMany({ bucket: 'emergency-code-owner' });
   say(`  (${why}: the code-email counter is reset in the database, ${result.deletedCount} row)`);

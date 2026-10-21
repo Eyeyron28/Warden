@@ -7,9 +7,6 @@ import Icon from './Icon.jsx';
 import site from './site.module.css';
 import styles from './LegalModal.module.css';
 
-// Draft, not legal advice - the text shown here is the same draft as the
-// /terms and /privacy pages.
-
 const DOCUMENTS = {
   terms: { label: 'Terms of use', sections: TERMS_SECTIONS },
   privacy: { label: 'Privacy policy', sections: PRIVACY_SECTIONS },
@@ -17,18 +14,6 @@ const DOCUMENTS = {
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const END_TOLERANCE_PX = 24;
 
-/**
- * The Terms of use and Privacy policy, in a dialog on top of the signup
- * form instead of a separate page, so nobody loses what they typed.
- * "Read" means scrolled to the end of that document (or it fits without
- * scrolling) - the signup form keeps its agreement checkbox disabled until
- * both are read. Only the two tabs, the text and the footer button: no header.
- * Traps focus, closes on Escape, locks page scroll.
- *
- * Links inside the legal text point at the standalone pages; here they
- * would navigate away from the form, so they switch tabs (or open in a new
- * tab) instead.
- */
 function LegalModal({ tab, onTabChange, read, onRead, onClose }) {
   const dialogRef = useRef(null);
   const scrollRef = useRef(null);
@@ -39,8 +24,6 @@ function LegalModal({ tab, onTabChange, read, onRead, onClose }) {
     if (node.scrollTop + node.clientHeight >= node.scrollHeight - END_TOLERANCE_PX) onRead(tab);
   }, [onRead, tab]);
 
-  // New tab: back to the top, and a short document that needs no scrolling
-  // counts as read straight away.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     const frame = requestAnimationFrame(checkReachedEnd);
@@ -84,8 +67,6 @@ function LegalModal({ tab, onTabChange, read, onRead, onClose }) {
     if (!link) return;
     const href = link.getAttribute('href');
     if (!href || href.startsWith('mailto:')) return;
-    // Capture phase + stopPropagation: the legal text's links are React Router
-    // <Link>s, whose own click handler would otherwise navigate away first.
     event.preventDefault();
     event.stopPropagation();
     if (href.startsWith('/privacy')) onTabChange('privacy');

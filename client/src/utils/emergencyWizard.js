@@ -1,12 +1,3 @@
-/**
- * The Emergency Access setup wizard, as plain functions (the screens in components/EmergencyWizard.jsx only draw
- * what these decide). One step per screen:
- *
- *   contact -> wait -> scope -> confirm -> kit
- *
- * Nothing here touches the network or any storage.
- */
-
 export const STEPS = Object.freeze(['contact', 'wait', 'scope', 'confirm', 'kit']);
 export const STEP_TITLES = Object.freeze({
   contact: 'Who can ask?',
@@ -26,12 +17,10 @@ const DAY_CHOICES = Object.freeze([
 ]);
 export const DEMO_CHOICE = Object.freeze({ minutes: 2, label: '2 minutes (demo)', detail: 'For demonstrations only. Not a real safeguard.', demo: true });
 
-/** The waits to offer. The 2-minute demo option exists ONLY when the server says demo mode is on. */
 export function waitChoices(demoMode) {
   return demoMode === true ? [DEMO_CHOICE, ...DAY_CHOICES] : [...DAY_CHOICES];
 }
 
-/** "4320" -> "3 days"; 2 -> "2 minutes"; other numbers in days/hours. */
 export function describeWait(minutes) {
   if (minutes === DEMO_CHOICE.minutes) return '2 minutes (demo)';
   const choice = DAY_CHOICES.find((entry) => entry.minutes === minutes);
@@ -43,7 +32,6 @@ export function describeWait(minutes) {
 
 const EMAIL_RE = /^[^\s@,;<>()[\]"]+@[^\s@,;<>()[\]"]+\.[^\s@,;<>()[\]"]+$/;
 
-/** The contact's name (optional label, at most 60 characters) and email (one address, not your own). */
 export function validateContact({ label = '', email = '' } = {}, ownEmail = '') {
   const errors = {};
   if ([...String(label).trim()].length > LABEL_MAX) errors.label = `Use ${LABEL_MAX} characters or fewer.`;
@@ -69,7 +57,6 @@ export function validateScope({ mode, folderIds = [] } = {}) {
 
 export const initialWizardState = () => ({ label: '', email: '', waitMinutes: null, scopeMode: null, folderIds: [] });
 
-/** Whether the screen for `step` may be left with Next. (The confirm step has its own Create flow.) */
 export function stepValidation(step, state, { demoMode = false, ownEmail = '' } = {}) {
   if (step === 'contact') return validateContact({ label: state.label, email: state.email }, ownEmail);
   if (step === 'wait') return validateWait(state.waitMinutes, demoMode);
@@ -81,12 +68,10 @@ export const nextStep = (step) => STEPS[Math.min(STEPS.indexOf(step) + 1, STEPS.
 export const previousStep = (step) => STEPS[Math.max(STEPS.indexOf(step) - 1, 0)];
 export const stepNumber = (step) => STEPS.indexOf(step) + 1;
 
-/** Adds or removes one folder id (a new array each time). */
 export function toggleFolder(folderIds, id) {
   return folderIds.includes(id) ? folderIds.filter((entry) => entry !== id) : [...folderIds, id];
 }
 
-/** The body of POST /api/emergency/setup, from the wizard's state (the code fields are added by the caller). */
 export function setupBody(state) {
   return {
     contactEmail: state.email.trim(),
@@ -96,7 +81,6 @@ export function setupBody(state) {
   };
 }
 
-/** The lines of the confirm screen. */
 export function summaryLines(state, folderChoices = []) {
   const byId = new Map(folderChoices.map((folder) => [folder.id, folder.path]));
   const names = state.folderIds.map((id) => byId.get(id)).filter(Boolean);
@@ -108,11 +92,9 @@ export function summaryLines(state, folderChoices = []) {
   ];
 }
 
-/** The Emergency Kit screen cannot be closed until the owner confirms they have saved or printed it. */
 export const KIT_ACK_TEXT = 'I’ve saved or printed the kit. I understand it cannot be shown again.';
 export const canLeaveKitScreen = ({ acknowledged }) => acknowledged === true;
 
-/** A folder list sorted for a tree: each entry with its depth (number of slashes). */
 export function folderTree(folderChoices) {
   return [...folderChoices]
     .sort((a, b) => a.path.localeCompare(b.path))

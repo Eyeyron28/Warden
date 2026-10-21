@@ -1,9 +1,3 @@
-/**
- * The public site's own icon set: drawn by hand on a 24px grid, one
- * consistent 1.5px stroke, round caps and joins, currentColor. Kept
- * deliberately small - only what the public pages actually use. (The
- * vault UI after login keeps using Phosphor.)
- */
 const PATHS = {
   lock: (
     <>

@@ -28,7 +28,6 @@ const ALLOWLIST = Object.freeze([
   { method: 'GET', path: /^\/api\/emergency\/session-info$/, note: 'the contact screen learns its own mode and end time' },
 ]);
 
-/** 'GET /api/documents/abc/view' -> the allowlist entry, or null. HEAD counts as GET. */
 function matchAllowlist(method, fullPath) {
   const verb = String(method || '').toUpperCase() === 'HEAD' ? 'GET' : String(method || '').toUpperCase();
   const path = String(fullPath || '').replace(/\/+$/, '') || '/';
@@ -42,7 +41,6 @@ function forbidden() {
   return error;
 }
 
-/** Throws a 403 unless this request is on the allowlist. Call only for emergency sessions. */
 function assertEmergencyAllowed(req) {
   const fullPath = `${req.baseUrl || ''}${req.path || ''}`;
   if (!matchAllowlist(req.method, fullPath)) {

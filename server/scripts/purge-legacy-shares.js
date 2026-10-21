@@ -1,22 +1,3 @@
-/**
- * One-off cleanup for the share-link redesign.
- *
- * Old share links stored their secret in plaintext next to a copy of the
- * whole vault key (wrapped under a key derived from that secret), so they
- * cannot be made safe. This removes every one of those records - the whole
- * legacy `sharetokens` collection - and with it the old fields. The new
- * design lives in the separate `shares` and `sharedfiles` collections and is
- * never touched here. Old links then show the generic "invalid or expired"
- * page.
- *
- *   node scripts/purge-legacy-shares.js            dry run (default): counts and
- *                                                  reports, deletes NOTHING
- *   node scripts/purge-legacy-shares.js --confirm  actually deletes
- *
- * Connects to MONGO_URI from the environment / .env. The database NAME is
- * printed so you can check which database it is about to act on; the URI
- * itself (which contains credentials) is never printed.
- */
 require('dotenv').config();
 
 const mongoose = require('mongoose');

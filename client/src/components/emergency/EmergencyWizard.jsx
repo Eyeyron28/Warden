@@ -21,14 +21,6 @@ import {
 } from '../../utils/emergencyWizard.js';
 import styles from './emergency.module.css';
 
-/**
- * The setup wizard: contact -> waiting period -> what they can see -> confirm (emailed code, then Create).
- * One step per screen. The Emergency Kit screen that follows is the caller's (it must outlive this component's
- * form state, and it is the only place the kit is held).
- *
- * `replace` is true when this runs over an existing setup ("Change contact or settings"): the new setup takes the
- * old one's place, which the confirm step says plainly.
- */
 function EmergencyWizard({ demoMode, ownEmail, replace = false, onCancel, onCreated }) {
   const [step, setStep] = useState('contact');
   const [form, setForm] = useState(initialWizardState);
@@ -44,7 +36,6 @@ function EmergencyWizard({ demoMode, ownEmail, replace = false, onCancel, onCrea
   const validation = stepValidation(step, form, { demoMode, ownEmail });
   const errors = touched ? validation.errors : {};
 
-  // The folder tree is only fetched when somebody picks "Selected folders".
   useEffect(() => {
     if (form.scopeMode !== 'folders' || folders !== null) return;
     listFolderChoices()
@@ -73,7 +64,6 @@ function EmergencyWizard({ demoMode, ownEmail, replace = false, onCancel, onCrea
       const result = await setupEmergency(body, codeBody);
       onCreated(result, { contactName: form.label.trim() });
     } catch (err) {
-      // A wrong, expired or used code: ask for a new one. Anything else is shown as it is.
       setFresh(null);
       setError(
         err?.response?.status === 401

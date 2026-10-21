@@ -14,7 +14,6 @@ const src = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-// ---------- a tiny fake element ----------
 const el = (attrs = {}) => {
   const a = { ...attrs };
   return {
@@ -25,8 +24,6 @@ const el = (attrs = {}) => {
 };
 const noText = () => false;
 const hasText = () => true;
-
-// ---------- which words, in which order ----------
 
 test('the words: data-tip first, then aria-label, then the title attribute', () => {
   assert.equal(resolveTip(el({ 'data-tip': 'Tip', 'aria-label': 'Aria', title: 'Title' }), { visibleText: noText }), 'Tip');
@@ -40,7 +37,6 @@ test('a control with visible text of its own shows no tooltip unless it has a da
   assert.equal(resolveTip(el({ 'aria-label': 'Cancel' }), { visibleText: hasText }), '');
   assert.equal(resolveTip(el({ title: 'Cancel upload' }), { visibleText: hasText }), '');
   assert.equal(resolveTip(el({ 'data-tip': 'Encrypt the files and save them to your vault' }), { visibleText: hasText }), 'Encrypt the files and save them to your vault');
-  // a toolbar button whose label is hidden at a narrow width: the same element, asked again, now has a tooltip
   const button = el({ 'aria-label': 'Scan' });
   let wide = true;
   const visible = () => wide;
@@ -82,8 +78,6 @@ test('title suppression: the title moves to data-tip so the browser\'s own toolt
   assert.equal(suppressTitle(el({}), { visibleText: noText }), false);
 });
 
-// ---------- timing ----------
-
 function rig() {
   const timers = [];
   const clock = { t: 0 };
@@ -113,7 +107,7 @@ test('hover: opens after 400 ms of rest, not before; hides when the pointer leav
   assert.deepEqual(log, ['show:Close']);
   engine.leave(a);
   assert.deepEqual(log, ['show:Close', 'hide:Close']);
-  advance(301); // the switch window has passed
+  advance(301);
   const b = make('Star');
   engine.enter(b);
   advance(200);
@@ -129,7 +123,7 @@ test('switching: moving to a neighbour while one shows, or within 300 ms of one 
   const b = make('More actions');
   engine.enter(a);
   advance(400);
-  engine.enter(b); // while a is showing
+  engine.enter(b);
   assert.deepEqual(log.slice(-2), ['hide:Details', 'show:More actions']);
   engine.leave(b);
   clock.t += 250;
@@ -159,7 +153,6 @@ test('it hides on click or activation, scroll, resize and Escape, and does not c
     assert.deepEqual(log, ['show:Download', 'hide:Download'], how);
     assert.equal(engine[how](), false, `${how} with nothing showing does nothing`);
   }
-  // a hover that has not opened yet is cancelled by a press too
   const r = rig();
   const a = r.make('Share');
   r.engine.enter(a);
@@ -204,8 +197,6 @@ test('the words are re-read when the delay is over: words that vanished meanwhil
   assert.deepEqual(log, []);
 });
 
-// ---------- where it goes ----------
-
 test('placement: below, flipped above near the bottom, shifted at least 8 px inside, at most 240 px wide (and the screen minus margins)', () => {
   assert.equal(MAX_WIDTH, 240);
   const tip = { width: 300, height: 40 };
@@ -230,8 +221,6 @@ test('placement: below, flipped above near the bottom, shifted at least 8 px ins
 test('the controls that get tooltips: buttons, links, role="button" and menu items, and anything with data-tip', () => {
   for (const part of ['button', 'a[href]', '[role="button"]', '[role="menuitem"]', '[data-tip]']) assert.ok(CONTROL_SELECTOR.includes(part), part);
 });
-
-// ---------- the texts ----------
 
 const row = (patch) => ({ id: 1, kind: 'upload', name: 'a.pdf', size: 1000, phase: 'sealed', state: 'done', bytesDone: 1000, error: null, destination: '', ...patch });
 const tipOf = (r, job = { status: 'idle', results: [], skipped: [], ignored: [] }) => buildTray({ rows: [r], announce: '' }, job).rows[0].tip;
@@ -275,8 +264,6 @@ test('the status line says "checked" or "not checked" next to Sealed; the import
   assert.match(importLine, /^Imported 5 files, 2 held for review, 1 not saved · each file checked$/);
   assert.equal(buildTray({ rows: [], announce: '' }, done).rows[0].tip, TIPS.importDone);
 });
-
-// ---------- the status icon, rendered ----------
 
 let render;
 test.before(async () => {
@@ -381,7 +368,6 @@ test('disabled controls with a reason: aria-disabled (so hover works) and a data
   const release = strip(read('components/ReleaseDialog.jsx'));
   assert.match(release, /'Type RELEASE to enable'/);
   assert.match(release, /if \(ready\) onConfirm\(typed\.trim\(\)\);/);
-  // a truly disabled control that has a data-tip is found by where the pointer is
   assert.match(strip(read('utils/tooltip.js')), /querySelectorAll\('\[data-tip\]:disabled'\)/);
 });
 

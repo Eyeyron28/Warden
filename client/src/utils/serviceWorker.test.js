@@ -16,20 +16,16 @@ test('the service worker is stamped per build, so every deployment replaces it',
 });
 
 test('the page is never served cache-first, and the API is never touched', () => {
-  // "/" and the shell are not precached as the answer to a request; navigations go to the network first.
   assert.match(source, /request\.mode === 'navigate'[\s\S]*fetch\(request\)[\s\S]*\.catch\(\(\) => caches\.match\(SHELL\)\)/);
   assert.match(source, /BYPASS_PREFIXES = \['\/api\/', '\/shared\/'\]/);
   assert.match(source, /BYPASS_PREFIXES\.some\(\(prefix\) => url\.pathname\.startsWith\(prefix\)\)\) return/);
-  // Cache-first only for the content-hashed bundle files.
   const cacheFirst = source.slice(source.indexOf("startsWith('/assets/')"));
   assert.match(cacheFirst, /cached \|\| fetch/);
 });
 
-// ---- behaviour: the real worker file, run against a fake browser ----
-
 function runWorker() {
   const listeners = {};
-  const stored = new Map(); // what the worker put in the cache: url -> response
+  const stored = new Map();
   const cache = { put: async (request, response) => stored.set(typeof request === 'string' ? request : request.url, response), addAll: async () => {} };
   const caches = {
     open: async () => cache,

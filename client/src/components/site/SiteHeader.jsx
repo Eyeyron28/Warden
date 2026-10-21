@@ -33,12 +33,6 @@ function ThemeButton() {
   );
 }
 
-/**
- * Sticky public header. Gains a hairline border and a backdrop once the
- * page has scrolled. Below 820px the nav collapses into a drawer that
- * traps focus, closes on Escape (returning focus to the menu button), and
- * locks page scroll while open.
- */
 function SiteHeader() {
   const token = useSessionToken();
   const location = useLocation();
@@ -54,12 +48,8 @@ function SiteHeader() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // About and Contact are sections of the home page, so "active" is the
-  // URL hash on "/" rather than a route.
   const isActiveLink = (link) => location.pathname === '/' && location.hash === link.hash;
 
-  // The layout scrolls to a section when the address changes to it. Clicking a link whose address is already the current one
-  // changes nothing, so scroll from here (smoothly, or at once for people who asked for less motion) and close the menu.
   const onSectionClick = (link) => (event) => {
     if (location.pathname !== '/' || location.hash !== link.hash) return;
     event.preventDefault();
@@ -74,7 +64,6 @@ function SiteHeader() {
     if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
   }, []);
 
-  // Navigating anywhere closes the drawer.
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname, location.hash]);
@@ -167,9 +156,6 @@ function SiteHeader() {
         </div>
       </div>
 
-      {/* Portaled to <body>: the header's backdrop-filter (once scrolled)
-          makes it the containing block for position: fixed children, which
-          would otherwise shrink the drawer to the header's own height. */}
       {drawerOpen &&
         createPortal(
         <div className={styles.drawerLayer}>

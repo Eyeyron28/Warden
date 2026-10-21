@@ -1,8 +1,6 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// Make sure the dev console fallback is what's under test, whatever is in .env.
 for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM']) {
   delete process.env[name];
 }
@@ -66,7 +64,6 @@ test('isSafeRecipient accepts plain single addresses', () => {
 });
 
 test('isSafeRecipient: 254 characters is the limit', () => {
-  // 64 (local) + 1 (@) + 63 + 1 + 63 + 1 + 61 = 254, every label within 63.
   const at254 = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`;
   const at255 = `${at254}d`.replace(/d{62}$/, 'd'.repeat(62));
   assert.equal(at254.length, 254);
@@ -125,7 +122,6 @@ test('sendEmail drops a hostile recipient before the console fallback or Nodemai
   assert.equal(result, false);
   assert.equal(logs.length, 0, 'the message body must not be logged for a rejected recipient');
   assert.equal(errors.length, 1);
-  // Only the length is logged: no address, no CRLF, nothing that could start a forged log line.
   assert.match(errors[0], /Refusing to send email: invalid recipient \(\d+ characters\)\./);
   assert.doesNotMatch(errors[0], /\r|\n.*Bcc|victim|attacker|evil/);
 });

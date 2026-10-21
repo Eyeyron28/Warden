@@ -1,8 +1,3 @@
-// What Warden does not protect against. One list, shown on the About
-// section and in the Privacy page (and therefore in the signup dialog), so
-// the copy can't drift between them. Every line has to match the code:
-// see server/utils/sessionStore.js, controllers/shares.controller.js
-// (share links).
 export const LIMITS = [
   {
     title: 'A compromised server while you are signed in',

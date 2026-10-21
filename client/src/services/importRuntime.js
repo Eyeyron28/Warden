@@ -7,15 +7,9 @@ import { outcomeOf, outcomeText } from '../utils/importCard.js';
 import { uploadSlots } from './uploadSlots.js';
 import { quarantineCount } from './quarantineCount.js';
 
-/**
- * What the import job actually does with the world: the zip code, the upload, the folder creation, and what follows a finished
- * import. Kept apart from the job's state machine (services/importJob.js) so that loading the app does not load the zip code.
- */
 export const runtime = {
   runImport,
-  // The finished import in words (screen readers): the real counts, held files never counted as imported.
   outcomeLine: (state) => outcomeText(outcomeOf(state)),
-  // An upload limit stopped the import: "Stopped: <why>. 5 files were imported, 1 held for review, 2 not saved, 40 not sent."
   stoppedLine: (state, why) => {
     const { imported, held, refused, other } = outcomeOf({ skipped: [], ignored: [], ...state });
     const bits = [`${imported} ${imported === 1 ? 'file was' : 'files were'} imported`, held ? `${held} held for review` : '', refused ? `${refused} not saved` : '', other ? `${other} not imported` : ''].filter(Boolean);
@@ -23,13 +17,11 @@ export const runtime = {
   },
   loadJSZip: async () => (await import('jszip')).default,
   inspect: inspectZip,
-  // The normal upload: the 4 MB cap, the quota, the type sniffing and - for a name already in use - the same-name counter.
-  // ...through the same 2 upload slots as every other transfer, so the tray never has more than 2 files on the wire.
   uploadFile: async (file, folder) => {
     await uploadSlots.acquire();
     try {
       const stored = await uploadDocument({ file, folder });
-      if (stored?.held) quarantineCount.bump(1); // held in Quarantine: the sidebar badge follows
+      if (stored?.held) quarantineCount.bump(1);
       return stored;
     } finally {
       uploadSlots.release();
@@ -37,7 +29,6 @@ export const runtime = {
   },
   createFolder,
   onFinished: ({ uploaded }) => {
-    // New files: every cached list is out of date, and any page showing files reads them again.
     invalidateAll();
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DOCUMENTS_CHANGED, { detail: {} }));
     if (uploaded > 0) reportClientEvent('import');

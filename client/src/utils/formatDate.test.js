@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import { formatDate, formatDateTime } from './formatDate.js';
 
-// The cached formatters must say exactly what toLocaleDateString / toLocaleString said before.
 const SAMPLES = ['2026-10-14T06:40:10.405Z', '2026-01-01T00:00:00Z', '2025-12-31T23:59:59Z', new Date(2024, 1, 29, 13, 5), 1700000000000];
 
 test('formatDate gives the same text as toLocaleDateString did', () => {

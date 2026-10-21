@@ -5,15 +5,6 @@ import styles from './DropdownMenu.module.css';
 
 const ITEMS = '[role="menuitem"]:not([disabled])';
 
-/**
- * The floating panel behind every menu: dropdowns from a button and
- * right-click context menus. It is rendered in a portal with fixed
- * positioning, so no scrolling or overflow-hidden ancestor can clip it, and
- * `placement(size, viewport)` (utils/menuPosition.js) decides where it goes so
- * it never leaves the viewport. Keyboard: Up/Down/Home/End move, Enter or
- * Space activate (they are buttons), Esc closes and gives focus back, Tab
- * closes. It also closes on an outside press, a resize, or a scroll.
- */
 function MenuPanel({ placement, onClose, returnFocus, label, align, children }) {
   const ref = useRef(null);
   const [box, setBox] = useState(null);
@@ -21,7 +12,6 @@ function MenuPanel({ placement, onClose, returnFocus, label, align, children }) 
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
-    // Measure at natural size, then place.
     node.style.maxHeight = '';
     const rect = node.getBoundingClientRect();
     setBox(placement({ width: rect.width, height: node.scrollHeight }, { width: window.innerWidth, height: window.innerHeight }));
@@ -37,7 +27,6 @@ function MenuPanel({ placement, onClose, returnFocus, label, align, children }) 
       if (ref.current && !ref.current.contains(event.target)) onClose();
     };
     const onViewportChange = (event) => {
-      // Scrolling inside the menu itself is fine.
       if (event?.target instanceof Node && ref.current?.contains(event.target)) return;
       onClose();
     };
@@ -95,8 +84,6 @@ function MenuPanel({ placement, onClose, returnFocus, label, align, children }) 
         event.preventDefault();
         event.stopPropagation();
       }}
-      // The panel is portaled to <body>, but React events still bubble through the component tree:
-      // without this, choosing an item in a row's "..." menu would also "click" the row (opening it).
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}

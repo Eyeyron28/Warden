@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// The same lockout sequence on the in-memory fake (test/helpers/fakeDb.js evaluates the real pipeline update), so the
-// fake and MongoDB are held to the same answers; plus the shared client-address key (utils/clientIp.js).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -37,7 +33,6 @@ test('ipKey: IPv4 unchanged, IPv4-mapped IPv6 is the IPv4, IPv6 is its /64', () 
   assert.equal(ipKey('203.0.113.9'), '203.0.113.9');
   assert.equal(ipKey('::ffff:203.0.113.9'), '203.0.113.9');
   assert.equal(ipKey('::ffff:cb00:7109'), '203.0.113.9');
-  // Different addresses of one /64 share a key; another /64 does not.
   const a = ipKey('2001:db8:abcd:12:1:2:3:4');
   assert.equal(a, '2001:0db8:abcd:0012::/64');
   assert.equal(ipKey('2001:db8:abcd:12:ffff:ffff:ffff:ffff'), a);

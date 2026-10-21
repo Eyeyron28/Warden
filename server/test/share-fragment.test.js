@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// The share key lives after the # in a link. Browsers never send a fragment, and nothing on the
-// server may log, parse or store it. These tests pin that down.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,13 +27,11 @@ test('no request logging, and no code reads a URL fragment or parses the #k= par
     assert.doesNotMatch(text, /console\.(log|info|warn|error)\([^)]*\b(req\.(url|originalUrl|path|headers|body|query|params))/, `${name}: never logs a request`);
     assert.doesNotMatch(text, /location\.hash|\breq\.[\w.]*hash|new URL\(req\./, `${name}: no fragment handling`);
   }
-  // the only place the key appears in a link is when the owner's share is created, in the response to that owner
   const withKey = sources().filter(([, text]) => /#k=/.test(text)).map(([name]) => name);
   assert.deepEqual(withKey, ['controllers/shares.controller.js']);
 });
 
 test('a request that carries a fragment-looking path is just an unknown route: it is not logged, stored or echoed beyond the 404', async () => {
-  // Real clients strip the fragment before sending. If a raw client sends one anyway, the server treats it as ordinary path text.
   const express = require('express');
   const { notFound, errorHandler } = require('../middleware/errorHandler');
   const app = express();
@@ -51,7 +45,6 @@ test('a request that carries a fragment-looking path is just an unknown route: i
   try {
     const { port } = server.address();
     const key = 'A'.repeat(43);
-    // a standards-following client (fetch) drops the fragment before it sends the request line
     let seenByServer = null;
     const probe = net.createServer((socket) => {
       socket.once('data', (buffer) => {

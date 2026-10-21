@@ -8,10 +8,6 @@ import { shortName } from '../utils/ellipsis.js';
 
 export const HONEST_LINE = 'Warden checks uploads with simple rules. Files that look risky are held here until you decide. This is not a full antivirus.';
 
-/**
- * What the Quarantine page draws, for one state and nothing else (no requests, no router), so every state can be rendered on its
- * own: 'loading' | 'error' | 'empty' | 'list'. The page (pages/QuarantinePage.jsx) owns the data.
- */
 export function QuarantineList({ state, items = [], error = '', busyId = null, onRelease, onDelete, onRetry }) {
   if (state === 'loading') {
     return (

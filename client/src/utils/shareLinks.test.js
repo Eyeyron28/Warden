@@ -18,12 +18,11 @@ import {
 } from './shareLinks.js';
 import { readKeyFromHash } from './shareCrypto.js';
 
-const KEY = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdE'; // 43 chars of base64url
+const KEY = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdE';
 const LINK = `https://warden.example.com/shared/0123456789abcdef0123456789abcdef#k=${KEY}`;
 const PASSWORD_LINK = 'https://warden.example.com/shared/0123456789abcdef0123456789abcdef';
 const byId = (targets) => Object.fromEntries(targets.map((t) => [t.id, t]));
 
-/** What the receiving app gets back out of a URL, for each place the link can sit. */
 const params = (href) => new URL(href).searchParams;
 
 test('the share link is recognised, and anything else is not', () => {
@@ -31,10 +30,10 @@ test('the share link is recognised, and anything else is not', () => {
   assert.equal(isShareLink(PASSWORD_LINK), true);
   assert.equal(isShareLink('http://localhost:5173/shared/abcdef0123456789#k=' + KEY), true, 'dev');
   for (const bad of [
-    'http://warden.example.com/shared/abcdef0123456789', // plain http, not localhost
-    'https://warden.example.com/files', // wrong path
-    'https://warden.example.com/shared/abcdef0123456789?next=//evil.example', // query string
-    'https://warden.example.com/shared/abcdef0123456789#other=1', // unknown fragment
+    'http://warden.example.com/shared/abcdef0123456789',
+    'https://warden.example.com/files',
+    'https://warden.example.com/shared/abcdef0123456789?next=//evil.example',
+    'https://warden.example.com/shared/abcdef0123456789#other=1',
     'https://user:pw@warden.example.com/shared/abcdef0123456789',
     'javascript:alert(1)', 'data:text/html,hi', '', null, undefined, 42,
   ]) assert.equal(isShareLink(bad), false, String(bad));
@@ -71,7 +70,6 @@ test('every target is encoded once and the #k= fragment survives intact in each'
   assert.equal(params(gmail).get('body'), message);
   assert.equal(params(gmail).get('to'), null, 'no recipient, no &to=');
 
-  // and the key read back out of each decoded link is the original key
   for (const decoded of [params(wa).get('text').split(': ')[1], params(tg).get('url'), params(gmail).get('body').split(': ')[1], decodeURIComponent(viber.split('text=')[1]).split(': ')[1]]) {
     assert.equal(readKeyFromHash(new URL(decoded).hash), KEY);
   }
@@ -140,7 +138,6 @@ test('copy uses the clipboard API, falls back to a textarea, and reports failure
   assert.equal(await copyText(LINK, { navigator: { clipboard: { writeText: async (t) => calls.push(t) } } }), true);
   assert.deepEqual(calls, [LINK]);
 
-  // clipboard API refuses (permissions / insecure context): the textarea route copies the same text
   const created = [];
   const doc = {
     createElement: () => { const el = { style: {}, setAttribute() {}, focus() {}, select() {}, setSelectionRange() {}, value: '' }; created.push(el); return el; },

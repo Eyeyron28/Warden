@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// The error handler: a server-side failure is answered with one fixed message and a request id; the real error goes
-//     to the log with no address or connection string in it; app-authored messages and 4xx are untouched.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -17,8 +13,6 @@ function handled(error) {
   errorHandler(error, { headers: {} }, res, () => {});
   return out;
 }
-
-// (The sign-up races - parallel verifies, a duplicate key at create time - are in signup-flow.test.js.)
 
 test('a forced 500 answers with the fixed message and a request id, and logs the real error without addresses', (context) => {
   const logged = [];

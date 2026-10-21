@@ -1,12 +1,5 @@
 const { isProduction } = require('./runtimeEnv');
 
-/**
- * Settings for the activity log.
- *   AUDIT_RETENTION_DAYS  how long an event is kept (whole days, 1 to 365; default 30).
- *   AUDIT_HMAC_KEY        the secret that signs the log's hash chain. REQUIRED in production (at least
- *                         32 characters); the server refuses to start without it. Outside production a
- *                         fixed development key is used, so tests and local runs need no setup.
- */
 const DEFAULT_RETENTION_DAYS = 30;
 const MIN_KEY_LENGTH = 32;
 const DEV_KEY = 'warden-development-audit-key-not-for-production';
@@ -23,7 +16,6 @@ function retentionDays() {
 
 const retentionMs = () => retentionDays() * 24 * 60 * 60 * 1000;
 
-/** The signing key as a Buffer. Throws in production when it is missing or too short. */
 function hmacKey() {
   const configured = (process.env.AUDIT_HMAC_KEY ?? '').trim();
   if (configured.length >= MIN_KEY_LENGTH) return Buffer.from(configured, 'utf8');
@@ -31,7 +23,6 @@ function hmacKey() {
   return Buffer.from(DEV_KEY, 'utf8');
 }
 
-/** Problems with the audit settings, as `{ name, problem }` (names only, never values). */
 function auditConfigProblems() {
   const problems = [];
   const key = (process.env.AUDIT_HMAC_KEY ?? '').trim();

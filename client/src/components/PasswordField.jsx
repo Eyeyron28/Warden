@@ -10,7 +10,7 @@ function PasswordField({
   placeholder,
   error,
   autoFocus = false,
-  autoComplete = 'off', // 'new-password' only where a password is being chosen
+  autoComplete = 'off',
 }) {
   const [revealed, setRevealed] = useState(false);
   const inputId = useId();

@@ -5,14 +5,6 @@ import DropdownMenu from './DropdownMenu.jsx';
 import dropdownStyles from './DropdownMenu.module.css';
 import styles from './NewMenu.module.css';
 
-/**
- * Replaces the old standalone "Add document" button. "New folder" and
- * "Upload file" just open the existing NewFolderModal/UploadForm flows
- * (this component doesn't talk to the backend itself); "Upload folder"
- * is the one option that needs its own hidden <input type="file"
- * webkitdirectory> here, since there's no existing UI for picking a
- * whole folder at once.
- */
 function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, allowFolderUpload = true }) {
   const folderInputRef = useRef(null);
 
@@ -21,7 +13,6 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, all
     if (files && files.length > 0) {
       onFolderFilesSelected(files);
     }
-    // Reset so selecting the exact same folder again still fires onChange.
     event.target.value = '';
   };
 
@@ -85,10 +76,6 @@ function NewMenu({ onOpenNewFolder, onOpenUploadForm, onFolderFilesSelected, all
           type="file"
           className={styles.hiddenInput}
           onChange={handleFolderInputChange}
-          // webkitdirectory/mozdirectory are non-standard but universally
-          // supported in Chromium/Firefox for "pick a whole folder" - React
-          // passes unrecognized lowercase attributes straight through to
-          // the DOM, so this works with no extra plumbing.
           webkitdirectory=""
           mozdirectory=""
           multiple

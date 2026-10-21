@@ -1,10 +1,3 @@
-// Run with: cd server && npm test
-//
-// Part A: consent is recorded at sign-up (server side) and written to the account with the policy version.
-// Part B: a daily mail budget keeps bulk mail (sign-up codes, notices, reminders) from using up the provider's daily limit
-//         and leaving real login codes with nothing to send them; one shared counter in the database.
-// Real local MongoDB (test/helpers/realMongo.js; skipped, with the reason, without one). Mail is captured, DNS is stood in
-// for, no .env is read, nothing is sent.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -71,8 +64,6 @@ const start = (body, ip = '203.0.113.5') => call(signupStart, { body: { password
 const verify = (email, code) => call(signupVerify, { body: { email, password: PASSWORD, code }, ip: '203.0.113.5', headers: { 'user-agent': 'Mozilla/5.0 Chrome/126.0' } });
 const codeIn = (mail) => /(?<![\d-])(\d{6})(?![\d-])/.exec(mail.text)[1];
 
-// ---------------- A: consent ----------------
-
 it('sign-up without an agreement is refused by the server, whatever the form says', async () => {
   for (const termsAccepted of [undefined, false, 'true', 1, null, 'yes']) {
     const out = await start({ email: 'no.consent@example.com', ...(termsAccepted === undefined ? {} : { termsAccepted }) });
@@ -117,8 +108,6 @@ it('accounts made before consent was recorded have no consent field, and nothing
   assert.equal(read.consent, undefined);
 });
 
-// ---------------- B: the daily mail budget ----------------
-
 function withSmtp(fn) {
   const sent = [];
   const nodemailer = require('nodemailer');
@@ -130,7 +119,6 @@ function withSmtp(fn) {
     for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM']) delete process.env[name];
   });
 }
-// The module caches its transporter; a fresh copy per test keeps the stub in force.
 const freshSend = () => {
   delete require.cache[emailPath];
   const fresh = require('../utils/email');
@@ -155,7 +143,6 @@ it('bulk mail stops at its share of the daily cap while priority mail goes on to
     assert.deepEqual(priorityResults, [true, true, true, true, true, false, false], 'priority: the other 5 of the cap, then the cap');
     assert.equal(await mailSentToday(), 10);
     assert.equal(sent.length, 10, 'exactly the cap reached the provider');
-    // And a sign-in code is still the kind of mail that goes while bulk is closed (checked above before the cap itself ran out).
   });
 });
 
@@ -198,7 +185,6 @@ it('when the budget is spent, sign-up start answers 503 with the same body for a
   assert.equal(mails.length, 0, 'no code and no "someone tried to sign up" notice');
   assert.equal(await OtpChallenge.countDocuments({}), 0);
 
-  // Through the real error handler the body is the same fixed text for everyone too.
   const { errorHandler } = require('../middleware/errorHandler');
   const bodies = [known, unknown].map((out) => {
     let sentBody;
@@ -281,8 +267,6 @@ it('the daily reminder job stops when bulk mail is used up, sends nothing, and r
   assert.match(logged.join('\n'), /3 accounts skipped \(daily mail budget\)/);
   assert.ok(!/@/.test(logged.join('\n')), 'counts only, no address');
 });
-
-// ---------------- the per-address and per-IP limits on /signup/start ----------------
 
 it('/signup/start is limited per connection (10 an hour) before anything else, IPv6 by its /64, and per address (5 an hour)', async () => {
   assert.equal(ipKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), ipKey('2001:db8:1:2:1111:2222:3333:4444'), 'one /64 is one connection');

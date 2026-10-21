@@ -1,4 +1,3 @@
-/** Gives the control of every label marked data-required an aria-required, so the "*" is not the only signal. */
 export function markRequiredControls(root = document) {
   for (const label of root.querySelectorAll('label[data-required]')) {
     const control = label.control;

@@ -5,11 +5,6 @@ import styles from './PasswordStrengthMeter.module.css';
 
 const SEGMENT_COUNT = 5;
 
-// Built from the existing palette rather than a generic red-yellow-green
-// ramp: danger red at the weak end, a neutral faint tone for "meh", then
-// the app's own accent green (dim, then full) for strong - the same
-// red/neutral/green vocabulary already used for error/idle/success states
-// elsewhere in the app.
 const SCORE_COLORS = [
   'var(--color-danger)',
   'var(--color-danger)',
@@ -18,11 +13,6 @@ const SCORE_COLORS = [
   'var(--color-accent)',
 ];
 
-/**
- * Live password strength meter + requirement checklist. Reads straight
- * from utils/passwordPolicy.js so it updates on every keystroke with no
- * network round-trip.
- */
 function PasswordStrengthMeter({ password }) {
   const hasValue = Boolean(password);
   const { score, label } = hasValue ? calculatePasswordStrength(password) : { score: -1, label: '' };

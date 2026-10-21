@@ -1,7 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Devices, the tamper-evident activity log, the suspicious-activity flags, the Overview numbers, and the
-// removal of the phone vault. In-memory fakes, so every collection can be inspected.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -84,8 +80,6 @@ const eventsOf = (user) => world.tables.auditevents.filter((e) => sameId(e.userI
 const types = (user) => eventsOf(user).map((e) => e.type);
 const as = (user, device = null, extra = {}) => ({ userId: user._id, dek: DEK, deviceId: device ? device._id : null, ...extra });
 
-// ====================================================================== the chain
-
 test('events form a chain: numbered, each signed over the one before, and the head follows', async () => {
   reset();
   const ana = addUser();
@@ -112,7 +106,6 @@ test('verification detects an edited event, a missing event in the middle, and a
   let ana = await build();
   assert.equal((await verifyChain(ana._id)).ok, true);
 
-  // an edited event (any signed field), reported at THAT event's number
   for (const [field, value] of [['type', 'delete'], ['targetId', 'someone-else'], ['country', 'US'], ['at', new Date(Date.now() - 5 * DAY)], ['deviceId', db.oid()]]) {
     ana = await build();
     const victim = eventsOf(ana).find((e) => e.seq === 4);
@@ -122,25 +115,21 @@ test('verification detects an edited event, a missing event in the middle, and a
     assert.equal(verdict.brokenAtSeq, 4, `editing ${field} is reported at event #4`);
   }
 
-  // an event deleted from the middle
   ana = await build();
   world.tables.auditevents = world.tables.auditevents.filter((e) => e.seq !== 5);
   let verdict = await verifyChain(ana._id);
   assert.deepEqual([verdict.ok, verdict.brokenAtSeq], [false, 5]);
 
-  // the newest events removed (the end cut off)
   ana = await build();
   world.tables.auditevents = world.tables.auditevents.filter((e) => e.seq <= 5);
   verdict = await verifyChain(ana._id);
   assert.deepEqual([verdict.ok, verdict.brokenAtSeq], [false, 6]);
 
-  // every event removed while the log was recently written
   ana = await build();
   world.tables.auditevents = [];
   verdict = await verifyChain(ana._id);
   assert.equal(verdict.ok, false);
 
-  // an event re-signed with a different key does not pass (someone without the server key cannot forge one)
   ana = await build();
   const forged = eventsOf(ana).find((e) => e.seq === 3);
   forged.type = 'delete';
@@ -152,11 +141,10 @@ test('the oldest events expiring (the 30-day TTL) is normal: what is left still 
   reset();
   const ana = addUser();
   for (let i = 0; i < 10; i += 1) await appendEvent({ userId: ana._id, type: 'view', targetId: String(i) });
-  world.tables.auditevents = world.tables.auditevents.filter((e) => e.seq > 4); // 1-4 expired
+  world.tables.auditevents = world.tables.auditevents.filter((e) => e.seq > 4);
   const verdict = await verifyChain(ana._id);
   assert.deepEqual([verdict.ok, verdict.firstSeq, verdict.lastSeq, verdict.checked], [true, 5, 10, 6]);
 
-  // everything expired and the last event is older than the retention: nothing to check, nothing wrong
   world.tables.auditevents = [];
   ana.auditHead.at = new Date(Date.now() - 40 * DAY);
   assert.equal((await verifyChain(ana._id)).ok, true);
@@ -183,7 +171,6 @@ test('a writer that died between saving an event and moving the head is repaired
   reset();
   const ana = addUser();
   await appendEvent({ userId: ana._id, type: 'login' });
-  // the crash: event 2 is saved, the head still says 1
   const head = { seq: ana.auditHead.seq, hash: ana.auditHead.hash };
   const orphan = { userId: ana._id, seq: 2, type: 'view', deviceId: null, targetId: 'x', at: new Date(), country: null };
   world.tables.auditevents.push({ _id: db.oid(), ...orphan, prevHash: head.hash, hash: audit.computeHash(head.hash, orphan), expiresAt: new Date(Date.now() + DAY) });
@@ -246,8 +233,6 @@ test('logging is best effort: a failure never throws, and it is counted', async 
   assert.ok(!warnings.join('').match(/@|[0-9a-f]{24}/), 'the warning holds no personal data');
 });
 
-// ====================================================================== every action writes exactly one event
-
 test('each action writes exactly one event, with ids only: no file name, e-mail, purpose or IP anywhere in the log', async () => {
   reset();
   const ana = addUser('ana-private@example.com');
@@ -281,7 +266,6 @@ test('each action writes exactly one event, with ids only: no file name, e-mail,
   await step('import (reported by the page)', ['import'], () => call(security.clientEvent, { ...me, body: { type: 'import' } }));
   assert.equal((await call(security.clientEvent, { ...me, body: { type: 'delete' } })).error.status, 400, 'a page cannot report any other kind of event');
 
-  // sharing
   const shareDoc = addDoc(ana, { filename: 'shared-secret-name.png' });
   const [created] = await step('share created', ['share_created'], async () => {
     const made = await call(S.createShare, { ...me, params: { id: String(shareDoc._id) }, body: { durationHours: 24 } });
@@ -290,7 +274,6 @@ test('each action writes exactly one event, with ids only: no file name, e-mail,
     world.shareUrl = made.json.shareUrl;
   });
   assert.equal(created.targetId, world.shareId);
-  // an anonymous visitor: owner's account, no device, a coarse country - and the share's open counter moves
   const visitor = { params: { shareId: world.shareId }, headers: { 'x-vercel-ip-country': 'DE', 'user-agent': 'curl/8' }, ip: '198.51.100.99' };
   const [opened] = await step('share opened (anonymous)', ['share_opened'], () => call(V.openAccess, visitor));
   assert.equal(opened.deviceId, null);
@@ -303,7 +286,6 @@ test('each action writes exactly one event, with ids only: no file name, e-mail,
   await step('share revoked', ['share_revoked'], () => call(S.revokeShare, { ...me, params: { shareId: world.shareId } }));
   await step('stop all sharing', ['shares_stopped_all'], () => call(S.stopAllShares, { ...me }));
 
-  // nothing personal is in the log, and nothing in it carries an address
   const everything = JSON.stringify(eventsOf(ana));
   for (const secret of ['secret-passport-name', 'secret-renamed-name', 'shared-secret-name', 'ana-private', '@', '203.0.113.50', '198.51.100.99', 'curl/8', 'Chrome', 'warden.test']) {
     assert.ok(!everything.includes(secret), `the log does not contain "${secret}"`);
@@ -339,8 +321,6 @@ test('account actions are logged: login, failed login, otp sent, logout, trust a
   assert.ok(eventsOf(ana).slice(2).every((e) => e.deviceId && sameId(e.deviceId, session.deviceId)), 'signed-in events are tied to the device');
 });
 
-// ====================================================================== devices
-
 test('devices: a first sign-in from an unknown browser emails the owner once, with no secret in it', async () => {
   reset();
   const ana = addUser('ana@example.com');
@@ -353,7 +333,6 @@ test('devices: a first sign-in from an unknown browser emails the owner once, wi
   const r2 = res();
   const second = await resolveDevice({ headers: { ...headers, 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0' } }, r2, ana._id);
   assert.deepEqual([second.isNew, second.hadOtherDevices], [true, true]);
-  // the same browser again (its cookie) is not new
   const again = await resolveDevice({ headers: { ...headers, cookie: `warden_did=${r2.cookies.warden_did}` } }, res(), ana._id);
   assert.equal(again.isNew, false);
   assert.equal(world.tables.devices.length, 2);
@@ -363,7 +342,6 @@ test('devices: a first sign-in from an unknown browser emails the owner once, wi
     assert.ok(!Object.keys(device).some((k) => /ip|address/i.test(k)));
   }
 
-  // the email, built the way the login does
   const { templates } = require('../utils/emailTemplates');
   const mail = templates.newDevice({ browser: 'Firefox', os: 'Linux', country: 'PH', city: 'Manila', when: new Date('2026-10-09T09:14:00Z') });
   assert.match(mail.text, /Device: Firefox on Linux/);
@@ -447,8 +425,6 @@ test('sign out this device ends only that device; sign out others keeps the call
   assert.ok(!JSON.stringify(listed.json).match(/deviceIdHash|tokenHash/), 'nothing replayable leaves the server');
 });
 
-// ====================================================================== the timeline and its flags
-
 const ev = (seq, type, minutes, extra = {}) => ({ seq, type, at: new Date(Date.UTC(2026, 9, 1, 12, 0) + minutes * 60000), ...extra });
 
 test('suspicious: a sign-in from a new country (only once there is an earlier login to compare)', () => {
@@ -466,9 +442,9 @@ test('suspicious: 10 downloads in 5 minutes is a burst; 9, or 10 spread over lon
   assert.equal(flagged.size, 10);
   assert.ok([...flagged.values()].every((f) => f.includes('download_burst')));
   assert.equal(computeFlags(burst.slice(0, 9)).size, 0, 'nine is fine');
-  const slow = Array.from({ length: 10 }, (_, i) => ev(i + 1, 'download', i * 1.2)); // 10 over 10.8 minutes
+  const slow = Array.from({ length: 10 }, (_, i) => ev(i + 1, 'download', i * 1.2));
   assert.equal(computeFlags(slow).size, 0);
-  const edge = Array.from({ length: 10 }, (_, i) => ev(i + 1, 'download', i * (5 / 9))); // exactly 5 minutes first to last
+  const edge = Array.from({ length: 10 }, (_, i) => ev(i + 1, 'download', i * (5 / 9)));
   assert.equal(computeFlags(edge).size, 10, 'exactly five minutes still counts');
   const mixed = [...Array.from({ length: 9 }, (_, i) => ev(i + 1, 'download', i)), ev(10, 'view', 9.5)];
   assert.equal(computeFlags(mixed).size, 0, 'views are not downloads');
@@ -507,7 +483,7 @@ test('the timeline: newest first, 50 per page with a cursor, filters, names look
     });
   }
   await appendEvent({ userId: ben._id, type: 'download', targetId: String(kept._id) });
-  world.tables.documents = world.tables.documents.filter((d) => !sameId(d._id, gone._id)); // permanently deleted since
+  world.tables.documents = world.tables.documents.filter((d) => !sameId(d._id, gone._id));
 
   const page = (query, device = laptop) => call(security.listActivity, { ...as(ana, device), query });
   const everything = async (query) => {
@@ -556,7 +532,6 @@ test('the timeline: newest first, 50 per page with a cursor, filters, names look
   assert.equal((await page({ before: '0' })).error.status, 400);
   assert.equal((await page({ from: 'yesterday' })).error.status, 400);
 
-  // nobody else's events are readable, and there is no way to edit or delete an event
   const bens = await call(security.listActivity, { ...as(ben), query: { limit: '200' } });
   assert.equal(bens.json.events.length, 1);
   assert.equal(bens.json.events[0].device, null);
@@ -583,8 +558,6 @@ test('the banner counts flagged events from the last 7 days, and Verify log repo
   assert.deepEqual([broken.json.ok, broken.json.brokenAtSeq], [false, 7]);
   assert.match(broken.json.reason, /changed/);
 });
-
-// ====================================================================== overview
 
 test('Overview: counters, trashed files left out, stale files at exactly 180 days, frequently used, link statistics', async () => {
   reset();
@@ -616,12 +589,10 @@ test('Overview: counters, trashed files left out, stale files at exactly 180 day
   assert.equal(overview.stale.count, 2);
   assert.ok(stale.items.every((d) => d.idleDays >= 180));
   assert.deepEqual(insights.staleOf([{ ...edge179 }, { ...edge180 }], new Date(now)).map((d) => d.filename), ['idle-180.pdf']);
-  // the boundary itself: exactly 180 days idle counts
   const exactly = { _id: 'x', filename: 'exact', createdAt: new Date(now - 180 * DAY) };
   assert.equal(insights.staleOf([exactly], new Date(now)).length, 1);
   assert.equal(insights.staleOf([{ ...exactly, createdAt: new Date(now - 180 * DAY + 1) }], new Date(now)).length, 0);
 
-  // frequently used comes from recent views in the log
   for (let i = 0; i < 4; i += 1) await appendEvent({ userId: ana._id, type: 'view', targetId: String(downloaded._id) });
   for (let i = 0; i < 2; i += 1) await appendEvent({ userId: ana._id, type: 'view', targetId: String(popular._id) });
   await appendEvent({ userId: ana._id, type: 'view', targetId: String(world.tables.documents.find((d) => d.filename === 'trashed.pdf')._id) });
@@ -644,15 +615,13 @@ test('Overview: link statistics come from the share records and hold no recipien
   share('b'.repeat(32), { openCount: 2, sourceDocumentIds: [d2._id] });
   share('c'.repeat(32), { expiresAt: new Date(now + 3 * DAY) });
   share('d'.repeat(32), { expiresAt: new Date(now + 3 * DAY), openCount: 1 });
-  share('e'.repeat(32), { expiresAt: new Date(now - DAY), openCount: 9 }); // expired: not active
-  share('f'.repeat(32), { ready: false, openCount: 9 }); // still being locked with a password: not active
+  share('e'.repeat(32), { expiresAt: new Date(now - DAY), openCount: 9 });
+  share('f'.repeat(32), { ready: false, openCount: 9 });
   const stats = (await call(insights.getOverview, { ...as(ana) })).json.sharing;
   assert.deepEqual([stats.active, stats.neverOpened, stats.expiringSoon], [4, 1, 2]);
   assert.deepEqual([stats.mostOpened.openCount, stats.mostOpened.name], [5, 'link-one.pdf']);
   assert.ok(!JSON.stringify(stats).includes('private-person'), 'no recipient identity');
 });
-
-// ====================================================================== the phone vault is gone
 
 test('the old phone, pairing, sync and devices URLs answer 410 and nothing else', async () => {
   const express = require('express');
@@ -690,7 +659,6 @@ test('no pairing, PIN, phone sync or offline-vault code remains in the server or
       if (entry.isDirectory()) walk(full);
       else if (/\.(js|jsx|mjs|cjs|css)$/.test(entry.name) && !/\.test\.(js|jsx|mjs)$/.test(entry.name)) {
         const rel = path.relative(root, full).replace(/\\/g, '/');
-        // these two only talk ABOUT what was removed
         if (['server/routes/removed.routes.js', 'server/utils/migrateRemovePhone.js'].includes(rel)) continue;
         const text = fs.readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
         if (/PairedDevice|PairingToken|RecoveryRequestToken|requireDeviceAuth|requireSessionOrDeviceAuth|deviceToken|wrappedDEKPhonePin|PhoneVault|PairPage|PhoneRecovery|localVault|phoneSync|pinRules|pinLockout|\/api\/sync|\/api\/pair\b|recover-via-phone|warden-local|indexedDB|IndexedDB|pair-device|devicePaired|pairDeviceCode/.test(text)) hits.push(rel);
@@ -705,7 +673,6 @@ test('no pairing, PIN, phone sync or offline-vault code remains in the server or
     'server/controllers/pairing.controller.js', 'server/controllers/sync.controller.js', 'server/models/PairedDevice.js', 'server/models/PairingToken.js',
     'client/src/pages/PhoneVault.jsx', 'client/src/pages/PairPage.jsx', 'client/src/services/localVault.js', 'client/src/services/localCrypto.js',
   ]) assert.equal(fs.existsSync(path.join(root, gone)), false, gone);
-  // the service worker never touches /api (no cached authenticated content), and the manifest carries none
   const worker = fs.readFileSync(path.join(root, 'client', 'public', 'service-worker.js'), 'utf8');
   assert.match(worker, /BYPASS_PREFIXES = \['\/api\/'/);
   assert.match(worker, /BYPASS_PREFIXES\.some\(\(prefix\) => url\.pathname\.startsWith\(prefix\)\)\) return;/);

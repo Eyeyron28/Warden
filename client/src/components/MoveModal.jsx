@@ -14,19 +14,6 @@ function isSameOrDescendant(path, ancestor) {
   return path === ancestor || path.startsWith(`${ancestor}/`);
 }
 
-/**
- * "Move to..." picker. Browses the folder tree breadcrumb-style starting
- * from wherever the vault is currently showing; "Move here" sends the
- * whole selection to the folder being browsed.
- *
- * - `currentLocation` (the folder the items already live in, when they all
- *   share one) is marked, and "Move here" is disabled while browsing it.
- * - `movingFolders` (folders that are part of the selection) are shown but
- *   can't be entered - a folder can't be moved into itself or its own
- *   subfolders (the server enforces this too).
- * - A partial result (some items conflicted) keeps the dialog open and
- *   lists every item that didn't move, with the server's reason.
- */
 function MoveModal({
   items,
   title,
@@ -72,7 +59,6 @@ function MoveModal({
     setSubmitting(true);
     setError('');
     try {
-      // Files only: the batch move (50 at a time, a result for each). Anything with a folder in it goes the existing way.
       const response = items.every((item) => item.type === 'file') ? await batchMoveDocuments(items.map((item) => item.id), browsePath) : await moveItems(items, browsePath);
       const failed = response.results.filter((entry) => !['moved', 'unchanged'].includes(entry.status));
       if (failed.length === 0) {

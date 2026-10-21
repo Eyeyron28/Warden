@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Private encrypted notes on a file, and version history (previous versions kept 30 days, at most 3, counted against the quota).
-// The REAL app on a LOCAL throwaway MongoDB (skipped, with the reason, without one); mail is captured, no .env is read.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -59,14 +55,11 @@ const details = async (user, id) => (await live.api('GET', `${D}/${id}/details`,
 const newVersion = (user, id, content, type) => live.api('POST', `${D}/${id}/versions`, { token: user.token, form: formOf('whatever-name.txt', content, type) });
 const view = (user, id) => live.api('GET', `${D}/${id}/view`, { token: user.token, query: { for: 'silent' } });
 const setNote = (user, id, note) => live.api('PUT', `${D}/${id}/note`, { token: user.token, json: { note } });
-/** Versions whose file does not exist any more: the orphan scan. */
 const orphanVersions = async () => {
   const ids = await M().DocumentVersion.distinct('documentId');
   const alive = new Set((await M().Document.distinct('_id', { _id: { $in: ids } })).map(String));
   return ids.filter((id) => !alive.has(String(id)));
 };
-
-// ---------------------------------------------------------------- notes
 
 it('a note is stored encrypted, comes back only in the details, and the list says only that there is one', async () => {
   const a = await account('note.a@example.com');
@@ -76,7 +69,6 @@ it('a note is stored encrypted, comes back only in the details, and the list say
   assert.equal(put.status, 200, put.text);
   assert.deepEqual(put.body, { id, hasNote: true, note: text });
 
-  // the database never holds it readable
   const row = await rawDoc(id);
   assert.equal(row.hasNote, true);
   assert.ok(row.noteCipher && row.noteIv && row.noteAuthTag, 'stored as cipher + iv + auth tag, like a share label');
@@ -85,7 +77,6 @@ it('a note is stored encrypted, comes back only in the details, and the list say
 
   assert.equal((await details(a, id)).note, text);
   assert.equal((await details(a, id)).hasNote, true);
-  // the lists carry only the boolean
   const listed = (await live.api('GET', D, { token: a.token })).body.find((doc) => doc.id === id);
   assert.equal(listed.hasNote, true);
   assert.ok(!('note' in listed) && !JSON.stringify(listed).includes('7391'));
@@ -93,7 +84,6 @@ it('a note is stored encrypted, comes back only in the details, and the list say
   assert.ok(!kids.text.includes('7391'));
   const recent = await live.api('GET', `${D}/recent`, { token: a.token });
   assert.ok(!recent.text.includes('7391'));
-  // a file without one
   const other = await upload(a, 'plain.txt');
   assert.equal((await details(a, other)).note, null);
   assert.equal((await live.api('GET', D, { token: a.token })).body.find((doc) => doc.id === other).hasNote, false);
@@ -111,7 +101,6 @@ it('a note is plain text up to 2000 characters; anything else is rejected and ch
   assert.equal((await live.api('PUT', `${D}/${id}/note`, { token: a.token, json: {} })).status, 400, 'note is required');
   assert.equal((await live.api('PUT', `${D}/not-an-id/note`, { token: a.token, json: { note: 'x' } })).status, 404);
   assert.equal((await details(a, id)).note, 'x'.repeat(2000), 'the rejected ones changed nothing');
-  // HTML is just text: stored and returned as typed (the page shows it as text)
   const html = '<img src=x onerror=alert(1)> **not bold**';
   assert.equal((await setNote(a, id, html)).body.note, html);
   assert.equal((await details(a, id)).note, html);
@@ -136,10 +125,10 @@ it('the activity log records only that a note was set, changed or cleared - neve
   const id = await upload(a, 'n.txt');
   const before = (await rawDoc(id)).updatedAt.getTime();
   await setNote(a, id, 'first secret words');
-  await setNote(a, id, 'first secret words'); // unchanged: no event
+  await setNote(a, id, 'first secret words');
   await setNote(a, id, 'second secret words');
   await setNote(a, id, null);
-  await setNote(a, id, null); // nothing to clear: no event
+  await setNote(a, id, null);
   const events = await M().AuditEvent.find({ userId: a.userId, type: /^note_/ }).sort({ seq: 1 }).lean();
   assert.deepEqual(events.map((event) => event.type), ['note_set', 'note_changed', 'note_cleared']);
   assert.ok(events.every((event) => event.targetId === id));
@@ -158,7 +147,6 @@ it('a note is never in a share, never in an emergency answer, and not searchable
     await M().Share.find({}).lean(), await M().SharedFile.find({}).lean(), (await live.api('GET', '/api/shares', { token: a.token })).text,
   ]);
   assert.ok(!everything.includes('PRIVATE-NOTE-TEXT'));
-  // an emergency session sees the file lists, but not even whether a note exists
   const { createSession } = require('../utils/sessionStore');
   const token = await createSession(a.userId, crypto.randomBytes(32), {
     emergency: { accessId: oid(crypto.randomBytes(12).toString('hex')), requestId: oid(crypto.randomBytes(12).toString('hex')), scopeMode: 'all', absoluteMs: 4 * 3600 * 1000 },
@@ -169,8 +157,6 @@ it('a note is never in a share, never in an emergency answer, and not searchable
   assert.equal((await live.api('PUT', `${D}/${id}/note`, { token, json: { note: 'x' } })).status, 403);
   assert.equal((await live.api('GET', `${D}/${id}/details`, { token })).status, 403);
 });
-
-// ---------------------------------------------------------------- versions
 
 it('Upload new version keeps the id, name, folder, expiry, star and note, and keeps the old contents as a version', async () => {
   const a = await account('ver.a@example.com');
@@ -208,9 +194,7 @@ it('Upload new version keeps the id, name, folder, expiry, star and note, and ke
   assert.deepEqual(d.versionLimits, { max: 3, days: 30 });
   const days = (new Date(v.expiresAt) - new Date(v.createdAt)) / 864e5;
   assert.ok(Math.abs(days - 30) < 0.01, `expires 30 days later (${days})`);
-  // no bytes, keys or checksum in the answer
   assert.ok(!/encryptedBlob|authTag|checksum|"iv"/.test(JSON.stringify(d.versions)));
-  // the old contents are encrypted in their own record
   const stored = await M().DocumentVersion.collection.findOne({});
   assert.ok(Buffer.isBuffer(stored.encryptedBlob.buffer) || stored.encryptedBlob);
   assert.ok(!JSON.stringify(stored).includes('first contents'));
@@ -235,7 +219,6 @@ it('a new version goes through the upload rules: the size cap, sniffing of the b
   const none = await live.api('POST', `${D}/${id}/versions`, { token: a.token, form: new FormData() });
   assert.equal(none.status, 400);
   assert.equal((await details(a, id)).versions.length, 1);
-  // a file in Trash cannot be replaced
   await live.api('DELETE', `${D}/${id}`, { token: a.token });
   assert.equal((await newVersion(a, id, 'later')).status, 404);
 });
@@ -284,7 +267,6 @@ it('restore swaps the current file with the chosen version, and leaves shares, e
   assert.equal(d.size, 'old contents'.length);
   assert.equal(d.versions.length, 1, 'the restored one is not kept twice');
   assert.equal(d.versions[0].size, 'new contents here'.length, 'what was current is now a version');
-  // swapping again brings the other one back
   const restoreAgain = await live.api('POST', `${D}/${id}/versions/${d.versions[0].id}/restore`, { token: a.token });
   assert.equal(restoreAgain.status, 200);
   assert.equal((await view(a, id)).text, 'new contents here');
@@ -307,7 +289,6 @@ it('a version can be downloaded (its own bytes, checked) and deleted; a version 
   assert.equal((await live.api('GET', `${D}/${id}/versions/${'0'.repeat(24)}/download`, { token: a.token })).status, 404);
   assert.equal((await live.api('GET', `${D}/${id}/versions/nope/download`, { token: a.token })).status, 404);
 
-  // corrupt bytes are refused, never served
   await M().DocumentVersion.collection.updateOne({ _id: oid(v.id) }, { $set: { checksum: 'f'.repeat(64) } });
   assert.equal((await live.api('GET', `${D}/${id}/versions/${v.id}/download`, { token: a.token })).status, 500);
   await M().DocumentVersion.collection.updateOne({ _id: oid(v.id) }, { $set: { checksum: crypto.createHash('sha256').update('the first words').digest('hex') } });
@@ -343,12 +324,10 @@ it('user B cannot read, set, restore, download or delete notes or versions of us
   const upload404 = await newVersion(b, id, 'planted by B');
   assert.equal(upload404.status, 404);
   assert.equal(await snapshot(), before, 'A\'s rows are exactly as they were');
-  // B's own file cannot reach A's version either
   const mine = await upload(b, 'mine.txt', 'B file');
   assert.equal((await live.api('POST', `${D}/${mine}/versions/${v.id}/restore`, { token: b.token })).status, 404);
   assert.equal((await live.api('GET', `${D}/${mine}/versions/${v.id}/download`, { token: b.token })).status, 404);
   assert.equal(await snapshot(), before);
-  // and without a session there is nothing
   assert.equal((await live.api('GET', `${D}/${id}/versions/${v.id}/download`)).status, 401);
 });
 
@@ -393,8 +372,6 @@ it('each new route counts against its own per-account bucket', async () => {
   assert.ok((await hit('DELETE', `${D}/${id}/versions/${next.id}`)).includes('docs-version-delete'));
 });
 
-// ---------------------------------------------------------------- quota
-
 it('version bytes count against the quota: a new version that would not fit is refused with the normal upload error', async () => {
   const a = await account('ver.quota@example.com');
   const id = await upload(a, 'q.bin', Buffer.alloc(300 * 1024, 1));
@@ -404,7 +381,6 @@ it('version bytes count against the quota: a new version that would not fit is r
   assert.equal(usage.versionCount, 1);
   assert.equal(usage.usedBytes, usage.fileBytes + usage.trashBytes + usage.versionBytes, 'one meter: files + Trash + versions');
 
-  // a 1 MB quota, 600 KB used: another 600 KB version does not fit, exactly like a normal upload would not
   process.env.STORAGE_QUOTA_MB = '1';
   const versionsBefore = await M().DocumentVersion.countDocuments({});
   const blocked = await newVersion(a, id, Buffer.alloc(600 * 1024, 3));
@@ -415,7 +391,6 @@ it('version bytes count against the quota: a new version that would not fit is r
   assert.equal(normal.body.error.code, blocked.body.error.code, 'the same error as a normal upload');
   assert.equal(await M().DocumentVersion.countDocuments({}), versionsBefore, 'nothing was stored');
   assert.equal((await view(a, id)).status, 200);
-  // a smaller one still fits, and the oldest version going frees its bytes for the next
   assert.equal((await newVersion(a, id, Buffer.alloc(100 * 1024, 4))).status, 201);
 });
 
@@ -423,13 +398,10 @@ it('when three versions are kept, the one that is deleted for the fourth frees i
   const a = await account('ver.quota2@example.com');
   const id = await upload(a, 'q.bin', Buffer.alloc(100 * 1024, 0));
   for (const fill of [1, 2, 3]) assert.equal((await newVersion(a, id, Buffer.alloc(100 * 1024, fill))).status, 201);
-  // now 4 x 100 KB = 400 KB used. With a 500 KB-ish quota a fourth version of 100 KB replaces the oldest: net zero.
   process.env.STORAGE_QUOTA_MB = String(410 / 1024);
   assert.equal((await newVersion(a, id, Buffer.alloc(100 * 1024, 4))).status, 201, 'net change is nothing');
   assert.equal((await details(a, id)).versions.length, 3);
 });
-
-// ---------------------------------------------------------------- cleanup
 
 it('purging a file from Trash, emptying Trash, a file removed by the database TTL, and account deletion all leave no version behind', async () => {
   const a = await account('ver.purge@example.com');
@@ -448,32 +420,27 @@ it('purging a file from Trash, emptying Trash, a file removed by the database TT
   assert.equal(await M().DocumentVersion.countDocuments({}), 10);
   assert.deepEqual(await orphanVersions(), []);
 
-  // 1. deleted for good from Trash
   await live.api('DELETE', `${D}/${one}`, { token: a.token });
   assert.equal(await M().DocumentVersion.countDocuments({ documentId: oid(one) }), 2, 'in Trash it still has its versions (they count in the quota)');
   assert.equal((await live.api('DELETE', `/api/trash/file/${one}`, { token: a.token })).status, 204);
   assert.equal(await M().DocumentVersion.countDocuments({ documentId: oid(one) }), 0);
 
-  // 2. Trash emptied
   await live.api('DELETE', `${D}/${two}`, { token: a.token });
   assert.ok([200, 204].includes((await live.api('DELETE', '/api/trash', { token: a.token })).status));
   assert.equal(await M().DocumentVersion.countDocuments({ documentId: oid(two) }), 0);
 
-  // 3. the database's own TTL index removes the file (no code runs); the next purge sweeps what it left
   await live.api('DELETE', `${D}/${three}`, { token: a.token });
-  await M().Document.collection.deleteOne({ _id: oid(three) }); // what the TTL monitor does
+  await M().Document.collection.deleteOne({ _id: oid(three) });
   assert.equal((await orphanVersions()).length, 1, 'the scan finds the leftover');
   const { purgeExpired } = require('../utils/trash');
   await purgeExpired(a.userId);
   assert.deepEqual(await orphanVersions(), [], 'and the purge removed it');
-  // the same sweep runs on the account's own list request
   await M().Document.collection.deleteOne({ _id: oid(four) });
   assert.equal((await orphanVersions()).length, 1);
   assert.equal((await live.api('GET', D, { token: a.token })).status, 200);
   assert.deepEqual(await orphanVersions(), []);
   assert.equal(await M().DocumentVersion.countDocuments({ userId: b.userId }), 2, "another account's versions were not touched");
 
-  // 4. account deletion
   const { deleteAccountData } = require('../utils/accountDeletion');
   const deleted = await deleteAccountData(b.userId, { email: b.email, transaction: false });
   assert.equal(deleted.documentversions, 2);
@@ -492,7 +459,6 @@ it('a version expires after 30 days: the TTL index is on expiresAt (the Trash pa
   const row = await M().DocumentVersion.collection.findOne({});
   const days = (row.expiresAt - row.createdAt) / 864e5;
   assert.ok(Math.abs(days - 30) < 0.01);
-  // the same filter the TTL monitor applies, for a version past its date: it goes with its bytes (no other copy exists)
   await M().DocumentVersion.collection.updateOne({ _id: row._id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
   await M().DocumentVersion.collection.deleteMany({ expiresAt: { $lte: new Date() } });
   assert.equal(await M().DocumentVersion.countDocuments({}), 0);

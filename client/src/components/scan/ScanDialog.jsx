@@ -18,7 +18,6 @@ const GALLERY_NOTICE = "Your phone's camera app may keep its own copy of the pho
 
 let nextId = 1;
 
-/** One page being edited: the working picture and what has been done to it. */
 const makePage = (loaded) => ({
   id: nextId++,
   work: loaded.work,
@@ -33,7 +32,6 @@ function Preview({ page }) {
   const { work, rotation, documentMode, threshold } = page;
 
   useEffect(() => {
-    // A slider drags many values a second; one redraw per frame is enough.
     const frame = requestAnimationFrame(() => {
       const target = canvas.current;
       if (!target || work.width === 0) return;
@@ -50,13 +48,8 @@ function Preview({ page }) {
   return <canvas ref={canvas} className={styles.canvas} role="img" aria-label="Preview of this page" />;
 }
 
-/**
- * The scanner: take or choose photos (the phone's own camera app, through a file input; no camera permission), turn and crop each
- * page, optionally switch to Document mode, then save one PDF or separate JPEGs into the vault through the normal upload.
- * Everything lives in memory; closing the dialog discards it all. Loaded on demand, so none of it is in the main bundle.
- */
 function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
-  const [step, setStep] = useState('edit'); // 'edit' | 'save'
+  const [step, setStep] = useState('edit');
   const [pages, setPages] = useState([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -72,7 +65,6 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
   const saving = useRef(false);
   pagesRef.current = pages;
 
-  // Closing (or leaving) discards everything: the canvases are emptied so the browser can take the memory back at once.
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -86,7 +78,7 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
 
   const addFile = async (event) => {
     const file = event.target.files?.[0];
-    event.target.value = ''; // the same photo can be chosen again
+    event.target.value = '';
     if (!file) return;
     if (pages.length >= MAX_PAGES) {
       setError(`A scan can have up to ${MAX_PAGES} pages.`);
@@ -120,7 +112,6 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
   const turn = (direction) => update(page.id, { rotation: page.rotation + (direction === 'right' ? 90 : -90), crop: rotateCrop(page.crop, direction) });
 
   const save = async (chosenFormat = format) => {
-    // One save at a time: set before any await, so Enter twice or a double tap sends one upload.
     if (saving.current) return;
     saving.current = true;
     const cleaned = cleanScanName(name);
@@ -152,8 +143,6 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
         return;
       }
       const files = plan.files.map((item) => new File([item.bytes], `${cleaned}${item.suffix}.${item.type === 'application/pdf' ? 'pdf' : 'jpg'}`, { type: item.type }));
-      // The same checks the Upload dialog makes (the 4 MB cap, the name rules, the room left), here while the dialog is still open;
-      // the server checks again regardless.
       const usage = await getStorage().catch(() => null);
       let pending = 0;
       for (const item of files) {
@@ -164,7 +153,6 @@ function ScanDialog({ folderPaths = [], currentPath = '', onClose }) {
         }
         pending += item.size;
       }
-      // Handed to the transfer tray: the dialog closes at once and the tray shows each file until it is sealed.
       transfers.enqueue(files.map((item) => ({ kind: 'upload', file: item, folder: folder || '' })));
       onClose();
     } catch (err) {

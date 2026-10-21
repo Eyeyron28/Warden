@@ -1,11 +1,3 @@
-// node scripts/check-scan.mjs   (from client, after "npm run build")
-//
-// Drives the Scan dialog in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a local
-// WARDEN_TEST_MONGO; anything else is refused; no .env is read; mail is captured). The app is served WITH the production
-// Content-Security-Policy from vercel.json, so a violation shows up. It scans two sample photos (one with an EXIF orientation),
-// rotates, crops (mouse drag and keyboard), switches Document mode, saves a PDF, and checks the file in the list, in the preview,
-// under the cap, and that the scanner left nothing in browser storage. Then a second scan saves separate JPEGs, a third pushes
-// ten full-size noisy photos at the cap, and the sizes for a 12 MP photo are printed.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -32,11 +24,9 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) {
 }
 const uri = baseUri.replace(/^(mongodb:\/\/[^/]+)\/[^?]*/, '$1/warden_scan_check');
 
-// The production policy for the app's own pages.
 const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 const CSP = JSON.stringify(vercel)
   .match(/"Content-Security-Policy","value":"(default-src 'self'[^"]+)"/)?.[1]
-  // vercel.json is served over https; the local rig is http, so the upgrade directive would break every request
   .replace('; upgrade-insecure-requests', '');
 if (!CSP) throw new Error('could not find the app Content-Security-Policy in vercel.json');
 
@@ -81,7 +71,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const buffer = Buffer.from(await response.arrayBuffer());
   let parsed = null;
-  try { parsed = JSON.parse(buffer.toString('utf8')); } catch { /* binary */ }
+  try { parsed = JSON.parse(buffer.toString('utf8')); } catch {  }
   return { status: response.status, body: parsed, buffer };
 }
 
@@ -101,7 +91,6 @@ async function launch() {
   throw new Error(`No Chromium found: ${String(last?.message).split('\n')[0]}`);
 }
 
-/** A sample "photo": lit paper with lines of text and grain, as a JPEG (base64), drawn in the browser. */
 async function makePhoto(page, { width, height, seed, grain = 10, quality = 0.92 }) {
   return page.evaluate(async ({ width, height, seed, grain, quality }) => {
     const canvas = document.createElement('canvas');
@@ -140,7 +129,6 @@ async function makePhoto(page, { width, height, seed, grain = 10, quality = 0.92
   }, { width, height, seed, grain, quality });
 }
 
-/** Adds an EXIF "Orientation" tag to a JPEG (what a phone does when it is held sideways). */
 function withOrientation(jpeg, orientation) {
   const tiff = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, orientation, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
   const exif = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), tiff]);
@@ -158,7 +146,6 @@ const write = (name, buffer) => {
 
 let browser;
 try {
-  // ---- the account ----
   const email = 'scan.check@example.com';
   const password = 'Qx7!vTr29#mLpw';
   await api('POST', '/api/auth/signup/start', { json: { email, password, termsAccepted: true } });
@@ -170,7 +157,6 @@ try {
   const maker = await (await browser.newContext()).newPage();
   await maker.goto(`${base}/login`);
   const photo = (b64) => Buffer.from(b64, 'base64');
-  // a 12-megapixel photo (4032 x 3024) of the kind a phone makes, and smaller pages for the dialog run
   const big = photo(await makePhoto(maker, { width: 4032, height: 3024, seed: 1 }));
   const bigFile = write('phone-12mp.jpg', big);
   const sideways = write('sideways.jpg', withOrientation(photo(await makePhoto(maker, { width: 1600, height: 1200, seed: 2 })), 6));
@@ -179,7 +165,7 @@ try {
 
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   await context.addInitScript((value) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, token);
@@ -198,7 +184,6 @@ try {
   }));
   const before = await storageState();
 
-  // ---- scan 1: two pages, rotate, crop (mouse and keyboard), Document mode, PDF ----
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Scan documents' });
   await dialog.waitFor();
@@ -217,7 +202,6 @@ try {
   await dialog.getByRole('button', { name: 'Rotate right' }).click();
   await page.waitForFunction(([w, h]) => { const c = document.querySelector('[role=dialog] canvas'); return c && c.width === h && c.height === w; }, [w2a, h2a]);
   check(true, `rotate right turns page 2 (${w2a}x${h2a} -> ${h2a}x${w2a})`);
-  // crop: drag the bottom-right corner with the mouse, then nudge the top-left one with the keyboard
   const box = async () => dialog.getByRole('group', { name: /Crop area/ }).boundingBox();
   const cropBefore = await box();
   const se = await dialog.getByRole('button', { name: /Crop corner, bottom right/ }).boundingBox();
@@ -235,7 +219,6 @@ try {
   const beforeMove = await box();
   await page.keyboard.press('Shift+ArrowLeft');
   check((await box()).x < beforeMove.x - 1, 'the arrow keys move the crop box');
-  // Document mode and the threshold
   const pixels = () => dialog.locator('canvas').evaluate((c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let colour = 0; for (let i = 0; i < d.length; i += 40) if (Math.abs(d[i] - d[i + 1]) > 6 || Math.abs(d[i + 1] - d[i + 2]) > 6) colour += 1; return colour; });
   const colourBefore = await pixels();
   await dialog.getByRole('checkbox', { name: /Document mode/ }).check();
@@ -254,7 +237,6 @@ try {
   await dialog.waitFor({ state: 'detached', timeout: 60000 });
   check(await page.getByTestId('transfer-tray').waitFor({ timeout: 8000 }).then(() => true, () => false), 'the scan went through the transfer tray (the dialog closed at once)');
 
-  // ---- the file ----
   const row = page.getByRole('button', { name: `${name}.pdf` }).first();
   await row.waitFor({ timeout: 15000 });
   check(true, `"${name}.pdf" is in the list`);
@@ -275,7 +257,6 @@ try {
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'scan-preview-1280.png') });
   await page.keyboard.press('Escape');
 
-  // ---- scan 2: separate images into a folder ----
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
   await dialog.waitFor();
   await input.setInputFiles(sideways);
@@ -293,7 +274,6 @@ try {
   const jpgs = docs.filter((doc) => /^Two pictures page \d\.jpg$/.test(doc.filename));
   check(jpgs.length === 2 && jpgs.every((doc) => doc.folder === 'Papers' && doc.sniffedType === 'image/jpeg' && doc.size < 4 * 1024 * 1024), `separate JPEGs: ${jpgs.map((d) => `${d.filename} ${kb(d.size)}`).join(', ')} in the folder Papers`);
 
-  // ---- scan 3: a 12 MP photo, as PDF and as JPEG (the sizes asked for) ----
   const saveOne = async (label, format) => {
     await page.getByRole('button', { name: 'Scan', exact: true }).click();
     await dialog.waitFor();
@@ -312,7 +292,6 @@ try {
   console.log(`12 MP photo (${kb(big.length)} original): as PDF ${kb(pdf12.size)}, as JPEG ${kb(jpg12.size)}`);
   check(pdf12.size < 4 * 1024 * 1024 && jpg12.size < 4 * 1024 * 1024, 'both are under the 4 MB cap');
 
-  // ---- scan 4: ten full-size noisy pages at the cap ----
   const noisy = [];
   for (let i = 0; i < 10; i += 1) noisy.push(write(`noisy-${i}.jpg`, photo(await makePhoto(maker, { width: 3000, height: 4000, seed: 10 + i, grain: 60, quality: 0.95 }))));
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
@@ -345,7 +324,6 @@ try {
     check(noisyDoc.size < 4 * 1024 * 1024, 'ten pages fit in one PDF under the cap by lowering the quality');
   }
 
-  // ---- cancelling discards, and nothing was stored ----
   await page.getByRole('button', { name: 'Scan', exact: true }).click();
   await dialog.waitFor();
   await input.setInputFiles(second);

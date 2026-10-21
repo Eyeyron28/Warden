@@ -1,5 +1,3 @@
-// Shared fixture for the Emergency Access tests: an in-memory world (no database), an owner with folders and files,
-// and helpers that drive the REAL controllers, service, sessions and guard the way the routes do.
 process.env.PUBLIC_APP_URL = 'https://warden.test';
 delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
@@ -61,7 +59,6 @@ function addDoc({ owner = ALICE, folder = 'root', filename = 'file.txt', content
   return doc;
 }
 
-/** Folders Taxes, Taxes/2024, Medical, Private, with a file in each and one at the top. */
 function seedVault() {
   const folders = { taxes: addFolder('Taxes'), tax24: addFolder('Taxes/2024'), medical: addFolder('Medical'), priv: addFolder('Private') };
   const docs = {
@@ -79,14 +76,12 @@ const mailsTo = (address) => world.mails.filter((m) => m.to === address);
 const lastMailTo = (address) => mailsTo(address).at(-1);
 const codeFrom = (mail) => /(?<![\d-])(\d{6})(?![\d-])/.exec(mail.text)[1];
 
-/** The owner's fresh emailed code for one action. */
 async function ownerCode(action) {
   const started = await call(E.startCode, owner({ body: { action } }));
   if (started.error) throw started.error;
   return { challengeToken: started.json.challengeToken, code: codeFrom(lastMailTo(OWNER_EMAIL)) };
 }
 
-/** Sets emergency access up the way the API does (fresh code included). Returns the response (with the kit). */
 async function setupEmergency({ scope = { mode: 'all' }, waitMinutes = 2, contactEmail = CONTACT_EMAIL, contactLabel = 'Sam' } = {}) {
   const fresh = await ownerCode('setup');
   const out = await call(E.setup, owner({ body: { contactEmail, contactLabel, waitMinutes, scope, ...fresh } }));
@@ -96,7 +91,6 @@ async function setupEmergency({ scope = { mode: 'all' }, waitMinutes = 2, contac
 
 const publicCall = (handler, body, extra = {}) => call(handler, { body, ip: '203.0.113.50', headers: { 'x-vercel-ip-country': 'PH' }, ...extra });
 
-/** Asks for a code to the contact's mailbox and returns it. */
 async function contactCode({ ownerEmail = OWNER_EMAIL, contactEmail = CONTACT_EMAIL, ip } = {}) {
   const before = mailsTo(contactEmail).length;
   const out = await publicCall(E.requestCode, { ownerEmail, contactEmail }, ip ? { ip } : {});
@@ -105,7 +99,6 @@ async function contactCode({ ownerEmail = OWNER_EMAIL, contactEmail = CONTACT_EM
   return mails.length > before ? codeFrom(mails.at(-1)) : null;
 }
 
-/** A full, valid request by the contact. */
 async function contactRequests(kit, extra = {}) {
   const code = await contactCode();
   return publicCall(E.request, { ownerEmail: OWNER_EMAIL, contactEmail: CONTACT_EMAIL, code, kit, ...extra });
@@ -118,13 +111,11 @@ async function contactStarts(kit, extra = {}) {
 
 const accessRow = () => world.tables.emergencyaccesses[0];
 const requestRows = () => world.tables.emergencyrequests;
-/** Moves the clock for a request by editing the database, the way real time passing would show up. */
 function makeReleasable(request = requestRows().at(-1)) {
   request.releaseAt = new Date(Date.now() - 1000);
   request.claimExpiresAt = new Date(Date.now() + 7 * 864e5);
 }
 
-/** A request the way requireSession sees it: resolve the bearer token against the (fake) session store. */
 async function throughRequireSession(token, { method = 'GET', baseUrl = '/api/documents', path = '/' } = {}) {
   const req = { headers: { authorization: `Bearer ${token}` }, method, baseUrl, path, ip: '203.0.113.9', cookies: {} };
   let error = null;

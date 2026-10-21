@@ -28,7 +28,6 @@ import styles from './ShareModal.module.css';
 
 const linkFor = (shareId) => `${window.location.origin}/shared/${shareId}`;
 
-/** One labelled block of the dialog with its own status line. */
 function Section({ title, hint, children, error, note }) {
   return (
     <section className={styles.field} style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
@@ -43,33 +42,20 @@ function Section({ title, hint, children, error, note }) {
   );
 }
 
-/**
- * Edit one share without re-uploading anything: expiry (within 30 days of
- * creation), download limit, recipient email, and the link password.
- *
- * The share key is not stored anywhere, so the password operations need it
- * from somewhere the owner holds: ADDING a password needs the original link
- * (pasted here - it stays in this browser), CHANGING or REMOVING one needs the
- * current password (which unlocks the key from the wrapped copy).
- */
 function ShareEditModal({ share, onClose, onChanged }) {
-  const [status, setStatus] = useState({}); // section -> { busy, error, note }
+  const [status, setStatus] = useState({});
   const set = (section, patch) => setStatus((current) => ({ ...current, [section]: { ...current[section], ...patch } }));
   const of = (section) => status[section] || {};
 
-  // expiry
   const [days, setDays] = useState(null);
   const [customExpiry, setCustomExpiry] = useState('');
-  // A share can last at most 30 days from when it was made: that leaves this many whole days from now.
   const maxDays = maxDaysUntil(new Date(share.maxExpiresAt).getTime());
   const customMessage = customExpiry !== '' ? customDaysProblem(customExpiry, maxDays) : '';
   const customOk = customExpiry !== '' && customMessage === '' && maxDays >= 1;
 
-  // limits
   const [maxText, setMaxText] = useState(share.maxDownloads ? String(share.maxDownloads) : '');
   const [email, setEmail] = useState(share.recipientEmail || '');
 
-  // password
   const [pastedLink, setPastedLink] = useState('');
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -99,7 +85,6 @@ function ShareEditModal({ share, onClose, onChanged }) {
   const saveEmail = (value) =>
     run('email', () => updateShare(share.id, { recipientEmail: value }), value ? 'Restricted to that address.' : 'Anyone with the link can open it.');
 
-  // ---- password ----
   const wrapAndSave = async (keyBytes, password) => {
     const salt = randomSalt();
     const { wrapKey, verifier } = await deriveShareSecrets(password, salt);
@@ -128,7 +113,6 @@ function ShareEditModal({ share, onClose, onChanged }) {
         if (!parsed || parsed.shareId !== share.id || !parsed.keyText) {
           throw fail('Paste the full original link for this share, including everything after the #.');
         }
-        // Check the pasted key really opens this share before locking it away.
         try {
           const { manifest } = await getOwnerManifest(share.id);
           await decryptManifest(await importShareKey(parsed.keyText), share.id, manifest);
@@ -165,7 +149,6 @@ function ShareEditModal({ share, onClose, onChanged }) {
       async () => {
         const keyBytes = await unlockWithCurrent(currentPw);
         await removeSharePassword(share.id);
-        // The key goes back into the link, and only this browser has it now.
         setResultLink(`${linkFor(share.id)}#k=${toBase64Url(keyBytes)}`);
         setCurrentPw('');
       },
@@ -178,7 +161,6 @@ function ShareEditModal({ share, onClose, onChanged }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* the link is visible in the field to copy by hand */
     }
   };
 

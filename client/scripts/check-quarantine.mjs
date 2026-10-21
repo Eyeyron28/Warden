@@ -1,11 +1,3 @@
-// node scripts/check-quarantine.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// Quarantine in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a local WARDEN_TEST_MONGO; no
-// .env is read; mail is captured), served with the production CSP. The sample files are built in memory when the script runs (nothing
-// is committed, nothing is written to disk, and the antivirus test string is joined from parts). It checks that: a risky sample is held
-// ("Held for review"), is missing from Files and Recent, shows in Quarantine with its reasons and cannot be previewed or downloaded;
-// Release does nothing with the wrong word and brings the file into Files with the right one; a blocked sample shows "Not saved" and is
-// stored nowhere; a clean file is unaffected and the scan does not slow an upload down; no CSP violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -21,7 +13,7 @@ const root = path.resolve(here, '..', '..');
 const dist = process.env.DIST_DIR ? path.resolve(process.env.DIST_DIR) : path.join(root, 'client', 'dist');
 const requireServer = createRequire(path.join(root, 'server', 'package.json'));
 const SHOTS = process.env.SHOTS || '';
-const TRAY_MS = 3000; // the shortened dismiss time
+const TRAY_MS = 3000;
 
 const baseUri = process.env.WARDEN_TEST_MONGO || 'mongodb://127.0.0.1:27099/?replicaSet=rs0&directConnection=true';
 if (!/^mongodb:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//.test(baseUri)) {
@@ -81,7 +73,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -102,12 +94,10 @@ async function launch() {
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'warden-quarantine-'));
 
-// ---- the samples: built here, in memory ----
 const pdfWith = (marker) => Buffer.from(`%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R ${marker} >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n`);
 const riskyPdf = () => pdfWith('/JavaScript');
 const testSignature = () => Buffer.from(['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-', 'ANTIVIRUS-TEST-FILE!', '$H+H*'].join(''));
 const sample = (name, buffer, mimeType = 'application/octet-stream') => ({ name, mimeType, buffer });
-// A tiny stored-method zip, built in memory (a docx is a zip with [Content_Types].xml in it).
 function zipOf(entries) {
   const locals = [];
   const centrals = [];
@@ -167,7 +157,7 @@ try {
   browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, reducedMotion: 'reduce' });
   await context.addInitScript(([value, ms]) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__WARDEN_TEST__ = { importCardMs: ms };
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
@@ -198,11 +188,9 @@ try {
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
-  // ---- a clean file is unaffected ----
   await uploadVia(sample('clean-note.txt', Buffer.from('an ordinary note')));
   await rows.first().getByText(/^Sealed · checked$/).waitFor({ timeout: 10000 });
   const sealedRingHtml = await rows.first().getByTestId('status-icon').innerHTML();
-  // ---- the status icon explains itself: hover, keyboard, Escape ----
   const icon = rows.first().getByTestId('status-icon');
   const tipBox = page.getByTestId('tooltip');
   await icon.hover();
@@ -216,7 +204,7 @@ try {
   await page.mouse.move(10, 10);
   await tipBox.waitFor({ state: 'hidden', timeout: 2000 });
   check(true, 'it hides when the mouse leaves');
-  await page.keyboard.press('Shift'); // a key press makes the next focus a keyboard focus (focus-visible)
+  await page.keyboard.press('Shift');
   await icon.focus();
   await tipBox.waitFor({ timeout: 2000 });
   check(/Sealed: encrypted/.test(await tipBox.innerText()), 'keyboard focus shows it too');
@@ -231,7 +219,6 @@ try {
   check((await heldList()).count === 0, 'nothing is held');
   await closeTray();
 
-  // ---- a risky file is held ----
   await uploadVia(sample('tax-form.pdf', riskyPdf(), 'application/pdf'));
   await rows.first().getByText(/Held for review/).waitFor({ timeout: 10000 });
   check(/Held for review: PDF with active content/.test(await rows.first().innerText()), 'the tray row says "Held for review: PDF with active content"');
@@ -254,7 +241,6 @@ try {
   await page.waitForTimeout(300);
   check((await badge.count()) === 1 && (await badge.innerText()).trim() === '1', 'the sidebar item shows a badge with 1');
   if (SHOTS) {
-    // the badge in the icon rail and in the phone drawer
     await page.getByRole('button', { name: 'Collapse sidebar' }).click();
     await page.waitForTimeout(300);
     check((await page.getByTestId('quarantine-badge').count()) === 1, 'the badge is also on the icon in the collapsed sidebar');
@@ -272,7 +258,6 @@ try {
   check(!(await docs()).some((d) => d.filename === 'tax-form.pdf'), 'the file list from the server leaves it out');
   await closeTray();
 
-  // Recent: the held file is not there
   await nav('Recent').click();
   await page.waitForURL((url) => url.pathname === '/recent');
   await page.waitForTimeout(800);
@@ -281,7 +266,6 @@ try {
   await page.waitForURL((url) => url.pathname === '/photos');
   check((await page.getByText('tax-form.pdf').count()) === 0, 'it is not in Photos');
 
-  // ---- Quarantine page ----
   await page.getByRole('link', { name: /^Quarantine/ }).first().click();
   await page.waitForURL((url) => url.pathname === '/quarantine');
   const heldRows = page.getByTestId('quarantine-row');
@@ -293,7 +277,6 @@ try {
   check((await page.getByTestId('quarantine-badge').innerText()).trim() === '1', 'the badge still says 1');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'quarantine-page-1280.png') });
 
-  // preview and download are impossible
   const held1 = (await heldList()).items[0];
   const viewResponse = await fetch(`${base}/api/documents/${held1.id}/view`, { headers: { authorization: `Bearer ${token}` } });
   const viewBody = await viewResponse.text();
@@ -301,7 +284,6 @@ try {
   const shareResponse = await api('POST', `/api/documents/${held1.id}/share`, { token, json: { durationHours: 24 } });
   check(shareResponse.status === 409, 'a share link cannot be made for it');
 
-  // ---- Release: the wrong word does nothing, the right word brings it back ----
   await heldRows.first().getByRole('button', { name: /^Release/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Release this file?' });
   await dialog.waitFor();
@@ -326,7 +308,6 @@ try {
   await page.waitForURL((url) => url.pathname === '/files');
   await page.getByText('tax-form.pdf').first().waitFor({ timeout: 8000 });
   check(true, 'it shows in My files');
-  // Details: "Released after review"
   await page.locator('button[aria-label^="Details for tax-form"]').first().click();
   const panel = page.getByRole('dialog', { name: /^Details for/ });
   await panel.waitFor();
@@ -334,7 +315,6 @@ try {
   check(/Released after review/.test(await panel.innerText()), 'Details says "Released after review"');
   await page.keyboard.press('Escape');
 
-  // ---- a blocked file shows "Not saved" and is stored nowhere ----
   const before = await countAll();
   await uploadVia(sample('notes.txt', testSignature()));
   await rows.first().getByText(/Not saved/).waitFor({ timeout: 10000 });
@@ -352,7 +332,6 @@ try {
   check(!(await docs()).some((d) => d.filename === 'notes.txt') && (await heldList()).count === 0, 'it is in no list and not in Quarantine');
   await closeTray();
 
-  // ---- zips only through Export / Import; a docx is a zip inside and still uploads ----
   const openUploadDialog = async () => {
     await page.getByRole('button', { name: 'New' }).click();
     await page.getByRole('menuitem', { name: /Upload file/ }).click();
@@ -371,7 +350,6 @@ try {
   await zipRow.getByRole('button', { name: 'Open Export / Import' }).click();
   await page.waitForURL((url) => url.pathname === '/export', { timeout: 5000 });
   check(true, 'the button opens Export / Import (and closes the dialog)');
-  // a zip that is only a zip by its bytes is refused by the server (renamed), and the tray says Not saved
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
   const beforeZip = await countAll();
@@ -389,7 +367,6 @@ try {
   check((await docs()).some((d) => d.filename === 'letter.docx'), 'a docx built at run time uploads and is sealed');
   await closeTray();
 
-  // ---- a zip with 1 clean and 3 risky files: held files are never counted as imported ----
   await nav('Export / Import').click();
   await page.waitForURL((url) => url.pathname === '/export');
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(sample('mix.zip', zipOf({
@@ -423,9 +400,8 @@ try {
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
-  // ---- touch: a tap on the icon toggles a popover; a tap elsewhere closes it (a phone-sized screen) ----
   const phone = await browser.newContext({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
-  await phone.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+  await phone.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch {  } }, token);
   const mobile = await phone.newPage();
   await mobile.goto(`${base}/files`);
   await mobile.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
@@ -448,7 +424,6 @@ try {
   check(true, 'a tap elsewhere closes it');
   await phone.close();
 
-  // ---- the scan does not slow an upload down ----
   const scanner = requireServer('./utils/fileScanner');
   const real = scanner.scanBuffer;
   const big = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(3.5 * 1024 * 1024, 0x41), Buffer.from('\n%%EOF')]);
@@ -457,7 +432,7 @@ try {
   for (let n = 0; n < 10; n += 1) {
     scanner.scanBuffer = real;
     timesReal.push((await postFile(token, `speed-a-${n}.pdf`, big)).ms);
-    scanner.scanBuffer = () => ({ verdict: 'clean', reasons: [], score: 0, version: 1 }); // the scan switched off, for the comparison only
+    scanner.scanBuffer = () => ({ verdict: 'clean', reasons: [], score: 0, version: 1 });
     timesOff.push((await postFile(token, `speed-b-${n}.pdf`, big)).ms);
   }
   scanner.scanBuffer = real;
@@ -466,7 +441,6 @@ try {
   console.log(`upload of 3.5 MB (median of 10): with the scan ${median(timesReal).toFixed(0)} ms, scan switched off ${median(timesOff).toFixed(0)} ms; the scan alone ${scanMs.toFixed(1)} ms`);
   check(median(timesReal) - median(timesOff) < 50, `the scan adds under 50 ms to a 3.5 MB upload (${(median(timesReal) - median(timesOff)).toFixed(1)} ms)`);
 
-  // ---- nothing stored in the browser, no CSP problems ----
   const stored = await page.evaluate(async () => ({
     local: Object.keys(window.localStorage),
     idb: indexedDB.databases ? (await indexedDB.databases()).map((db) => db.name) : [],

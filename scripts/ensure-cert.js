@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// Runs automatically before every `npm run dev` (see the root package.json
-// "predev" script). Keeps certs/localhost+3.pem valid for localhost, 127.0.0.1
-// and any extra hosts listed (comma separated) in DEV_CERT_HOSTS. Nothing is
-// detected from the network: to open the dev site from another device, list its
-// address in DEV_CERT_HOSTS; to try a real phone, use the deployed HTTPS URL.
 'use strict';
 
 const fs = require('fs');
@@ -15,18 +10,8 @@ const CERTS_DIR = path.join(__dirname, '..', 'certs');
 const CERT_PATH = path.join(CERTS_DIR, 'localhost+3.pem');
 const KEY_PATH = path.join(CERTS_DIR, 'localhost+3-key.pem');
 
-// Always present regardless of what's already in the cert - losing
-// "localhost" or "127.0.0.1" from a regenerated cert would break the most
-// common dev case (opening the app on the same machine it's running on).
 const BASE_NAMES = ['localhost', '127.0.0.1'];
 
-/**
- * Reads the existing cert (if any) and returns every Subject Alternative
- * Name it already covers - both DNS entries (e.g. "localhost") and IP
- * entries (e.g. "192.168.100.115") - as one flat list of strings, exactly
- * as mkcert itself takes them as arguments. Returns null if the cert
- * doesn't exist yet (first run, before any cert has ever been generated).
- */
 function readExistingSans() {
   if (!fs.existsSync(CERT_PATH)) return null;
 
@@ -35,9 +20,6 @@ function readExistingSans() {
   const sanExtension = cert.getExtension('subjectAltName');
   if (!sanExtension) return [];
 
-  // forge's parsed altNames: type 2 is a DNS name (in `.value`), type 7
-  // is an IP address (forge additionally decodes the raw bytes into a
-  // human-readable dotted-quad string in `.ip`).
   return sanExtension.altNames.map((entry) => (entry.type === 7 ? entry.ip : entry.value));
 }
 

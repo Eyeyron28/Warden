@@ -12,9 +12,6 @@ function badRequest(message) {
 const text = (value, max = 500) => (typeof value === 'string' && value.length <= max ? value : '');
 const codeBody = (body) => ({ challengeToken: text(body?.challengeToken, 200), code: text(body?.code, 20) });
 
-// ---------------- the owner (a signed-in, normal session; emergency sessions are refused by the guard) ----------------
-
-/** POST /api/emergency/challenge { action } - emails the owner the fresh code needed for ONE kind of change. */
 const startCode = asyncHandler(async (req, res) => {
   const action = text(req.body?.action, 30);
   if (!service.ACTIONS.includes(action)) throw badRequest('Choose what you want to change.');
@@ -25,7 +22,6 @@ const resendCode = asyncHandler(async (req, res) => {
   res.status(200).json(await service.resendOwnerCode(req, text(req.body?.challengeToken, 200)));
 });
 
-/** POST /api/emergency/setup - the kit comes back ONCE in this response and is stored nowhere. */
 const setup = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.status(201).json(await service.setup(req, req.body || {}, codeBody(req.body)));
@@ -40,7 +36,6 @@ const revoke = asyncHandler(async (req, res) => {
   res.status(200).json(await service.revoke(req, codeBody(req.body)));
 });
 
-/** GET /api/emergency/folders - the owner's folders with ids, for the setup wizard's folder picker. */
 const folderChoices = asyncHandler(async (req, res) => {
   res.status(200).json({ folders: await service.listFolderChoices(req.userId) });
 });
@@ -57,11 +52,6 @@ const approveNow = asyncHandler(async (req, res) => {
   res.status(200).json(await service.approveNow(req, req.params.id, codeBody(req.body)));
 });
 
-/**
- * GET /api/emergency/session-info - the ONE emergency route an emergency session itself may call besides reading files.
- * Tells the contact screen it is read-only, when the session ends and which top-level folders it covers. Never the
- * owner's name or email, and never a folder name above a scoped folder.
- */
 const sessionInfo = asyncHandler(async (req, res) => {
   if (!req.emergency) {
     const error = new Error('Not found.');
@@ -71,8 +61,6 @@ const sessionInfo = asyncHandler(async (req, res) => {
   res.status(200).json({ readOnly: true, expiresAt: req.emergency.absoluteExpiresAt, scopeSummary: scopeSummary(req.emergency) });
 });
 
-// ---------------- the contact (public: no account, same answers whoever asks) ----------------
-
 const contactFields = (body) => ({
   ownerEmail: text(body?.ownerEmail, 254),
   contactEmail: text(body?.contactEmail, 254),
@@ -80,7 +68,6 @@ const contactFields = (body) => ({
   kit: text(body?.kit, 200),
 });
 
-/** POST /api/emergency/public/request-code - ALWAYS the same message. */
 const requestCode = asyncHandler(async (req, res) => {
   const { ownerEmail, contactEmail } = contactFields(req.body);
   res.status(200).json(await service.requestCode({ ownerEmail, contactEmail }));
@@ -97,7 +84,6 @@ const startSession = asyncHandler(async (req, res) => {
 
 const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Warden</title><style>body{font-family:system-ui,sans-serif;margin:0;padding:48px 20px;background:#f6f2f4;color:#21181f}main{max-width:480px;margin:0 auto;background:#fff;border:1px solid #e3dbe0;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p{line-height:1.6;margin:0}</style></head><body><main><h1>Thank you</h1><p>If that link was still valid, the request has been denied and nobody was given access. You can close this page.</p></main></body></html>`;
 
-/** GET /api/emergency/public/deny/:token - one click from the owner's email. One generic page whatever happened. */
 const denyByToken = asyncHandler(async (req, res) => {
   await service.denyByToken(req.params.token);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');

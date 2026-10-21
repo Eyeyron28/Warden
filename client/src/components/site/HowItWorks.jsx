@@ -2,7 +2,6 @@ import { useId, useRef, useState } from 'react';
 
 import styles from './HowItWorks.module.css';
 
-// Every sentence here has to match the code (server/utils/crypto.js, sessionStore.js, shares.controller.js, utils/emergency).
 const TABS = [
   {
     id: 'signup',
@@ -51,10 +50,6 @@ const TABS = [
   },
 ];
 
-/**
- * "How it works" as WAI-ARIA tabs: arrow keys (left/right, up/down), Home and End move between tabs with a roving
- * tabindex, so Tab leaves the list. Without a script the first tab's text is still all there in the page.
- */
 function HowItWorks() {
   const base = useId();
   const [active, setActive] = useState(0);

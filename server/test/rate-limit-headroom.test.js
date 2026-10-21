@@ -1,12 +1,3 @@
-// Run with: cd server && npm test
-//
-// Request budgets of the signed-in pages. Measured with the real client against the real API (one visit, prefetch included):
-//   Emergency status: the banner polls it every 60 s on EVERY page and the Emergency page every 30 s - on the old 60-per-hour
-//   owner budget one open tab used the whole hour, and the resulting 429 also blocked the owner's real actions (deny, approve).
-//   Trusted browsers: Settings reads them on every visit; the old strict budget (10 per hour per account, 20 per hour per
-//   connection) answered 429 from the 11th visit.
-// So the READS have their own, larger budget, and the actions keep the strict one. This runs the REAL app (every middleware)
-// on a LOCAL throwaway MongoDB and is skipped, with the reason, without one. No .env is read, no mail is sent.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -60,11 +51,9 @@ async function many(count, method, path, json) {
 
 it('an open tab polling the emergency status every minute for hours never reaches a 429, and does not use up the actions', async () => {
   await clear();
-  // 3 hours of the banner (60/h) plus the Emergency page open (120/h) is 360 calls; one hour of both is 180.
   const statuses = await many(180, 'GET', '/api/emergency/status');
   assert.equal(statuses.filter((s) => s === 429).length, 0);
   assert.ok(statuses.every((s) => s === 200));
-  // The owner's actions have their own, untouched budget: a deny / approve is still possible after an hour of polling.
   const action = await call('POST', '/api/emergency/challenge', { action: 'not-an-action' });
   assert.notEqual(action, 429);
 });

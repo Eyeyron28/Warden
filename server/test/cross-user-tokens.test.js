@@ -1,9 +1,3 @@
-// Run with: cd server && npm test
-//
-// Two more cross-user checks, against the REAL app on a LOCAL throwaway MongoDB (skipped, with the reason, without one):
-//   1. a share access token made for share A is worth nothing on share B;
-//   2. an Emergency Access session is refused on EVERY owner-only route - the route list comes from the router itself, so a
-//      route added later is covered the day it is added, and anything not on the allowlist is refused (deny by default).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -50,8 +44,6 @@ async function raw(method, path, { token, json, headers = {} } = {}) {
   return { status: response.status, body, text };
 }
 
-// ---------------- 1. a share access token is bound to its own share ----------------
-
 async function makeGatedShare(M, label) {
   const shareId = crypto.randomBytes(16).toString('hex');
   const fileId = crypto.randomBytes(8).toString('hex');
@@ -78,13 +70,11 @@ it('a share access token made for share A does not open share B, even when A\'s 
   assert.match(accessA, /^[0-9a-f]{64}$/);
   assert.notEqual(accessA, accessB);
 
-  // Clear every gate of A for this visitor, so the token is as strong as a token can be.
   await M.ShareAccess.updateOne({ shareId: A.shareId }, { $set: { emailOk: true, passwordOk: true } });
   const own = await raw('GET', `/api/shared/${A.shareId}`, { headers: { 'x-share-access': accessA } });
   assert.equal(own.status, 200, 'the token works on its own share');
   assert.equal((await raw('GET', `/api/shared/${A.shareId}/files/${A.fileId}`, { headers: { 'x-share-access': accessA } })).status, 200);
 
-  // The same token on B: every public route of the share answers the same generic 404 and serves nothing of B's.
   const attempts = [
     ['GET', `/api/shared/${B.shareId}`],
     ['GET', `/api/shared/${B.shareId}/files/${B.fileId}`],
@@ -99,17 +89,12 @@ it('a share access token made for share A does not open share B, even when A\'s 
     assert.ok(!result.text.includes('secret bytes of b') && !result.text.includes('manifest of b'), 'nothing of B is served');
     if (method === 'GET') assert.equal(result.text, generic, 'the same answer as with no token at all');
   }
-  // And B's own (uncleared) token still does not open B's gated files.
   assert.equal((await raw('GET', `/api/shared/${B.shareId}/files/${B.fileId}`, { headers: { 'x-share-access': accessB } })).status, 404);
-  // A's file id on B's share, and B's file id on A's share, find nothing either.
   await M.ShareAccess.updateOne({ shareId: B.shareId }, { $set: { emailOk: true, passwordOk: true } });
   assert.equal((await raw('GET', `/api/shared/${B.shareId}/files/${A.fileId}`, { headers: { 'x-share-access': accessB } })).status, 404);
   assert.equal((await raw('GET', `/api/shared/${A.shareId}/files/${B.fileId}`, { headers: { 'x-share-access': accessA } })).status, 404);
 });
 
-// ---------------- 2. an emergency session on every owner-only route ----------------
-
-/** Every route of the real app with whether a session is required, found by walking the router stack (as cross-user.test.js does). */
 function enumerateRoutes(app) {
   const requireSession = require('../middleware/requireSession');
   const out = [];
@@ -147,7 +132,6 @@ it('an emergency session is refused (403, read-only) on every owner-only route t
     emergency: { accessId: new live.mongoose.Types.ObjectId(), requestId: new live.mongoose.Types.ObjectId(), scopeMode: 'all', absoluteMs: 4 * 3600 * 1000 },
   });
 
-  // Log out is on the allowlist (a contact may end their own session), so it goes last: it ends the token this test uses.
   const routes = enumerateRoutes(live.app)
     .filter((route) => route.guarded && route.method !== 'ALL')
     .sort((x, y) => Number(x.path === '/api/auth/logout') - Number(y.path === '/api/auth/logout'));
@@ -171,11 +155,9 @@ it('an emergency session is refused (403, read-only) on every owner-only route t
       assert.doesNotMatch(String(result.status), /^2/);
     }
   }
-  // Exactly the allowlist gets through (each entry matched by a real route), everything else was refused.
   assert.equal(allowed.length, ALLOWLIST.length, `allowed: ${allowed.join(', ')}`);
   assert.equal(allowed.length + refused.length, routes.length);
   assert.ok(refused.length >= routes.length - ALLOWLIST.length);
-  // Nothing was changed by any of it.
   assert.equal(await M.User.countDocuments({}), 1);
   assert.equal(await M.Document.countDocuments({}), 0);
   assert.equal(await M.Share.countDocuments({}) >= 0, true);
@@ -191,7 +173,6 @@ it('deny by default: a route nobody has listed is refused for an emergency sessi
     const [baseUrl, ...rest] = [path.slice(0, path.indexOf('/', 5)), path.slice(path.indexOf('/', 5))];
     assert.throws(() => assertEmergencyAllowed({ method, baseUrl, path: rest.join('') }), (err) => err.status === 403 && err.code === 'EMERGENCY_READ_ONLY', `${method} ${path}`);
   }
-  // A look-alike of an allowed path is not an allowed path.
   for (const path of ['/api/documents/0123456789abcdef01234567/view/extra', '/api/documents/xyz/view', '/api/documents/', '/api/auth/me/extra']) {
     assert.equal(matchAllowlist('GET', path), path === '/api/documents/' ? ALLOWLIST.find((e) => e.path.test('/api/documents')) : null, path);
   }

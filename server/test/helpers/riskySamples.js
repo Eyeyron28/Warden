@@ -1,14 +1,8 @@
-// Synthetic "risky" and clean sample files for the Quarantine tests, built in memory from plain bytes (nothing is committed as a
-// file, nothing here is real malware, and the standard antivirus test string is assembled at run time from parts).
 const zlib = require('node:zlib');
 
 const text = (value) => Buffer.from(value, 'utf8');
 const crc = (buffer) => zlib.crc32(buffer) >>> 0;
 
-/**
- * A zip from [{ name, data?, flags?, compressedSize?, size? }]. The declared sizes can be lied about on purpose (the scanner reads
- * the central directory's numbers, never inflates).
- */
 function zip(entries, { entryCount } = {}) {
   const locals = [];
   const centrals = [];
@@ -75,7 +69,6 @@ const svgScript = () => text('<svg xmlns="http://www.w3.org/2000/svg"><script>al
 const svgHandler = () => text('<svg xmlns="http://www.w3.org/2000/svg"><rect width="5" height="5" onload="x()"/></svg>');
 const svgClean = () => text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
 const htmlJsUrl = () => text('<a href="javascript:alert(1)">go</a>');
-/** Harmless dummy bytes shaped like a Windows program header (MZ ... PE\0\0): not a program, only its first bytes. */
 const fakeProgram = () => {
   const b = Buffer.alloc(256, 0);
   b.write('MZ', 0, 'latin1');
@@ -84,7 +77,6 @@ const fakeProgram = () => {
   return b;
 };
 const fakeElf = () => Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(60, 1)]);
-/** The standard antivirus test string, joined at run time. */
 const testSignature = () => text(['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-', 'ANTIVIRUS-TEST-FILE!', '$H+H*'].join(''));
 
 module.exports = { text, zip, plainPdf, pdfWith, png, jpeg, docx, docm, oleClean, oleMacro, svgScript, svgHandler, svgClean, htmlJsUrl, fakeProgram, fakeElf, testSignature };

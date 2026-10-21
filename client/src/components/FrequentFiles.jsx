@@ -6,10 +6,6 @@ import { JUST_ASKED_MS } from '../services/dataCache.js';
 import FileTypeIcon from './FileTypeIcon.jsx';
 import styles from './FrequentFiles.module.css';
 
-/**
- * "Frequently used": the files opened most in the last 30 days, at the top of My files. Hidden while it is
- * empty (or while loading, or if the list could not be loaded): it must never get in the way of the files.
- */
 function FrequentFiles() {
   const [items, setItems] = useState(() => peekFrequentFiles() ?? []);
 

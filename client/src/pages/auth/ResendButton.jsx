@@ -6,12 +6,6 @@ import forms from '../../components/site/forms.module.css';
 
 const COOLDOWN_SECONDS = 60;
 
-/**
- * "Resend verification link" with a 60-second cooldown, matching the
- * server's own once-per-minute-per-email limit. Starts already cooling
- * down when a link was just sent (right after signup), so the first click
- * can't land on a 429.
- */
 function ResendButton({ email, startCoolingDown = false, variant = 'ghost' }) {
   const [secondsLeft, setSecondsLeft] = useState(startCoolingDown ? COOLDOWN_SECONDS : 0);
   const [sending, setSending] = useState(false);

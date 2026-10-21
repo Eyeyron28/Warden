@@ -1,15 +1,5 @@
 const { isProduction } = require('./runtimeEnv');
 
-/**
- * Email one-time-code (OTP) settings for login.
- *   OTP_ENABLED      defaults to true. Only "false" / "0" turns it off, and
- *                    only outside production: the server refuses to start in
- *                    production with it off (assertOtpConfig, called at
- *                    startup).
- *   OTP_TTL_MINUTES  how long a code (and its login challenge) lasts;
- *                    default 5, whole minutes from 1 to 60.
- */
-
 const DEFAULT_TTL_MINUTES = 5;
 
 function otpEnabled() {
@@ -27,7 +17,6 @@ function otpTtlMinutes() {
   return minutes;
 }
 
-/** Throws if the OTP settings are unsafe or malformed. Call once at startup. */
 function assertOtpConfig() {
   if (!otpEnabled() && isProduction()) {
     throw new Error('OTP_ENABLED=false is not allowed in production. Remove it (the default is on).');

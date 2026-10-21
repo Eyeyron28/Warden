@@ -6,17 +6,6 @@ import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './auth.module.css';
 
-/**
- * The one and only time a recovery key is shown (after sign-up, and after a "start over" reset).
- *
- * The key is drawn as equal-width chips in a grid (four across, or a 2x2 block on a phone) with a separator between groups
- * only. Copying - the button, or selecting and copying by hand - always gives the key in its normal dashed form on one line.
- * Copy, Download and Print are offered, and Continue stays disabled until "I have saved it" is ticked.
- *
- * The key exists only in this component's props: it is never written to localStorage, sessionStorage, IndexedDB, a cookie,
- * the URL or a log, it is not in a form field (so password managers and autofill leave it alone), and the parent drops it
- * when the screen is left.
- */
 function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Continue' }) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -39,7 +28,6 @@ function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Cont
     }
   };
 
-  // Selecting the chips and pressing copy gives the dashed one-line key, not the chips' separate boxes.
   const handleSelectionCopy = (event) => {
     event.clipboardData.setData('text/plain', keyForCopy(recoveryKey));
     event.preventDefault();
@@ -64,7 +52,6 @@ function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Cont
         <p className={styles.keyLabel} id="recovery-key-label">
           Your recovery key
         </p>
-        {/* One labelled string for a screen reader; the chips are only paint. Not an input, so autofill and password managers skip it. */}
         <div
           className={styles.keyChips}
           role="img"
@@ -117,7 +104,6 @@ function RecoveryKeyStep({ recoveryKey, email, onContinue, continueLabel = 'Cont
         {continueLabel}
       </button>
 
-      {/* Only what is printed: hidden on screen, the only thing visible in the print preview. */}
       <section className={styles.printSheet} aria-hidden="true">
         <h2>{sheet.title}</h2>
         <p className={styles.printKey}>{sheet.key}</p>

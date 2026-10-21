@@ -42,8 +42,6 @@ test.before(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ---------- the drop zone, in each state ----------
-
 test('idle: "Drag a .zip here" and a "Choose a .zip…" button that works from the keyboard (a real button)', () => {
   const html = render({});
   assert.match(html, /data-state="idle"/);
@@ -92,8 +90,6 @@ test('only a .zip is taken: by extension (any case) or by its type; a text file,
   assert.equal(isZipFile({ name: 'photo.jpg', type: 'image/jpeg' }), false);
   assert.equal(isZipFile({}), false);
 });
-
-// ---------- the page ----------
 
 test('the page is called Export / Import: the heading, the tab title, the sidebar and the one-sentence header', () => {
   const page = strip(read('pages/ExportPage.jsx'));

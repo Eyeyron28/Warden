@@ -1,10 +1,5 @@
 import { formatBytes } from './listing.js';
 
-/**
- * The upload pre-check: would these files fit in what is left? Returns an error
- * message, or null when they fit. The server checks again regardless. It says
- * what happened and what to do, and never prints a "0.0 MB" figure.
- */
 export function uploadFitsMessage(usage, totalBytes) {
   if (!usage || totalBytes <= usage.availableBytes) return null;
   const needs = formatBytes(totalBytes);

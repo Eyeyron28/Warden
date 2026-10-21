@@ -14,9 +14,6 @@ const { getHealth, getPreferences, updatePreferences } = require('../controllers
 
 const router = express.Router();
 
-// Limited per connection BEFORE the session check (so unauthenticated
-// hammering is throttled too) and per account after it. The per-account rows
-// are keyed by the account id and are removed with the account.
 const byIp = createRateLimiter({ name: 'account-ip', max: 20, windowMs: 60 * 60 * 1000 });
 const byAccount = createRateLimiter({
   name: 'account-user',
@@ -25,12 +22,9 @@ const byAccount = createRateLimiter({
   keyFn: (req) => (req.userId ? String(req.userId) : null),
 });
 
-// Read-mostly and cheap, and the Overview page loads them on every visit, so they sit BEFORE the strict
-// per-hour limits meant for deleting an account (they still need a session and only ever read the caller's own data).
 router.get('/health', requireSession, getHealth);
 router.get('/preferences', requireSession, getPreferences);
 router.patch('/preferences', requireSession, updatePreferences);
-// The list of trusted browsers is read on every visit to Settings; only removing them is meant for the strict limits below.
 router.get('/trusted-devices', requireSession, listTrustedDevices);
 
 router.use(byIp, requireSession, byAccount);

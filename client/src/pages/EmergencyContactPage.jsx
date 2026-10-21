@@ -28,21 +28,11 @@ const STEPS = [
 
 const EMAIL_RE = /^[^\s@,;<>()[\]"]+@[^\s@,;<>()[\]"]+\.[^\s@,;<>()[\]"]+$/;
 
-/**
- * /emergency: the page a trusted contact uses. No account, no sign-in, three plain steps:
- *   1. Request access: the owner's email and yours, then "Send me a code" (always the same confirmation).
- *   2. Confirm: the emailed code and the Emergency Kit code. The owner is emailed; the request is refused if that email cannot be sent.
- *   3. Open the vault: once the waiting period has ended, a NEW emailed code and the kit start a read-only session.
- *
- * Every failure is the same sentence, so nothing here reveals whether an account or setup exists. The kit is typed or
- * pasted into a field in this page's memory only: it is never stored in the browser or put in the address bar.
- */
 function EmergencyContactPage() {
   usePageMeta('Emergency access', 'Request read-only access to a Warden vault you were trusted with.');
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const ended = params.get('ended') === '1';
-  // The "ended" notice has been shown: from here this tab behaves like any other visitor's.
   useEffect(() => {
     clearEmergencyFlag();
   }, []);
@@ -52,12 +42,11 @@ function EmergencyContactPage() {
   const [code, setCode] = useState('');
   const [kit, setKit] = useState('');
   const [codeSent, setCodeSent] = useState(false);
-  const [sent, setSent] = useState(null); // { releaseAt }
+  const [sent, setSent] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  // A link to /emergency#open (from the "access is available" email) lands on step 3, also when the page is already open.
   const { hash } = useLocation();
   useEffect(() => {
     if (hash === '#open') {
@@ -77,7 +66,6 @@ function EmergencyContactPage() {
     setCode('');
   };
 
-  // Asking for a code: the answer is the same whoever asks and whatever they typed.
   const sendCode = async (next) => {
     if (!detailsOk || busy) return;
     setBusy(true);
@@ -119,7 +107,6 @@ function EmergencyContactPage() {
     setError('');
     try {
       const result = await startEmergencySession({ ...details(), code, kit });
-      // Handled exactly like a normal sign-in: the token lives in sessionStorage for this tab.
       clearToken();
       setToken(result.sessionToken);
       enterEmergencyMode({ endsAt: result.endsAt, scope: result.scope });

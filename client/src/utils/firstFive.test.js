@@ -21,7 +21,6 @@ test('"View all" renders only above five rows, and the dialog uses the same rows
   assert.match(page, /\{more && \(\s*<button type="button" className=\{styles\.viewAll\}/);
   assert.match(page, /View all \(\{total\}\)/);
   assert.match(page, /<FileRows items=\{viewAll\.items\}/);
-  // The dialog is the app's own modal; a file click closes it first.
   assert.match(page, /<Modal title=\{`\$\{viewAll\.title\} \(\$\{viewAll\.items\.length\}\)`\} onClose=\{\(\) => setViewAll\(null\)\}>/);
   assert.match(page, /onPick=\{\(\) => setViewAll\(null\)\}/);
 });

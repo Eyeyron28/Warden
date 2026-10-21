@@ -1,13 +1,5 @@
-/**
- * What a file REALLY is, from its first bytes - never from its name or the
- * type the browser claimed at upload. Used to decide which documents are
- * photos. (The preview viewer does the same in the browser,
- * client/src/utils/previewType.js, with the same signatures.)
- */
-
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
-/** One of IMAGE_TYPES, or 'none'. 'none' (not null) so a classified file is never re-checked. */
 function sniffImageType(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 12) return 'none';
   const b = buffer;
@@ -20,11 +12,6 @@ function sniffImageType(buffer) {
   return 'none';
 }
 
-/**
- * What kind of PREVIEW a file can have, from its bytes: 'image' (png, jpeg, gif,
- * webp), 'pdf', or 'none'. SVG, HEIC and everything else are 'none': the browser
- * cannot be trusted to draw them safely or at all.
- */
 function sniffPreviewKind(buffer) {
   if (!Buffer.isBuffer(buffer)) return 'none';
   if (sniffImageType(buffer) !== 'none') return 'image';

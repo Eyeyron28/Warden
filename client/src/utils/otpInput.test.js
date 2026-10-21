@@ -1,4 +1,3 @@
-// Run with: cd client && npm test   (Node's built-in test runner, no deps)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -4,35 +4,14 @@ const AuditEvent = require('../models/AuditEvent');
 const User = require('../models/User');
 const { hmacKey, retentionMs } = require('./auditConfig');
 
-/**
- * The activity log: what happened on an account, signed in a hash chain that detects edits and gaps.
- *
- * Every event stores `hash` = HMAC-SHA-256(AUDIT_HMAC_KEY, prevHash | its own fields), where prevHash is
- * the previous event's hash (empty for the first). The newest {seq, hash, at} is also kept on the user
- * ("auditHead"). Verifying walks the events that are left (the TTL removes only the oldest, so the oldest
- * remaining event's prevHash is the trusted starting point) and checks every link, then compares the end
- * with the head. That detects an edited event and a gap in the middle. It detects a cut-off end only while the
- * head still points at the old end.
- *
- * LIMIT (proved by a test in test/audit-limits.test.js): the head lives in the same database as the events, so
- * someone who can WRITE to the database can delete the newest events and move the head back to match, and the
- * check still passes. That needs no key. It also cannot protect against someone who holds the server's HMAC key,
- * and removing the very oldest events looks exactly like the normal 30-day expiry. Closing the first gap would
- * need the head kept somewhere the database writer cannot reach (an external anchor).
- *
- * No file names, e-mail addresses, share purposes, content or IP addresses are ever stored here.
- */
-
-const MAX_APPEND_TRIES = 120; // every writer that loses adopts the winner's event, so a crowd still drains
+const MAX_APPEND_TRIES = 120;
 let failureCount = 0;
 let lastWarningAt = 0;
 
-/** Failures of best-effort logging so far (for tests and for the warning below). */
 const logFailures = () => failureCount;
 
 const isDuplicateKey = (error) => error && (error.code === 11000 || /E11000/.test(String(error.message)));
 
-/** The fields that are signed, in a fixed order. */
 function canonicalFields(event) {
   const fields = [
     String(event.userId),
@@ -43,9 +22,7 @@ function canonicalFields(event) {
     new Date(event.at).toISOString(),
     event.country || null,
   ];
-  // Only when set, so every event written before this field existed still verifies.
   if (event.actor) fields.push(event.actor);
-  // Likewise only when set (file_held / file_refused / file_released: reason codes).
   if (event.detail) fields.push(`detail:${event.detail}`);
   return JSON.stringify(fields);
 }
@@ -56,7 +33,6 @@ function computeHash(prevHash, event) {
 
 const noHead = (head) => !head || !head.seq;
 
-/** The compare-and-swap filter that matches exactly this head (including "no head yet"). */
 function headFilter(userId, head) {
   if (noHead(head)) return { _id: userId, $or: [{ 'auditHead.seq': { $exists: false } }, { 'auditHead.seq': 0 }] };
   return { _id: userId, 'auditHead.seq': head.seq, 'auditHead.hash': head.hash };
@@ -67,14 +43,6 @@ async function readHead(userId) {
   return user ? { seq: user.auditHead?.seq || 0, hash: user.auditHead?.hash || '' } : null;
 }
 
-/**
- * Adds one event to a user's chain. Safe under concurrency: the next number is claimed by inserting the
- * event (a unique index on {userId, seq} lets only one writer have it), then the head is moved with a
- * compare-and-swap. A writer that loses the race adopts the winner's event as the head and tries again.
- * If a writer died between the insert and the head move, the next writer repairs the head the same way.
- *
- * @returns {Promise<{ seq: number, hash: string }>}
- */
 async function appendEvent({ userId, deviceId = null, type, targetId = null, country = null, actor = null, detail = null, at = new Date() }) {
   for (let attempt = 0; attempt < MAX_APPEND_TRIES; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -85,7 +53,6 @@ async function appendEvent({ userId, deviceId = null, type, targetId = null, cou
     const hash = computeHash(head.hash, event);
     try {
       // eslint-disable-next-line no-await-in-loop
-      // The actor field exists only on events an Emergency Access contact caused, so every other row keeps its old shape.
       const stored = { ...event };
       if (!actor) delete stored.actor;
       if (!detail) delete stored.detail;
@@ -97,7 +64,6 @@ async function appendEvent({ userId, deviceId = null, type, targetId = null, cou
       });
     } catch (error) {
       if (!isDuplicateKey(error)) throw error;
-      // Somebody else has this number. Make the head catch up to it and go round again.
       // eslint-disable-next-line no-await-in-loop
       const taken = await AuditEvent.findOne({ userId, seq: head.seq + 1 });
       if (taken) {
@@ -113,14 +79,12 @@ async function appendEvent({ userId, deviceId = null, type, targetId = null, cou
   throw new Error('Could not append to the activity log (too much contention).');
 }
 
-/** A two-letter country code from the hosting platform's header, or null (always null in development). */
 function countryFrom(req) {
   const raw = req?.headers?.['x-vercel-ip-country'];
   const value = Array.isArray(raw) ? raw[0] : raw;
   return typeof value === 'string' && /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : null;
 }
 
-/** A city name from the hosting platform's header (it arrives URL-encoded), or null. Never stored in events. */
 function cityFrom(req) {
   const raw = req?.headers?.['x-vercel-ip-city'];
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -133,15 +97,6 @@ function cityFrom(req) {
   }
 }
 
-/**
- * The one helper every controller uses. BEST EFFORT: it never throws and never delays the user's action
- * longer than one write; a failure is counted and warned about (without any personal data) and the
- * action goes on.
- *
- * @param {import('express').Request | null} req signed-in request (userId, deviceId) - or pass `userId` in options
- * @param {string} type one of EVENT_TYPES (utils/auditTypes.js)
- * @param {{ targetId?: any, userId?: any, deviceId?: any, country?: string | null }} [options]
- */
 async function recordEvent(req, type, options = {}) {
   try {
     const userId = options.userId ?? req?.userId;
@@ -166,14 +121,6 @@ async function recordEvent(req, type, options = {}) {
   }
 }
 
-/**
- * Walks one account's remaining events and checks the chain.
- *
- * @returns {Promise<{
- *   ok: boolean, checked: number, firstSeq: number | null, lastSeq: number | null,
- *   brokenAtSeq: number | null, reason: string | null,
- * }>}
- */
 async function verifyChain(userId) {
   const user = await User.findById(userId).select('auditHead');
   const head = { seq: user?.auditHead?.seq || 0, hash: user?.auditHead?.hash || '', at: user?.auditHead?.at || null };
@@ -183,15 +130,12 @@ async function verifyChain(userId) {
   const broken = (seq, reason) => ({ ...result, ok: false, brokenAtSeq: seq, reason });
 
   if (ordered.length === 0) {
-    // Nothing left to check: fine if the newest event is old enough to have expired on its own,
-    // otherwise the end of the log has been cut off.
     const expiredByAge = !head.at || Date.now() - new Date(head.at).getTime() > retentionMs();
     return head.seq === 0 || expiredByAge ? result : broken(head.seq, 'The newest events are missing.');
   }
 
   result.firstSeq = ordered[0].seq;
   result.lastSeq = ordered[ordered.length - 1].seq;
-  // The oldest remaining event's prevHash is the trusted anchor (older ones expired).
   let expectedPrev = ordered[0].prevHash || '';
   let expectedSeq = ordered[0].seq;
   for (const event of ordered) {
@@ -205,8 +149,6 @@ async function verifyChain(userId) {
   const last = ordered[ordered.length - 1];
   if (last.seq < head.seq) return broken(last.seq + 1, 'The newest events are missing.');
   if (last.seq === head.seq && last.hash !== head.hash) return broken(last.seq, 'The newest event does not match the log\'s recorded end.');
-  // last.seq > head.seq happens only if a write stopped between saving an event and moving the head;
-  // the chain above is valid, so it is accepted (the next event repairs the head).
   return result;
 }
 

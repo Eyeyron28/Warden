@@ -1,14 +1,3 @@
-// Sends one sample of EVERY Warden email to an address you choose, so each template can be
-// checked in a real inbox (desktop and phone, light and dark mode).
-//
-//   cd server && node scripts/send-test-emails.js you@example.com
-//   node scripts/send-test-emails.js you@example.com --save ./email-preview   (also writes .html/.txt files)
-//   node scripts/send-test-emails.js --save ./email-preview                   (write files only, send nothing)
-//
-// Uses the SMTP settings in server/.env (never printed). With SMTP unset it logs to the console
-// like the app does in development. It refuses to run in production (NODE_ENV=production or on
-// Vercel) unless --force is given, because it sends real mail from the production account.
-// The codes in the samples are fixed examples, not real codes.
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const fs = require('fs');

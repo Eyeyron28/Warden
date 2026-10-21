@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// The login lockout against a REAL local MongoDB (test/helpers/realMongo.js): the whole point is that it is atomic
-// under parallel requests and identical for real and unknown addresses, which an in-memory fake cannot show.
-// Skipped, with the reason, when no local MongoDB answers.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -36,7 +31,6 @@ test.before(async () => {
 });
 test.after(disconnectThrowaway);
 
-// Skipped (with the reason) when no local MongoDB answered in `before`.
 const it = (name, fn) =>
   test(name, async (context) => {
     if (!connected.ok) return context.skip(connected.reason);
@@ -50,7 +44,6 @@ async function freshAccount() {
   await makeUser(User, REAL, PASSWORD);
 }
 
-// What a caller can see of an answer: status, body fields, headers. Nothing about the account.
 const seen = (out) => ({
   status: out.error ? out.error.status : out.status,
   message: out.error ? out.error.message : null,
@@ -71,8 +64,6 @@ async function expireLockFor(email) {
 it('20 parallel wrong passwords get exactly 3 checks, and the stored count stops at the cap', async () => {
   await freshAccount();
   const answers = await Promise.all(Array.from({ length: 20 }, (_, i) => attempt(REAL, `wrong-password-${i}`)));
-  // Three attempts were checked: two answered 401 and the third (the one that tripped the lock) answered "locked".
-  // The other 17 arrived while the lock was on and were refused without their password being looked at.
   const wrong = answers.filter((out) => out.error?.status === 401);
   const locked = answers.filter((out) => out.error?.locked);
   assert.equal(wrong.length, 2, `${wrong.length} answered 401`);
@@ -128,7 +119,6 @@ it('existing behavior for real users: two misses then the right password works, 
   const ok = await attempt(REAL, PASSWORD);
   assert.equal(ok.error, null);
   assert.equal(ok.json?.otpRequired, true);
-  // The count was cleared by the success: two more misses are NOT yet a lock.
   assert.equal(seen(await attempt(REAL, 'wrong-3')).status, 401);
   assert.equal(seen(await attempt(REAL, 'wrong-4')).status, 401);
   assert.equal(seen(await attempt(REAL, 'wrong-5')).locked, true, 'the third miss locks, as before');
@@ -142,7 +132,6 @@ it('the counter holds an HMAC, never the address', async () => {
   assert.ok(!JSON.stringify(row).includes('nobody-here'));
 });
 
-// The same sequence, with the clock passed in, run against the REAL pipeline update.
 it('window and lock follow the clock: reset after 5 minutes, lock for 5 minutes, then a fresh start', async () => {
   const { reserveLoginAttempt } = require('../utils/loginLimiter');
   await freshAccount();
@@ -151,17 +140,13 @@ it('window and lock follow the clock: reset after 5 minutes, lock for 5 minutes,
   const shape = (r) => [r.granted, r.locked];
   assert.deepEqual(shape(await reserveLoginAttempt('a@example.com', { now: at(0) })), [true, false]);
   assert.deepEqual(shape(await reserveLoginAttempt('a@example.com', { now: at(1000) })), [true, false]);
-  // 5 minutes after the first miss the window has ended: counting starts over (the lone old miss is forgotten).
   assert.deepEqual(shape(await reserveLoginAttempt('a@example.com', { now: at(5 * 60 * 1000 + 1) })), [true, false]);
   assert.equal((await LoginFailure.findOne({}).lean()).count, 1);
-  // Two more inside the new window: the third attempt in it locks.
   await reserveLoginAttempt('a@example.com', { now: at(5 * 60 * 1000 + 2000) });
   const locking = await reserveLoginAttempt('a@example.com', { now: at(5 * 60 * 1000 + 3000) });
   assert.deepEqual(shape(locking), [true, true]);
   assert.equal(locking.lockedUntil.getTime(), at(5 * 60 * 1000 + 3000 + 5 * 60 * 1000).getTime());
-  // Refused while locked, even after the 5-minute window itself has ended (the lock is what counts).
   assert.deepEqual(shape(await reserveLoginAttempt('a@example.com', { now: at(10 * 60 * 1000) })), [false, true]);
-  // Lock over: a clean slate.
   assert.deepEqual(shape(await reserveLoginAttempt('a@example.com', { now: at(10 * 60 * 1000 + 4000) })), [true, false]);
   assert.equal((await LoginFailure.findOne({}).lean()).count, 1);
 });

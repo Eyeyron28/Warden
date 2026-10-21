@@ -8,10 +8,6 @@ function setMeta(selector, attribute, value) {
   if (element) element.setAttribute(attribute, value);
 }
 
-/**
- * Per-route <title> and meta description (plus the matching Open Graph
- * fields) for the public pages.
- */
 export function usePageMeta(title, description = DEFAULT_DESCRIPTION) {
   useEffect(() => {
     const fullTitle = title ? `${title} - Warden` : 'Warden - Encrypted document vault';

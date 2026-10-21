@@ -1,14 +1,3 @@
-// node scripts/check-import.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// Drives the background zip import in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a
-// local WARDEN_TEST_MONGO; no .env is read; mail is captured), served with the production CSP. A zip of 20 small files is imported
-// (each upload is held back a little so there is time to move around), and the run checks that:
-//   - the import keeps going across Files, Overview, Devices, Trash and Shared, the card is on every page and its counter advances;
-//   - clicking the card goes to the Import screen; at the end the card shows the check, and a click opens the destination folder;
-//   - an unclicked finished card disappears after the (shortened) time, and the report stays on the Import screen;
-//   - "Lock vault" asks first, "Keep importing" changes nothing, "Stop and sign out" ends it and leaves nothing behind;
-//   - closing or reloading the tab during a run shows the browser's own warning;
-//   - nothing is written to localStorage, IndexedDB or the cache, and there are no CSP violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -24,8 +13,8 @@ const root = path.resolve(here, '..', '..');
 const dist = process.env.DIST_DIR ? path.resolve(process.env.DIST_DIR) : path.join(root, 'client', 'dist');
 const requireServer = createRequire(path.join(root, 'server', 'package.json'));
 const SHOTS = process.env.SHOTS || '';
-const CARD_MS = 4000; // the shortened dismiss time for the unclicked card
-const HOLD_MS = 650; // each upload is held this long, so a run of 20 takes several seconds
+const CARD_MS = 4000;
+const HOLD_MS = 650;
 
 const baseUri = process.env.WARDEN_TEST_MONGO || 'mongodb://127.0.0.1:27099/?replicaSet=rs0&directConnection=true';
 if (!/^mongodb:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//.test(baseUri)) {
@@ -85,7 +74,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -125,12 +114,11 @@ try {
   browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, reducedMotion: 'reduce' });
   await context.addInitScript(([value, ms]) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__WARDEN_TEST__ = { importCardMs: ms };
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, [token, CARD_MS]);
-  // Hold every upload back a little (the server is fast on a local machine; a real one is not).
   await context.route('**/api/documents', async (route) => {
     if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, HOLD_MS));
     await route.continue();
@@ -156,7 +144,6 @@ try {
   check(/Importing 20 files/.test(await card.innerText()) && /backup\.zip/.test(await card.innerText()), 'it says "Importing 20 files" with backup.zip as a row');
   check((await page.getByRole('button', { name: /^Choose a \.zip/ }).count()) === 0, 'a second zip cannot be chosen while one runs (the choose button is gone)');
 
-  // ---- moving around: the import must keep going ----
   let last = -1;
   let advanced = false;
   for (const [label, expectPath] of [['My files', '/files'], ['Overview', '/overview'], ['Devices & activity', '/devices'], ['Trash', '/trash'], ['Shared', '/shared']]) {
@@ -175,12 +162,10 @@ try {
   const mid = await docCount();
   check(mid > 0 && mid < 20, `files are arriving on the server while the person is elsewhere (${mid} of 20 so far)`);
 
-  // ---- clicking the running card opens the Import screen ----
   await card.getByRole('button', { name: /^Show details/ }).click();
   await page.waitForURL((url) => url.pathname === '/export');
   check(await page.getByTestId('import-progress').isVisible(), '"Show details" on the running row opens the Import screen, which shows the full progress');
 
-  // ---- the end ----
   await page.getByText(/20 files sealed/).first().waitFor({ timeout: 30000 });
   check((await docCount()) === 20, 'all 20 files are in the vault');
   check((await card.getAttribute('data-state')) === 'done', 'the tray changes to the done state (sealed lock)');
@@ -196,7 +181,6 @@ try {
   const folderCards = await page.locator('ul[aria-label="Folders"] > li').count();
   check(folderCards >= 4, `clicking the done card opens the destination folder "Backup" (it holds ${folderCards} sub-folders with the files)`);
   
-  // ---- an unclicked finished card goes away by itself; the report stays ----
   const second = await makeZip('second.zip', 6, 'Backup');
   await nav('Export / Import').click();
   await page.waitForURL((url) => url.pathname === '/export');
@@ -215,7 +199,6 @@ try {
   const names = (await api('GET', '/api/documents', { token })).body.map((doc) => doc.filename);
   check(names.some((name) => /note-1 \(1\)\.txt$/.test(name)), 'a name already in use was imported with a counter, e.g. "note-1 (1).txt"');
 
-  // ---- a chosen zip is kept while the person looks at other pages (memory only) ----
   const choose = async (file) => page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(file);
   const keepZip = await makeZip('keep.zip', 5, 'Keep');
   const ready = page.getByRole('button', { name: /^Import 5 files$/ });
@@ -257,7 +240,6 @@ try {
   await page.getByText(/2 files sealed/).first().waitFor({ timeout: 30000 });
   await card.getByRole('button', { name: /^Dismiss/ }).first().click().catch(() => {});
 
-  // ---- Lock vault asks first ----
   const third = await makeZip('third.zip', 20, 'Third');
   await page.locator('input[aria-label="Choose a .zip to import"]').setInputFiles(third);
   await page.getByRole('button', { name: /^Import 20 files$/ }).click();
@@ -274,14 +256,12 @@ try {
   await page.waitForTimeout(1500);
   check((await counter()) > before, 'and it keeps advancing');
 
-  // ---- the browser's own warning when the tab is closed or reloaded during a run ----
   const warned = page.waitForEvent('dialog', { timeout: 8000 }).then((dialog) => ({ type: dialog.type(), dialog }));
   page.reload().catch(() => {});
   const seen = await warned.catch(() => null);
   check(seen?.type === 'beforeunload', `reloading during an import shows the browser's "leave this page?" warning (${seen?.type ?? 'no dialog'})`);
   if (seen) await seen.dialog.dismiss();
 
-  // ---- Stop and sign out: nothing is left behind ----
   await page.getByRole('button', { name: 'Lock vault' }).click();
   await ask.waitFor();
   await ask.getByRole('button', { name: 'Stop and sign out' }).click();
@@ -295,7 +275,7 @@ try {
   }));
   check(leftover.session.length === 0 && leftover.local.length === 0 && leftover.idb.length === 0, `no session token, no localStorage, no IndexedDB (${JSON.stringify({ s: leftover.session, l: leftover.local, i: leftover.idb })})`);
   check(!/third\.zip|Third|note-/.test(leftover.text), 'no file or zip name is left on the page');
-  const importedThird = (await api('GET', '/api/documents', { token })).status; // the old token is dead
+  const importedThird = (await api('GET', '/api/documents', { token })).status;
   check(importedThird === 401, 'the signed-out session is really over on the server');
   const csp = await page.evaluate(() => window.__csp).catch(() => []);
   check(csp.length === 0, `no CSP violations (${csp.join('; ') || 'none'})`);

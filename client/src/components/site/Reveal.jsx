@@ -2,14 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import styles from './Reveal.module.css';
 
-/**
- * Fades and lifts its content 12px into place the first time it scrolls
- * into view, then never animates again. No animation library - one
- * IntersectionObserver per instance, disconnected after the first hit.
- *
- * With reduced motion (or no IntersectionObserver), content is simply
- * visible from the start; the CSS never hides it in that case either.
- */
 function Reveal({ as: Tag = 'div', className = '', delay = 0, children, ...rest }) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);

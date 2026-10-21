@@ -1,12 +1,3 @@
-/**
- * A small PDF writer, in plain code (no library): one JPEG per page, embedded as it is (DCTDecode), each page as large as the
- * picture's shape (the longest side is 842 points, an A4 sheet's), with a real cross-reference table.
- *
- *   1 Catalog, 2 Pages, then for page i (from 0): 3+3i the Page, 4+3i its content stream, 5+3i the image.
- *
- * @param {Array<{ jpeg: Uint8Array, width: number, height: number }>} pages
- * @returns {Uint8Array}
- */
 const encoder = new TextEncoder();
 const LONG_SIDE = 842;
 
@@ -29,7 +20,7 @@ export function buildPdf(pages) {
   };
 
   push('%PDF-1.4\n');
-  push(new Uint8Array([0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a])); // a comment of high bytes: tells tools this file is binary
+  push(new Uint8Array([0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));
 
   begin(1);
   push('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');

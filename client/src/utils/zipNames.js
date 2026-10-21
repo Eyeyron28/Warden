@@ -1,22 +1,9 @@
-/**
- * Reads the file list out of a ZIP's central directory WITHOUT inflating
- * anything - enough to tell a .docx from an .xlsx or a .pptx (all are ZIPs),
- * and to refuse an archive that looks like a decompression bomb before any
- * library tries to open it.
- *
- * Bounded everywhere: the loop stops at MAX_ENTRIES and every read is
- * range-checked, so a hostile or corrupt file just returns null.
- *
- * @param {Uint8Array} bytes
- * @returns {{ names: string[], entryCount: number, totalUncompressed: number } | null}
- */
 export const MAX_ZIP_ENTRIES = 5000;
 
 export function readZipDirectory(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.length < 22) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  // The end-of-central-directory record is within the last 22 + 65535 bytes.
   let eocd = -1;
   const lowest = Math.max(0, bytes.length - 22 - 0xffff);
   for (let i = bytes.length - 22; i >= lowest; i -= 1) {
@@ -48,17 +35,6 @@ export function readZipDirectory(bytes) {
   return { names, entryCount, totalUncompressed };
 }
 
-/**
- * Every entry of a ZIP's central directory with its declared sizes, still without inflating
- * anything - what an importer needs to refuse a zip bomb, an encrypted archive or a pile of
- * entries BEFORE any library opens it. (JSZip checks that the data it inflates matches these
- * sizes, so a lie in the directory fails loudly instead of expanding.)
- *
- * @param {Uint8Array} bytes
- * @param {number} [maxEntries]
- * @returns {{ entries: Array<{ name: string, compressedSize: number, uncompressedSize: number, encrypted: boolean, zip64: boolean, method: number }>, entryCount: number } | null}
- *   null when it is not a readable ZIP; `entries` is empty (with the real count) when there are too many.
- */
 export function readZipEntries(bytes, maxEntries = MAX_ZIP_ENTRIES) {
   if (!(bytes instanceof Uint8Array) || bytes.length < 22) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

@@ -6,19 +6,6 @@ import forms from './site/forms.module.css';
 import { INVITE_MAX_LENGTH, cleanInviteCode } from '../utils/inviteCode.js';
 import styles from './InviteCodeField.module.css';
 
-/**
- * The sign-up invite code: required, first in the form.
- *
- *  - visible "Required" marker, aria-required and native required (the form
- *    itself is noValidate, so the page's own inline errors do the talking);
- *  - paste is trimmed (a copied code often carries a trailing newline);
- *  - monospace, no autofill, no auto-capitalisation or spell-check;
- *  - masked by default with a show/hide toggle. The mask is CSS, not
- *    type="password", so password managers do not mistake it for a login.
- *
- * `value` and `onChange(string)` are controlled by the page. `inputRef` lets the
- * page move focus here when the server says the code was wrong.
- */
 function InviteCodeField({ id = 'signup-invite', value, onChange, onBlur, error, inputRef, helper, autoFocus = false, children }) {
   const [revealed, setRevealed] = useState(false);
   const errorId = `${id}-error`;
@@ -28,7 +15,7 @@ function InviteCodeField({ id = 'signup-invite', value, onChange, onBlur, error,
     const text = event.clipboardData?.getData('text');
     if (typeof text !== 'string') return;
     const clean = cleanInviteCode(text);
-    if (clean === text) return; // nothing to trim: let the browser paste as usual
+    if (clean === text) return;
     event.preventDefault();
     const input = event.currentTarget;
     const start = input.selectionStart ?? value.length;

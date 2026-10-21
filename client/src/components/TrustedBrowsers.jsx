@@ -8,11 +8,6 @@ import site from './site/site.module.css';
 import forms from './site/forms.module.css';
 import styles from '../pages/auth/auth.module.css';
 
-/**
- * The browsers that skip the emailed code at login (ticked "Trust this browser
- * for 30 days"). They never skip the password. Removing one - or all - means
- * the next login there asks for a code again.
- */
 function TrustedBrowsers() {
   const [devices, setDevices] = useState(null);
   const [error, setError] = useState('');

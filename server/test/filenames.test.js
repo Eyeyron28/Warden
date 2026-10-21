@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// File names across every path: what is stored, what is listed, what a download
-// is called, and that the bytes survive. Table-driven over real sample files for
-// every common type (test/helpers/samples.js).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -62,7 +57,6 @@ const { call } = db;
 const as = (extra = {}) => ({ userId: ALICE, dek: DEK, ...extra });
 const sha = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex');
 
-// Reads the filename a Content-Disposition header carries (filename*= preferred).
 function nameFromDisposition(header) {
   const star = /filename\*=UTF-8''([^;]+)/.exec(header);
   if (star) return decodeURIComponent(star[1]);
@@ -88,7 +82,6 @@ test('a name with NO extension gains one only when the bytes are unmistakably a 
     const expected = sample.sniff ? `mod12.${sample.sniff}` : 'mod12';
     assert.equal(names.downloadName('mod12', sample.bytes), expected, `mod12 holding ${sample.ext} bytes`);
   }
-  // An unknown type never gets one, including empty and tiny files.
   assert.equal(names.downloadName('notes', Buffer.from('hello')), 'notes');
   assert.equal(names.downloadName('empty', Buffer.alloc(0)), 'empty');
   assert.equal(names.downloadName('.env', Buffer.from('A=1\n')), '.env');
@@ -160,8 +153,6 @@ test('every sample, under every kind of name, survives upload, listing, download
         : entry.name;
       for (const table of Object.keys(world.tables)) world.tables[table] = [];
       const upload = await call(D.createDocument, as({ body: {}, files: { file: [{ buffer: sample.bytes, originalname: name, mimetype: 'application/octet-stream' }] } }));
-      // A sample the scanner would hold or refuse (an .exe, an HTML page with a script...) is Quarantine's business: that is covered by
-      // quarantine.test.js. Here it is only checked that it is never lost: refused (nothing stored) or stored under its name, held.
       const verdict = scanner.scanBuffer({ name, type: 'application/octet-stream', buffer: sample.bytes }).verdict;
       if (scanner.isPlainZip(name, sample.bytes)) {
         assert.equal(upload.error?.status, 422, `${sample.ext} / ${entry.note}: a plain zip is refused (Export / Import)`);
@@ -206,7 +197,7 @@ test('a PDF stored without an extension downloads as .pdf and the stored name is
   const served = await call(D.viewDocument, as({ params: { id: String(upload.json.id) } }));
   assert.equal(nameFromDisposition(served.headers['content-disposition']), 'mod12.pdf');
   assert.equal(world.tables.documents[0].filename, 'mod12', 'the stored name is not rewritten');
-  world.tables.documents[0].save = async () => {}; // the fake rows are plain objects
+  world.tables.documents[0].save = async () => {};
   const renamed = await call(D.updateDocument, as({ params: { id: String(upload.json.id) }, body: { filename: 'Module 12' } }));
   assert.equal(renamed.json.filename, 'Module 12');
   assert.equal(nameFromDisposition((await call(D.viewDocument, as({ params: { id: String(upload.json.id) } }))).headers['content-disposition']), 'Module 12.pdf');

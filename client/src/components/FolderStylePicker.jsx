@@ -4,10 +4,6 @@ import FolderGlyph from './FolderGlyph.jsx';
 import { COLOR_LABELS, FOLDER_COLORS, FOLDER_ICONS, ICON_LABELS, folderColorVar } from '../utils/folderStyle.js';
 import styles from './FolderStylePicker.module.css';
 
-/**
- * Colour and icon for a folder: two groups of real radio buttons (arrow keys and touch work as for any radio group). The first
- * choice in each group is "none", which keeps the default look. `value` is { color, icon } with null for none.
- */
 function FolderStylePicker({ value, onChange, disabled = false }) {
   const name = useId();
   const color = value?.color ?? null;

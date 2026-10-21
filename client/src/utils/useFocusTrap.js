@@ -5,14 +5,7 @@ const FOCUSABLE =
 
 const visible = (element) => element.getClientRects().length > 0;
 
-/**
- * Keeps keyboard focus inside `ref` while `active`: focus moves in when it
- * turns on, Tab / Shift+Tab wrap at the ends, and when it turns off (or the
- * component unmounts) focus goes back to whatever had it before - the card
- * or button that opened the dialog.
- */
 export function useFocusTrap(ref, active = true, { initialFocus, opener = 'mount' } = {}) {
-  // Whatever had focus when this first rendered: the card or button that opened it.
   const openerRef = useRef(undefined);
   if (openerRef.current === undefined) openerRef.current = typeof document === 'undefined' ? null : document.activeElement;
 
@@ -21,15 +14,12 @@ export function useFocusTrap(ref, active = true, { initialFocus, opener = 'mount
     const container = ref.current;
     if (!container) return undefined;
 
-    // 'mount': what had focus when the component first rendered (dialogs that mount
-    // when opened). 'activation': what has focus right now (a drawer that is always mounted).
     const previous = opener === 'activation' ? document.activeElement : openerRef.current;
     const focusables = () => [...container.querySelectorAll(FOCUSABLE)].filter(visible);
 
     const first = initialFocus?.() ?? focusables()[0];
-    // Something inside (an autoFocus field) already has focus: leave it there.
+    // eslint-disable-next-line no-empty
     if (container.contains(document.activeElement) && document.activeElement !== container) {
-      // keep
     } else if (first) first.focus();
     else {
       container.setAttribute('tabindex', '-1');
@@ -38,7 +28,6 @@ export function useFocusTrap(ref, active = true, { initialFocus, opener = 'mount
 
     const onKeyDown = (event) => {
       if (event.key !== 'Tab') return;
-      // A dialog opened on top of this one (Rename, Share...) owns the keyboard.
       const owner = document.activeElement?.closest?.('[aria-modal="true"]');
       if (owner && owner !== container) return;
       const items = focusables();
@@ -66,7 +55,6 @@ export function useFocusTrap(ref, active = true, { initialFocus, opener = 'mount
   }, [active]);
 }
 
-/** True when `element` is the front-most open dialog (so Esc and arrows belong to it). */
 export function isTopDialog(element) {
   const dialogs = document.querySelectorAll('[aria-modal="true"]');
   return dialogs.length > 0 && dialogs[dialogs.length - 1] === element;

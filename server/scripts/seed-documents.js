@@ -1,18 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// SIMULATED document records (metadata only, no file bytes) for the seeded accounts in "warden_seed".
-// Every record is made up and tagged seed: { source: "simulated-documents" }. Nothing here is a real file.
-//
-//   node scripts/seed-documents.js --dry-run --users 100000        (no connection)
-//   WARDEN_SEED_URI="mongodb+srv://..." node scripts/seed-documents.js --limit-users 500   (small trial)
-//   WARDEN_SEED_URI="mongodb+srv://..." node scripts/seed-documents.js
-//   WARDEN_SEED_URI="mongodb+srv://..." node scripts/seed-documents.js --drop-docs
-//
-// Notes on the real shape (models/Document.js):
-// - The model has no size field. The app reads a file's size from the encrypted bytes, so a record with an
-//   empty blob shows size 0 in the app. The simulated size is kept in "simulatedSize" for the report only.
-// - Storage used is computed from the documents at runtime (utils/storage.js), so the User needs no update.
-// - folder is "root" for a file in the top folder (null would not match the app's folder queries).
 
 const crypto = require('crypto');
 const { mkdirSync, writeFileSync } = require('fs');
@@ -34,8 +21,6 @@ const MAX_ACCOUNT_BYTES = 25 * MB;
 const MAX_ACCOUNT_RECORDS = 2000;
 const DAY = 24 * 60 * 60 * 1000;
 
-// Share of accounts and record range per tier. Expected records at 100,000 accounts: about 91,000.
-// "none" takes whatever the other tiers leave (72.18 percent).
 const TIERS = {
   none: { weight: 0.7218, min: 0, max: 0 },
   light: { weight: 0.24, min: 1, max: 3 },
@@ -63,7 +48,6 @@ const TITLES = [
   'Permit', 'Application form', 'Reference letter', 'Scanned page', 'Backup copy', 'Draft',
 ];
 
-// Small seeded random generator (mulberry32): the same seed gives the same numbers.
 function makeRng(seed) {
   let state = seed >>> 0;
   return () => {
@@ -87,7 +71,6 @@ function shuffle(list, rng) {
   return out;
 }
 
-// How many accounts land in each tier (largest remainder, so shares are as exact as whole numbers allow).
 function tierCounts(users) {
   const raw = TIER_NAMES.map((name) => ({ name, exact: TIERS[name].weight * users }));
   const counts = Object.fromEntries(raw.map((r) => [r.name, Math.floor(r.exact)]));
@@ -100,10 +83,6 @@ function tierCounts(users) {
   return counts;
 }
 
-/**
- * The plan for `users` accounts: which tier each one is in, how many records it gets, and totals.
- * accounts[i] is { tier, count }; the order is shuffled, so no tier sits on the first ids.
- */
 function planTiers({ users, rngSeed = 42 }) {
   const rng = makeRng(rngSeed);
   const counts = tierCounts(users);
@@ -117,14 +96,12 @@ function planTiers({ users, rngSeed = 42 }) {
   return { rngSeed, users, accountsPerTier: counts, expectedRecords, accounts };
 }
 
-// One random size: log-normal around 120 KB, kept between 20 KB and 4 MB.
 function sampleSize(rng) {
   const u1 = Math.max(rng(), 1e-12);
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rng());
   return Math.min(MAX_FILE, Math.max(MIN_FILE, Math.round(Math.exp(Math.log(120 * KB) + 1.1 * z))));
 }
 
-// Scales sizes so they add up to `target` (within the per-file limits).
 function fitTotal(sizes, target) {
   let out = sizes.slice();
   for (let pass = 0; pass < 6; pass += 1) {
@@ -147,10 +124,6 @@ function pickExtension(rng) {
 
 const b64 = (bytes) => crypto.randomBytes(bytes).toString('base64');
 
-/**
- * Simulated records for one account. No file bytes: encryptedBlob is an empty Buffer, which the model accepts.
- * @returns {object[]} raw documents, ready for insertMany
- */
 function makeRecords({ userId, tier, count, rng, now = new Date(), rngSeed = 42 }) {
   if (count <= 0) return [];
   const n = Math.min(count, MAX_ACCOUNT_RECORDS);
@@ -245,15 +218,12 @@ function printPlan(plan) {
 
 const printable = (doc) => JSON.stringify(doc, (key, value) => (key === 'encryptedBlob' ? '<empty Buffer, 0 bytes>' : value), 2);
 
-// System databases an Atlas user cannot read (or that are not part of the data).
 const SYSTEM_DATABASES = ['local', 'config', 'admin'];
 
-// Which of the listed database names are counted in the cluster size.
 function databasesToCount(names) {
   return names.filter((name) => !SYSTEM_DATABASES.includes(name));
 }
 
-// dataSize + indexSize over every non-system database. Aborts (throws) if listing or any dbStats fails.
 async function clusterBytes(mongoose) {
   const client = mongoose.connection.getClient();
   let listed;
@@ -286,7 +256,6 @@ async function ensureIndexes(collection) {
   }
 }
 
-// Times the query behind the vault list for accounts spread across the tiers.
 async function timeQueries(collection, owners, rng) {
   const quotas = { light: 70, medium: 70, heavy: 50, full: 10 };
   const chosen = [];
@@ -325,7 +294,6 @@ async function timeQueries(collection, owners, rng) {
   };
 }
 
-// Pulls the plan type and document counts out of an aggregate explain("executionStats") result.
 function summarizeExplain(explain) {
   const cursor = explain.stages?.[0]?.$cursor;
   const stats = explain.executionStats ?? cursor?.executionStats ?? {};
@@ -395,7 +363,6 @@ async function run(opts) {
         batch.push(...records);
       }
       if (batch.length === 0) continue;
-      // Documents plus about the same again for the indexes.
       const estimate = batch.reduce((sum, doc) => sum + calculateObjectSize(doc), 0) * 2;
       const { total: current } = await clusterBytes(mongoose);
       if (current + estimate > limitBytes) {

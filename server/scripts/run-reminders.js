@@ -1,12 +1,3 @@
-/**
- * Runs the daily expiry-reminder job once, by hand (the same code /api/cron/reminders runs).
- *
- *   cd server && node scripts/run-reminders.js
- *
- * It sends real emails (through the SMTP settings in the environment / .env) to accounts that have documents due
- * a reminder, so run it against the database you mean to. It is safe to run twice: a reminder already sent is
- * never sent again. Prints counts and the database NAME only: never the URI, an email address or a file name.
- */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 const mongoose = require('mongoose');

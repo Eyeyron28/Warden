@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// The sign-up invite code, enforced on the server. The User model, the mailer and
-// the rate-limit store are replaced with recording fakes BEFORE the controller is
-// loaded, so each test can assert exactly what was looked up, created or mailed.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -30,7 +25,6 @@ stub('../models/User', {
   },
 });
 
-// Sign-up now stores only a pending code (no account until the address is proven): "created" below counts those.
 stub('../models/OtpChallenge', {
   findOneAndUpdate: async (filter, update) => {
     calls.create.push({ filter, update });
@@ -38,7 +32,6 @@ stub('../models/OtpChallenge', {
   },
   deleteOne: async () => ({ deletedCount: 1 }),
 });
-// The mail domain check asks DNS; the tests answer for it.
 require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.com', priority: 10 }];
 
 const realEmail = require('../utils/email');
@@ -50,7 +43,6 @@ stub('../utils/email', {
   },
 });
 
-// In-memory stand-in for the Mongo-backed budgets (same semantics, no windows).
 const counts = new Map();
 stub('../middleware/rateLimit', {
   consumeBudget: async ({ name, key, max }) => {
@@ -66,7 +58,6 @@ const { getPublicConfig } = require('../controllers/auth.controller');
 const { signupStart } = require('../controllers/signup.controller');
 const { inviteGate } = require('../utils/inviteGate');
 
-// The route runs the invite gate first, then the handler (routes/auth.routes.js).
 const signup = (req, res, next) =>
   new Promise((resolve) => {
     inviteGate(req, res, (err) => {
@@ -115,7 +106,6 @@ const nothingHappened = () => {
 };
 
 let addressCounter = 0;
-// A different address each time: the per-address code budget (5 an hour) is not what these tests are about.
 const signupBody = (inviteCode, extra = {}) => ({ email: `new${++addressCounter}@example.com`, password: PASSWORD, termsAccepted: true, ...(inviteCode === undefined ? {} : { inviteCode }), ...extra });
 
 test('a missing, empty, whitespace, wrong, oversized or wrong-typed code is refused the same way, doing no work', async () => {
@@ -222,7 +212,6 @@ test('open mode: no code is needed and any submitted code is ignored; only "open
   } finally {
     process.env.SIGNUP_MODE = 'invite';
   }
-  // A misspelt mode must not leave sign-up open.
   for (const mode of ['closed', 'invited', 'OPEN-ish', '', undefined]) {
     if (mode === undefined) delete process.env.SIGNUP_MODE;
     else process.env.SIGNUP_MODE = mode;

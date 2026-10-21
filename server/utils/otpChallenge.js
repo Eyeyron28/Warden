@@ -15,40 +15,20 @@ const {
   buildChallengeToken,
 } = require('./otp');
 
-/**
- * Emailed one-time-code challenges, shared by everything that needs one.
- *
- * Every challenge has a PURPOSE, stored on the record and part of every
- * lookup, so a code issued for one thing can never satisfy another: a login
- * code cannot authorise deleting an account and a delete-account code cannot
- * log anyone in (each consumer asks for its own purpose, and the lookup then
- * simply finds nothing).
- *
- * The challengeKey is never stored; it exists only inside the challengeToken
- * (`<challengeId>.<challengeKey>`) given to the browser. What the key wraps
- * depends on the purpose: the vault key for a login (so no session exists
- * until the code is right), a throwaway random value for deletion (a delete
- * challenge never involves the vault key at all).
- */
-
-// 'emergency-setup' is the owner's fresh code for changing Emergency Access (bound to ONE action in `accessId`).
-// The contact's two codes (emergency-request, emergency-session) have no challenge token: see utils/emergency/codes.js.
 const PURPOSES = { login: 'login', deleteAccount: 'delete-account', passwordReset: 'password-reset', emergencySetup: 'emergency-setup' };
 
-const MAX_ATTEMPTS = 5; // guesses per challenge, then it is deleted
-const MAX_RESENDS = 3; // per challenge
+const MAX_ATTEMPTS = 5;
+const MAX_RESENDS = 3;
 const RESEND_COOLDOWN_MS = 60 * 1000;
-const EMAILS_PER_HOUR = 5; // per account, across all challenges and purposes
+const EMAILS_PER_HOUR = 5;
 const EMAIL_WINDOW_MS = 60 * 60 * 1000;
 
-// One message for every way a code check can fail - wrong, expired, too many
-// tries, already used, wrong purpose, unknown or tampered challenge.
 const FAILURE_MESSAGE = 'That code is incorrect or has expired.';
 
 function httpError(status, message, extra = {}) {
   const error = new Error(message);
   error.status = status;
-  if (status >= 500) error.expose = true; // app-authored 5xx text is safe to show (see middleware/errorHandler.js)
+  if (status >= 500) error.expose = true;
   return Object.assign(error, extra);
 }
 
@@ -65,8 +45,6 @@ function emailFor(purpose, code, ttlMinutes) {
   return templates.signInCode(input);
 }
 
-// How long a real send takes (smoothed), so the look-alike made for an address
-// with no account can wait about as long and the two cannot be told apart by timing.
 let sendMs = null;
 const noteSendDuration = (ms) => {
   sendMs = sendMs === null ? ms : sendMs * 0.7 + ms * 0.3;
@@ -77,7 +55,6 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms
 function payload(challenge, challengeKey) {
   return {
     otpRequired: true,
-    // <challengeId>.<challengeKey>. The key is not stored on the server.
     challengeToken: buildChallengeToken(String(challenge._id), challengeKey),
     codeLength: 6,
     expiresAt: challenge.expiresAt,
@@ -95,12 +72,6 @@ function spendEmailBudget(userId) {
   });
 }
 
-/**
- * Creates a challenge and emails the code.
- * @param {{ user: { _id: any, email: string }, secret: Buffer, purpose: string }} args
- *   `secret` is what the challengeKey wraps (the DEK for logins).
- * @returns the payload to hand to the browser
- */
 async function startChallenge({ user, secret, purpose, decoy = false, accessId = null }) {
   const ttlMinutes = otpTtlMinutes();
   if (!(await spendEmailBudget(user._id))) throw tooManyEmails();
@@ -126,7 +97,6 @@ async function startChallenge({ user, secret, purpose, decoy = false, accessId =
   });
 
   if (decoy) {
-    // Nothing is sent and the code is thrown away; only the time is matched.
     await wait(expectedSendMs() * (0.85 + Math.random() * 0.3));
     return payload(challenge, challengeKey);
   }
@@ -140,15 +110,6 @@ async function startChallenge({ user, secret, purpose, decoy = false, accessId =
   return payload(challenge, challengeKey);
 }
 
-/**
- * Checks a submitted code and, if right, CONSUMES the challenge (single use)
- * and returns what it wrapped. At most 5 guesses per challenge, each counted
- * atomically before it is checked; the 5th wrong one deletes it. Every
- * failure throws the same 401. `userId`, when given, must also match (delete
- * challenges belong to one signed-in account).
- *
- * @returns {Promise<{ claimed: object, secret: Buffer }>}
- */
 async function consumeChallenge({ challengeToken, code, purpose, userId }) {
   const parsed = parseChallengeToken(challengeToken);
   if (!parsed || typeof code !== 'string') throw failure();
@@ -161,13 +122,8 @@ async function consumeChallenge({ challengeToken, code, purpose, userId }) {
   };
   if (userId) filter.userId = userId;
 
-  // Count this guess BEFORE looking at it, and only against a challenge that
-  // is still alive, of this purpose, and not out of attempts.
   const challenge = await OtpChallenge.findOneAndUpdate(filter, { $inc: { attempts: 1 } }, { new: true });
   if (!challenge) {
-    // Missing, expired or out of attempts: make sure a dead one is gone. Only
-    // when it is really dead - never delete a live challenge of another
-    // purpose or owner just because someone presented its id.
     await OtpChallenge.deleteOne({
       _id: parsed.challengeId,
       $or: [{ attempts: { $gte: MAX_ATTEMPTS } }, { expiresAt: { $lte: new Date() } }],
@@ -176,13 +132,11 @@ async function consumeChallenge({ challengeToken, code, purpose, userId }) {
   }
 
   if (!codeMatches(challenge.salt, challenge.codeHash, code)) {
-    // 3 or more wrong guesses on one code: a burst worth a line (what it was for, how many, and a hash of its id).
     if (challenge.attempts >= 3) logSecurity('code_failures', { bucket: challenge.purpose, count: challenge.attempts, subject: String(challenge._id) });
     if (challenge.attempts >= MAX_ATTEMPTS) await OtpChallenge.deleteOne({ _id: challenge._id });
     throw failure();
   }
 
-  // Correct code: claim the challenge. Only one request can ever get it.
   const claimed = await OtpChallenge.findOneAndDelete({ _id: challenge._id });
   if (!claimed) throw failure();
 
@@ -190,20 +144,11 @@ async function consumeChallenge({ challengeToken, code, purpose, userId }) {
   try {
     secret = unwrapKey(claimed.wrappedDek, parsed.challengeKey, claimed.wrappedDekIv, claimed.wrappedDekAuthTag);
   } catch {
-    // A challengeKey that does not match (tampered, or from another login).
     throw failure();
   }
   return { claimed, secret };
 }
 
-/**
- * A new code for the same challenge; the previous code stops working. 60
- * seconds between sends, 3 resends per challenge, 5 emails per hour per
- * account. The caller must hold the challenge key, so an id alone cannot make
- * the server send mail.
- *
- * @param {{ challengeToken: string, purpose: string, userId?: any, findUser: (id: any) => Promise<any> }} args
- */
 async function resendChallenge({ challengeToken, purpose, userId, findUser }) {
   const parsed = parseChallengeToken(challengeToken);
   if (!parsed) throw failure();
@@ -236,7 +181,6 @@ async function resendChallenge({ challengeToken, purpose, userId, findUser }) {
   const code = generateCode();
   const salt = newSalt();
   const now = new Date();
-  // Swap in the new code only if nobody else has resent in the meantime.
   const updated = await OtpChallenge.findOneAndUpdate(
     { _id: challenge._id, resendCount: challenge.resendCount, lastSentAt: challenge.lastSentAt },
     {

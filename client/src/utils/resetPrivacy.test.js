@@ -10,12 +10,10 @@ const read = (relative) => fs.readFileSync(path.join(here, '..', relative), 'utf
 test('the forgot-password flow keeps secrets in memory only', () => {
   const page = read('pages/auth/ForgotPasswordPage.jsx');
   assert.doesNotMatch(page, /localStorage|sessionStorage|indexedDB|document\.cookie/);
-  // The only router state it ever sets is a harmless flag for the login page's message.
   assert.equal((page.match(/state:/g) || []).length, 1, 'one router-state use');
   assert.match(page, /state: \{ passwordReset: kind \}/);
   const kinds = [...page.matchAll(/finishAtLogin\('(\w+)'\)/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(kinds)].sort(), ['kept', 'wiped']);
-  // Nothing secret goes into a URL, query string or hash.
   assert.doesNotMatch(page, /searchParams|location\.(search|hash)|\?ticket=|#ticket/);
 });
 

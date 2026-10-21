@@ -1,4 +1,3 @@
-// Run with: cd client && npm test   (Node's built-in test runner, no deps)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -19,14 +18,12 @@ const SAFE = [
 ];
 
 const HOSTILE = [
-  // The ones from the advisory / the task
   ['protocol-relative', '//evil.com'],
   ['backslash after slash', '/\\evil.com'],
   ['absolute https URL', 'https://evil.com'],
   ['javascript: URL', 'javascript:alert(1)'],
   ['encoded protocol-relative', '%2F%2Fevil.com'],
   ['encoded backslash after slash', '/%5Cevil.com'],
-  // Variations
   ['double backslash', '\\\\evil.com'],
   ['leading backslash', '\\evil.com'],
   ['triple slash', '///evil.com'],

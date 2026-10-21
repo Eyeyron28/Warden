@@ -1,8 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// The gates and rules on a share: link password, download limit, emailed-code
-// recipient restriction, and the owner's share manager. As with shares.test.js
-// the models are in-memory fakes installed before the controllers load.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -44,7 +39,6 @@ const V = require('../controllers/sharedView.controller');
 const { consumeChallenge } = require('../utils/otpChallenge');
 const { call } = db;
 
-// ---------- helpers ----------
 const DEK = crypto.randomBytes(32);
 const ALICE = db.oid();
 const BOB = db.oid();
@@ -77,7 +71,6 @@ async function makeShare(body = {}, docs = [addDocument()]) {
   return { ...result.json, shareKey: keyOf(result.json.shareUrl), docs };
 }
 
-// What the browser does with a password: scrypt -> two HMAC labels -> a wrap key and a verifier.
 const WRAP_LABEL = 'warden-share-wrap-v1';
 const VERIFY_LABEL = 'warden-share-verify-v1';
 const KDF = { N: 2 ** 15, r: 8, p: 1 };
@@ -116,7 +109,6 @@ const lastCode = () => /^(\d{6})$/m.exec(world.mails[world.mails.length - 1].tex
 const wrongOf = (c) => (c === '000000' ? '000001' : '000000');
 const GENERIC_404 = 'This link is invalid or has expired.';
 
-// ---------- 1. link password ----------
 test('a password share is hidden until its key is wrapped, then goes live; the server stores neither password nor key', async () => {
   reset();
   const made = await makeShare({ passwordProtected: true });
@@ -144,7 +136,6 @@ test('a password share is hidden until its key is wrapped, then goes live; the s
     ['passwordKdfN', 'passwordKdfP', 'passwordKdfR', 'passwordSalt', 'passwordVerifierHash', 'passwordWrappedKey']
   );
 
-  // The wrapped key opens only with the password; the stored verifier hash opens nothing.
   const { wrapKey, verifier } = derive('Correct Horse Battery', Buffer.from(share.passwordSalt, 'base64'));
   assert.ok(unwrap(share.passwordWrappedKey, wrapKey, made.id).equals(made.shareKey));
   assert.throws(() => unwrap(share.passwordWrappedKey, derive('wrong password', Buffer.from(share.passwordSalt, 'base64')).wrapKey, made.id));
@@ -231,7 +222,6 @@ test('the right password releases the wrapped key and the ciphertext, and only f
   assert.equal(served.status, 200);
   assert.ok(shareCrypto.unpackAndDecrypt(served.body, shareKey, made.id, file.fileId).equals(Buffer.from('rent is due')));
 
-  // The token is bound to its share: on another share it is nothing.
   const otherFile = world.tables.sharedfiles.find((f) => f.shareId === other.id);
   const replay = await fileOf(other.id, otherFile.fileId, access.accessToken);
   assert.equal(replay.status, 200, 'an ungated share needs no token at all');
@@ -241,7 +231,6 @@ test('the right password releases the wrapped key and the ciphertext, and only f
   assert.equal(junk.error.message, GENERIC_404);
 });
 
-// ---------- 2. download count and limit ----------
 test('every delivered file counts once, and the limit deletes the share and its copies', async () => {
   reset();
   const made = await makeShare({ maxDownloads: 2 }, [addDocument('a.png'), addDocument('b.png'), addDocument('c.png')]);
@@ -293,7 +282,6 @@ test('the owner sees the count; limits are validated; a limit below the count is
   assert.equal(cleared.json.maxDownloads, null);
 });
 
-// ---------- 3. email-restricted ----------
 test('recipient address must be one plain address', async () => {
   reset();
   const doc = addDocument();
@@ -404,7 +392,6 @@ test('email gate: resend rules (60 s, 3 per challenge, 5 emails per hour per sha
   assert.equal(fourth.error.status, 429, 'a 4th resend is refused');
   assert.equal(world.mails.length, 4);
 
-  // 5 code emails per hour per SHARE, across visitors: 4 sent so far, one more is allowed, then no more.
   const visitor2 = await open(made.id);
   const r5 = await call(V.requestEmailCode, { params: { shareId: made.id }, headers: hdr(visitor2.accessToken) });
   assert.equal(r5.status, 200);
@@ -419,7 +406,6 @@ test('a login or delete-account code cannot be used here, and a share code canno
   const made = await makeShare({ recipientEmail: 'bob@example.com' });
   const access = await open(made.id);
   const { generateCode, newSalt, hashCode } = require('../utils/otp');
-  // A pending LOGIN challenge and a pending DELETE challenge, with codes we know.
   for (const purpose of ['login', 'delete-account']) {
     const salt = newSalt();
     world.tables.otpchallenges.push({
@@ -433,7 +419,6 @@ test('a login or delete-account code cannot be used here, and a share code canno
   assert.equal(world.tables.otpchallenges.length, 2, 'and the other challenges were not touched');
   assert.ok(world.tables.otpchallenges.every((c) => c.attempts === 0));
 
-  // The other direction: a share-email challenge is invisible to login and delete lookups.
   await call(V.requestEmailCode, { params: { shareId: made.id }, headers: hdr(access.accessToken) });
   const shareChallenge = world.tables.otpchallenges.find((c) => c.purpose === 'share-email');
   const token = `${shareChallenge._id}.${crypto.randomBytes(32).toString('hex')}`;
@@ -463,7 +448,6 @@ test('both gates: the code comes first, then the password', async () => {
   assert.equal((await manifestOf(made.id, access.accessToken)).status, 200);
 });
 
-// ---------- 4. the share manager ----------
 test('manager: change expiry within the cap, add and remove a password, change the recipient', async () => {
   reset();
   const made = await makeShare({}, [addDocument('a.png'), addDocument('b.png')]);
@@ -485,7 +469,6 @@ test('manager: change expiry within the cap, add and remove a password, change t
   assert.equal((await patch({ recipientEmail: 'carol@example.com' })).json.emailRestricted, true);
   assert.equal((await patch({ recipientEmail: null })).json.emailRestricted, false);
 
-  // Add a password later (the owner's browser supplies wrapped material; no re-upload).
   const filesBefore = JSON.stringify(world.tables.sharedfiles);
   const added = await call(S.setPassword, { ...as(ALICE), params: { shareId: sid }, body: passwordBody('first pw', made.shareKey, sid) });
   assert.equal(added.status, 200);
@@ -494,7 +477,6 @@ test('manager: change expiry within the cap, add and remove a password, change t
   assert.equal(prot.json.passwordProtected, true);
   assert.deepEqual(Object.keys(prot.json).sort(), ['kdf', 'passwordProtected', 'salt', 'wrappedKey']);
 
-  // Change it: the owner's browser unwraps with the old password and re-wraps.
   const oldKey = unwrap(prot.json.wrappedKey, derive('first pw', Buffer.from(prot.json.salt, 'base64')).wrapKey, sid);
   assert.ok(oldKey.equals(made.shareKey));
   const changed = await call(S.setPassword, { ...as(ALICE), params: { shareId: sid }, body: passwordBody('second pw', oldKey, sid) });
@@ -507,7 +489,6 @@ test('manager: change expiry within the cap, add and remove a password, change t
   const accepted = await call(V.unlockPassword, { params: { shareId: sid }, headers: hdr(access.accessToken), body: { verifier: derive('second pw', salt2).verifier.toString('base64') } });
   assert.equal(accepted.status, 200);
 
-  // Remove it: back to a plain key-in-the-link share.
   const removed = await call(S.removePassword, { ...as(ALICE), params: { shareId: sid } });
   assert.equal(removed.json.passwordProtected, false);
   assert.ok(Object.keys(world.tables.shares[0]).filter((k) => k.startsWith('password')).every((k) => world.tables.shares[0][k] === null), 'every password field cleared');
@@ -539,7 +520,6 @@ test('manager: another account gets 404 on every operation; stop sharing and sto
   assert.equal(world.tables.shares.length, 2);
   assert.equal(world.tables.shares.find((s) => s.shareId === made.id).maxDownloads, null, 'untouched');
 
-  // Stop all (alice) leaves bob's share alone.
   const second = await makeShare({ recipientEmail: 'bob@example.com' }, [addDocument()]);
   const access = await open(second.id);
   await call(V.requestEmailCode, { params: { shareId: second.id }, headers: hdr(access.accessToken) });

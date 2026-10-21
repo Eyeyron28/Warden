@@ -2,21 +2,8 @@ const crypto = require('crypto');
 
 const { wrapKey, unwrapKey } = require('../crypto');
 
-/**
- * The 2-of-2 key split behind Emergency Access (security model: utils/emergency/config.js).
- *
- *   E  = K1 XOR K2       two independent 32-byte random halves
- *   K1 = the KIT         shown to the owner once, to give to the contact. NEVER stored, logged or put in an event.
- *   K2 = the server half stored on the EmergencyAccess record
- *   wrappedDek = AES-256-GCM(DEK) under E
- *
- * K1 alone, or the database alone (K2 + wrappedDek + the salted kit hash), cannot open the vault: E needs both.
- * The salted kit hash exists only to check a presented kit in constant time before any unwrap; K1 has 256 bits of
- * entropy, so the hash does not make it guessable.
- */
-
 const HALF_BYTES = 32;
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; // RFC 4648 base32
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
 const xor = (a, b) => {
   const out = Buffer.alloc(a.length);
@@ -57,12 +44,10 @@ function fromBase32(text) {
   return Buffer.from(out);
 }
 
-/** K1 as a kit code: base32 in groups of four ("ABCD-EFGH-..."), easy to read out or type. */
 function encodeKit(k1) {
   return base32(k1).match(/.{1,4}/g).join('-');
 }
 
-/** The K1 bytes from what a person typed (any case, spaces or dashes), or null if it is not a well-formed kit. */
 function parseKit(text) {
   if (typeof text !== 'string' || text.length > 200) return null;
   const clean = text.toUpperCase().replace(/[\s-]/g, '');
@@ -73,10 +58,6 @@ function parseKit(text) {
 
 const hashKit = (k1, saltHex) => crypto.createHash('sha256').update(Buffer.concat([k1, Buffer.from(saltHex, 'hex')])).digest('hex');
 
-/**
- * A fresh split for this DEK. Returns the fields to store AND `k1`, which the caller shows once and then drops.
- * @param {Buffer} dek
- */
 function createSplit(dek) {
   const k1 = crypto.randomBytes(HALF_BYTES);
   const k2 = crypto.randomBytes(HALF_BYTES);
@@ -95,7 +76,6 @@ function createSplit(dek) {
   };
 }
 
-/** Constant-time check of a presented K1 against the record. A missing record still does the same work. */
 function kitMatches(access, k1) {
   const salt = access?.kitSalt || '00'.repeat(16);
   const expected = Buffer.from(access?.kitHash || '00'.repeat(32), 'hex');
@@ -104,7 +84,6 @@ function kitMatches(access, k1) {
   return Boolean(access && k1 && equal);
 }
 
-/** The DEK, from the record's K2 and a presented K1; null if either is wrong. */
 function unwrapWithKit(access, k1) {
   try {
     const e = xor(k1, access.k2);

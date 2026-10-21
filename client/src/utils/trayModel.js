@@ -1,18 +1,11 @@
 import { describeCard, filesLink, outcomeOf } from './importCard.js';
 import { formatBytes } from './listing.js';
 
-/**
- * What the transfer tray shows, as plain data computed from the two stores (services/transfers.js and services/importJob.js), so
- * every state can be tested without a browser: the rows, their words and rings, the header's live title and the overall progress.
- */
-
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const WORKING = new Set(['waiting', 'sending', 'sealing']);
 
-/** The ring of a row: idle (waiting), progress (bytes sent), pulse (the server is sealing), sealed (a lock), failed. */
 export const RING = Object.freeze({ IDLE: 'idle', PROGRESS: 'progress', PULSE: 'pulse', SEALED: 'sealed', FAILED: 'failed', HELD: 'held', REFUSED: 'refused' });
 
-/** Short words for the scanner's reason codes (the Quarantine page shows the full sentences, which the server sends). */
 const SHORT_REASON = Object.freeze({
   TYPE_MISMATCH: 'name and content do not match',
   DOUBLE_EXTENSION: 'program-like file name',
@@ -25,10 +18,8 @@ const SHORT_REASON = Object.freeze({
   PLAIN_ZIP: 'zips go through Export / Import',
   ARCHIVE_UNINSPECTABLE: 'archive Warden cannot look inside',
 });
-/** A reason is a code, or { code, text } with the server's plain sentence (from the shared table). */
 const codeOf = (reason) => (typeof reason === 'string' ? reason : reason?.code);
 const endSentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
-/** The server's sentences for these reasons, joined ("never raw codes"; a bare code falls back to its short words). */
 export const reasonSentences = (reasons) =>
   (reasons || [])
     .map((reason) => (typeof reason === 'string' ? SHORT_REASON[reason] && `${SHORT_REASON[reason][0].toUpperCase()}${SHORT_REASON[reason].slice(1)}` : reason?.text))
@@ -41,7 +32,6 @@ export const shortReasons = (codes) => {
   return words.length === 1 ? words[0] : `${words[0]} and ${words.length - 1} more`;
 };
 
-/** What the status icon explains on hover, focus or tap. Plain words; the file's name is already in the row, its content never is. */
 export const TIPS = Object.freeze({
   waiting: 'Waiting its turn. Warden sends two files at a time.',
   sending: 'Sending this file to your vault.',
@@ -90,7 +80,6 @@ function rowOfTransferLine(t) {
       return { ...common, line: 'Sealing: the server is encrypting and saving', ring: RING.PULSE, percent: 100, actions: { cancel: true, retry: false, dismiss: false, show: null } };
     case 'sealed':
       if (t.held) {
-        // Saved, but held in Quarantine until the owner decides: amber, with a way to the page.
         const why = shortReasons(t.held);
         return { ...common, held: true, heldCount: 1, line: `Held for review${why ? `: ${why}` : ''}`, ring: RING.HELD, percent: 100, actions: { cancel: false, retry: false, dismiss: true, show: '/quarantine' }, showLabel: 'Open Quarantine' };
       }
@@ -123,8 +112,6 @@ function rowOfImport(job) {
     return { ...common, tip: TIPS.importRunning, working: true, line: view.line, ring: preparing ? RING.PULSE : RING.PROGRESS, percent: view.percent, actions: { cancel: true, retry: false, dismiss: false, show: '/export' }, importFiles: { done: job.done, total: job.total } };
   }
   const bad = view.kind === 'failed' || view.kind === 'stopped' || view.kind === 'cancelled';
-  // The summary line carries what Quarantine did with the files inside: how many were held and how many were not saved.
-  // A held file is not imported: the row, its colour and its icon say what Quarantine did (amber warning shield; red for not saved).
   const { held: heldN, refused: refusedN } = outcomeOf(job);
   return {
     ...common,
@@ -143,10 +130,6 @@ function rowOfImport(job) {
   };
 }
 
-/**
- * @param {{ rows: object[] }} transfers  the transfers manager's state
- * @param {object} job                    the import job's state
- */
 export function buildTray(transfers, job) {
   const rows = transfers.rows.map(rowOfTransfer);
   const importRow = rowOfImport(job);
@@ -157,7 +140,6 @@ export function buildTray(transfers, job) {
   const importRemaining = importRow?.working ? Math.max(1, importRow.importFiles.total - importRow.importFiles.done) : 0;
   const filesWorking = uploadsWorking + importRemaining;
   const failed = rows.filter((row) => row.failed).length;
-  // real counts of files (an import row can hold several), not of rows
   const held = rows.reduce((sum, row) => sum + (row.heldCount || 0), 0);
   const refused = rows.reduce((sum, row) => sum + (row.refusedCount || 0), 0);
   const sealedUploads = rows.filter((row) => row.source === 'transfer' && row.phase === 'sealed' && !row.held).length;
@@ -166,7 +148,6 @@ export function buildTray(transfers, job) {
   let title;
   if (filesWorking > 0) title = importRow?.working && uploadsWorking === 0 ? `Importing ${plural(importRow.importFiles.total, 'file')}` : `Sealing ${plural(filesWorking, 'file')}`;
   else if (held > 0 || refused > 0) {
-    // Quarantine outcomes: "Sealed 2, 1 held", "1 file held for review", "1 not saved".
     const bad = rows.filter((row) => row.failed && !row.refused).length;
     const parts = [sealed > 0 ? `Sealed ${sealed}` : null, held > 0 ? `${held} held for review` : null, bad > 0 ? `${bad} failed` : null, refused > 0 ? `${refused} not saved` : null].filter(Boolean);
     title = parts.length === 1 && held > 0 ? `${plural(held, 'file')} held for review` : parts.length === 1 && refused > 0 ? `${refused} not saved` : parts.join(', ');
@@ -175,7 +156,6 @@ export function buildTray(transfers, job) {
   else if (sealed > 0) title = `${plural(sealed, 'file')} sealed`;
   else title = rows.length ? 'Canceled' : '';
 
-  // overall progress by bytes: sealed rows count in full, canceled rows not at all
   const counted = rows.filter((row) => row.phase !== 'canceled' && !(row.source === 'import' && !row.working && row.ring === RING.FAILED));
   const total = counted.reduce((sum, row) => sum + (row.size || 0), 0);
   const done = counted.reduce((sum, row) => sum + (row.ring === RING.SEALED ? row.size || 0 : Math.round(((row.size || 0) * row.percent) / 100)), 0);
@@ -190,8 +170,6 @@ export function buildTray(transfers, job) {
     anyFailed: failed > 0,
     anyHeld: held > 0,
     anyRefused: refused > 0,
-    // the tray closes by itself only when nothing runs and nothing failed
-    // (a held file needs a decision, so it keeps the tray open until it is dismissed, like a failure)
     autoDismiss: rows.length > 0 && working.length === 0 && failed === 0 && held === 0 && refused === 0,
     announce: transfers.announce || job.announce || '',
   };

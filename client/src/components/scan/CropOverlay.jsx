@@ -12,10 +12,6 @@ const CORNERS = [
 const STEP = 0.01;
 const BIG_STEP = 0.05;
 
-/**
- * The crop rectangle over the picture: drag it (touch or mouse) to move it, drag a corner to resize it, or focus it and use the
- * arrow keys (Shift for bigger steps). `crop` is {x, y, w, h} as fractions of the picture. It draws no image of its own.
- */
 function CropOverlay({ crop, onChange }) {
   const area = useRef(null);
   const drag = useRef(null);

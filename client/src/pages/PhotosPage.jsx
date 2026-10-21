@@ -23,14 +23,6 @@ import Banner from '../components/Banner.jsx';
 
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-/**
- * Photos: every image in the vault, from all folders, newest first and
- * grouped by month. What counts as an image is decided by the file's BYTES
- * (png, jpeg, gif, webp) - a renamed text file does not appear, a photo
- * with a wrong name does. Older files are classified a few at a time, so the
- * page asks again while the server reports some still pending.
- */
-// List view columns (the grid has none): the date and the size, as in My files.
 const PHOTO_COLUMNS = [
   { id: 'modified', label: 'Modified', width: 'clamp(110px, 14vw, 380px)' },
   { id: 'size', label: 'Size', width: 'clamp(84px, 9vw, 240px)', align: 'right' },
@@ -48,7 +40,6 @@ function PhotosPage() {
   const [busy, setBusy] = useState(false);
   const [order, setOrder] = useState(() => (getViewPrefs().sort === 'oldest' ? 'oldest' : 'newest'));
   const [previewIndex, setPreviewIndex] = useState(null);
-  // List by default; the choice is kept in this browser (utils/photosView.js). The data is the same in both views.
   const [view, setView] = useState(readPhotosView);
   const changeView = (next) => {
     setView(next);
@@ -193,8 +184,6 @@ function PhotosPage() {
   ];
 
 
-  // Right-click, long-press or Shift+F10 on an item. An unselected item becomes the selection;
-  // with several selected, the menu holds the actions that apply to the selection.
   const handleItemContextMenu = (item, { x, y, opener }) => {
     const wasSelected = selection.isSelected(item.key);
     if (!wasSelected) selection.setOnly(item.key);
@@ -212,7 +201,6 @@ function PhotosPage() {
 
   return (
     <div className={styles.page}>
-      {/* The title stays; only the controls on the right become the selection bar. */}
       <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             <h1 className={styles.heading}>Photos</h1>

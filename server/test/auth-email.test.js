@@ -1,10 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Controller-level tests for the email address checks on signup,
-// resend-verification and forgot-password. The User model and the mailer
-// are replaced with recording fakes BEFORE the controller is loaded, so
-// each test can assert exactly what was looked up, created or mailed - for
-// a hostile address that has to be nothing at all.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -12,7 +5,7 @@ for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FR
 process.env.SIGNUP_MODE = 'open';
 
 const calls = { findOne: [], create: [], mails: [] };
-let existingUser = null; // what the fake User.findOne resolves with
+let existingUser = null;
 
 function stub(modulePath, exportsObject) {
   const resolved = require.resolve(modulePath);
@@ -39,7 +32,6 @@ stub('../utils/email', {
   },
 });
 
-// Sign-up stores only a pending code: the "create" below is that code's upsert. The per-address budget and the domain lookup are stood in for.
 stub('../models/OtpChallenge', {
   findOneAndUpdate: async (filter) => {
     calls.create.push({ filter });
@@ -66,7 +58,6 @@ function reset(user = null) {
   existingUser = user;
 }
 
-// Runs an express handler against a fake request and reports what it did.
 async function run(handler, body) {
   const result = { status: null, json: null, error: null };
   const res = {
@@ -85,7 +76,6 @@ async function run(handler, body) {
   return result;
 }
 
-// Every one of these must be rejected as "not a single plain address".
 const HOSTILE = [
   ['comma (two recipients)', 'a,b@evil.com'],
   ['comma list', 'victim@example.com,attacker@evil.com'],

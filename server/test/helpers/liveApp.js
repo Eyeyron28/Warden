@@ -1,10 +1,3 @@
-// The REAL Express app (server.js, every middleware and router) running on 127.0.0.1 against a LOCAL, THROWAWAY MongoDB,
-// with a captured mail sink. Nothing here reads an .env file, connects to Atlas or sends real email:
-//   - `dotenv` is replaced by a no-op before the app loads (server.js calls dotenv.config());
-//   - MONGO_URI is set explicitly, and only to a local address (test/helpers/realMongo.js refuses anything else);
-//   - utils/email is replaced by a recorder.
-// The emailed login code is switched off the way a development server may (OTP_ENABLED=false), so a test can sign in with
-// a password; the code path itself is covered by otp.test.js.
 const Module = require('module');
 const http = require('node:http');
 
@@ -30,7 +23,6 @@ async function startLiveApp(name) {
     EMERGENCY_DEMO_MODE: 'false',
   });
 
-  // Sign-up checks that an address's domain can receive mail; the test domains are answered for, not looked up.
   require('dns').promises.resolveMx = async () => [{ exchange: 'mx.example.test', priority: 10 }];
 
   const mails = [];
@@ -43,8 +35,7 @@ async function startLiveApp(name) {
     app = require('../../server');
     await require('../../config/db')();
     await mongoose.connection.dropDatabase();
-    // The unique indexes the app relies on exist before the first write.
-    await Promise.all(Object.values(mongoose.models).map((model) => model.createIndexes())); // autoIndex is off (config/db.js): build them here
+    await Promise.all(Object.values(mongoose.models).map((model) => model.createIndexes()));
   } catch (err) {
     Module._load = original;
     return { ok: false, reason: `the app could not start against ${'a local MongoDB'}: ${String(err.message).slice(0, 80)}` };
@@ -56,7 +47,6 @@ async function startLiveApp(name) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const RateLimit = mongoose.models.RateLimit;
 
-  /** One HTTP request to the app. Rate-limit counters are cleared first, so a long run is never throttled (`keepLimits` leaves them, for a test of a limit). */
   async function api(method, path, { token, json, form, query, headers = {}, keepLimits = false } = {}) {
     if (!keepLimits) await RateLimit.deleteMany({});
     const url = base + path + (query ? `?${new URLSearchParams(query)}` : '');

@@ -1,4 +1,3 @@
-/** A random UUID (version 4) for one upload attempt; crypto.randomUUID where the browser has it, getRandomValues otherwise. */
 export function newUploadKey() {
   const c = globalThis.crypto;
   if (typeof c?.randomUUID === 'function') return c.randomUUID();

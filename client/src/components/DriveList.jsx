@@ -6,13 +6,8 @@ import { formatDate } from '../utils/formatDate.js';
 import { formatBytes } from '../utils/listing.js';
 import styles from './DriveList.module.css';
 
-// A file opens in its folder on My files (the same address Overview uses).
 const openLink = (doc) => `/files?path=${encodeURIComponent(doc.folder && doc.folder !== 'root' ? doc.folder : '')}&open=${encodeURIComponent(doc.id)}`;
 
-/**
- * A plain list of files for the Starred and Recent views: type icon, name (opens the file in its folder), where it is, one
- * line of facts, a star and the details button. `note(doc)` adds a line under the name (Recent says where it was opened).
- */
 function DriveList({ items, label, note, onToggleStar, onShowDetails }) {
   return (
     <ul className={styles.list} aria-label={label}>

@@ -1,8 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Trash (soft delete, restore, purge), the Photos classification by sniffed
-// type, and per-account isolation of all of it. Models are in-memory fakes
-// installed before the code under test loads.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -23,7 +18,6 @@ const BOB = db.oid();
 const DEK = crypto.randomBytes(32);
 const DAY = 24 * 3600 * 1000;
 
-// A tiny aggregation engine for the pipelines the code under test uses.
 function runPipeline(rows, pipeline) {
   let current = rows;
   for (const stage of pipeline) {
@@ -33,12 +27,11 @@ function runPipeline(rows, pipeline) {
       current = current.map((r) => {
         const out = { _id: r._id };
         for (const [field, spec] of Object.entries(stage.$project)) {
-          out[field] = spec === 1 ? r[field] : r.encryptedBlob.length; // the only computed field is size
+          out[field] = spec === 1 ? r[field] : r.encryptedBlob.length;
         }
         return out;
       });
     } else if (stage.$group) {
-      // Only the shape the code uses: one group over everything that matched, summing blob sizes.
       current = [{ _id: null, bytes: current.reduce((n, r) => n + r.encryptedBlob.length, 0), count: current.length }];
     }
   }
@@ -53,7 +46,6 @@ db.installModels(world, { Document: { aggregate: documentAggregate } });
 db.installRateLimit();
 db.installMailer(world);
 
-// Folder helpers: the real path logic, with an in-memory ensureFolderPath and no real transaction.
 const folders = require('../utils/folders');
 folders.runInTransaction = async (fn) => fn(null);
 folders.ensureFolderPath = async (userId, folderPath) => {
@@ -75,7 +67,6 @@ const T = require('../controllers/trash.controller');
 const S = require('../controllers/shares.controller');
 const { call } = db;
 
-// ---------- fixtures ----------
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), crypto.randomBytes(40)]);
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(40)]);
 const GIF = Buffer.concat([Buffer.from('GIF89a'), crypto.randomBytes(40)]);
@@ -113,7 +104,6 @@ const as = (userId, extra = {}) => ({ userId, dek: DEK, ...extra });
 const live = (userId = ALICE) => world.tables.documents.filter((d) => String(d.userId) === String(userId) && !d.deletedAt);
 const names = (rows) => rows.map((r) => r.filename).sort();
 
-// ---------- sniffing ----------
 test('image sniffing goes by bytes, never by name or claimed type', () => {
   assert.equal(sniffImageType(PNG), 'image/png');
   assert.equal(sniffImageType(JPEG), 'image/jpeg');
@@ -134,23 +124,20 @@ test('image sniffing goes by bytes, never by name or claimed type', () => {
   ]) {
     assert.equal(sniffImageType(notImage), 'none');
   }
-  // A PNG signature with a .txt name is still a PNG; a text file named .png is not.
   assert.equal(sniffImageType(PNG), 'image/png');
 });
 
-// ---------- photos ----------
 test('Photos lists only sniffed images from every folder, newest first, and classifies old files lazily', async () => {
   reset();
   await addFolder(ALICE, 'Trips');
   const t = (daysAgo) => new Date(Date.now() - daysAgo * DAY);
   addDoc({ filename: 'holiday.png', folder: 'Trips', content: PNG, encrypt: true, createdAt: t(10) });
-  addDoc({ filename: 'renamed-from-png.txt', content: PNG, encrypt: true, createdAt: t(5) }); // a PNG named .txt
+  addDoc({ filename: 'renamed-from-png.txt', content: PNG, encrypt: true, createdAt: t(5) });
   addDoc({ filename: 'notes.png', content: Buffer.from('plain text pretending to be a picture, definitely not one'), encrypt: true, createdAt: t(3) });
   addDoc({ filename: 'icon.svg', content: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>'), encrypt: true, createdAt: t(2) });
   addDoc({ filename: 'selfie.jpg', content: JPEG, encrypt: true, createdAt: t(1) });
   addDoc({ filename: 'gone.png', content: PNG, encrypt: true, createdAt: t(0) });
   addDoc({ filename: 'bobs.png', userId: BOB, content: PNG, encrypt: true });
-  // already classified at upload, no decrypting needed
   addDoc({ filename: 'fresh.webp', content: WEBP, encrypt: true, sniffedType: 'image/webp', createdAt: t(20) });
 
   await trash.trashDocument(ALICE, world.tables.documents.find((d) => d.filename === 'gone.png')._id);
@@ -161,7 +148,6 @@ test('Photos lists only sniffed images from every folder, newest first, and clas
   assert.deepEqual(first.json.photos.map((p) => p.filename), ['selfie.jpg', 'renamed-from-png.txt', 'holiday.png', 'fresh.webp'], 'newest first');
   assert.ok(!first.json.photos.some((p) => ['notes.png', 'icon.svg', 'gone.png', 'bobs.png'].includes(p.filename)));
   assert.deepEqual(first.json.photos.map((p) => p.sniffedType), ['image/jpeg', 'image/png', 'image/png', 'image/webp']);
-  // what the files are stored as is the sniffed answer
   assert.equal(world.tables.documents.find((d) => d.filename === 'notes.png').sniffedType, 'none');
   assert.equal(world.tables.documents.find((d) => d.filename === 'icon.svg').sniffedType, 'none');
   for (const photo of first.json.photos) {
@@ -183,7 +169,6 @@ test('Photos classifies a large backlog a batch at a time and reports what is pe
   assert.equal(three.json.photos.length, 30);
 });
 
-// ---------- the vault list ----------
 test('the document list hides Trash and carries size and type fields', async () => {
   reset();
   const keep = addDoc({ filename: 'keep.png', content: PNG, sniffedType: 'image/png' });
@@ -202,12 +187,10 @@ test('the document list hides Trash and carries size and type fields', async () 
   assert.equal(storage.json.usedBytes, keep.encryptedBlob.length + gone.encryptedBlob.length);
 });
 
-// ---------- trashing a file ----------
 test('deleting a file moves it to Trash, keeps its ciphertext and stops its shares at that moment', async () => {
   reset();
   const doc = addDoc({ filename: 'lease.pdf', folder: 'root' });
   const other = addDoc({ filename: 'other.pdf' });
-  // A share covering both files, and a share of only the other file.
   world.tables.shares.push({ _id: db.oid(), shareId: 'a'.repeat(32), ownerUserId: ALICE, sourceDocumentIds: [doc._id, other._id] });
   world.tables.sharedfiles.push({ _id: db.oid(), shareId: 'a'.repeat(32), fileId: 'f1' });
   world.tables.shares.push({ _id: db.oid(), shareId: 'b'.repeat(32), ownerUserId: ALICE, sourceDocumentIds: [other._id] });
@@ -223,7 +206,6 @@ test('deleting a file moves it to Trash, keeps its ciphertext and stops its shar
   assert.deepEqual(world.tables.shares.map((s) => s.shareId), ['b'.repeat(32)], 'the share that included it is gone at once');
   assert.deepEqual(world.tables.sharedfiles.map((f) => f.shareId), ['b'.repeat(32)]);
 
-  // Gone from every route that serves live documents.
   const view = await call(D.viewDocument, { ...as(ALICE), params: { id: String(doc._id) } });
   assert.equal(view.error.status, 404);
   assert.equal((await call(D.getThumbnail, { ...as(ALICE), params: { id: String(doc._id) } })).error.status, 404);
@@ -249,7 +231,6 @@ test('what the document view serves is opaque bytes, never typed or inline', asy
   assert.equal(served.headers['cache-control'], 'no-store');
 });
 
-// ---------- the Trash list ----------
 test('Trash lists files and folders with location, date and days left', async () => {
   reset();
   await addFolder(ALICE, 'Taxes/2024');
@@ -277,7 +258,6 @@ test('Trash lists files and folders with location, date and days left', async ()
   assert.ok(!JSON.stringify(listed.json).includes('encryptedBlob'));
 });
 
-// ---------- folders ----------
 test('a folder is trashed with its contents as one entry, and restored together', async () => {
   reset();
   await addFolder(ALICE, 'Taxes/2024');
@@ -288,7 +268,7 @@ test('a folder is trashed with its contents as one entry, and restored together'
   world.tables.shares.push({ _id: db.oid(), shareId: 'c'.repeat(32), ownerUserId: ALICE, sourceDocumentIds: [b._id] });
   world.tables.sharedfiles.push({ _id: db.oid(), shareId: 'c'.repeat(32), fileId: 'f' });
 
-  const result = await call(D.deleteFolder, { ...as(ALICE), query: { path: 'taxes' } }); // case-insensitive, like everywhere
+  const result = await call(D.deleteFolder, { ...as(ALICE), query: { path: 'taxes' } });
   assert.equal(result.status, 204);
   assert.deepEqual(names(live()), ['outside.pdf'], 'both documents left the vault together');
   assert.equal(world.tables.folders.filter((f) => String(f.userId) === String(ALICE)).length, 0, 'folder records are out of the vault');
@@ -298,10 +278,9 @@ test('a folder is trashed with its contents as one entry, and restored together'
   assert.equal(world.tables.trashfolders[0].itemCount, 2);
   assert.ok(world.tables.documents.filter((d) => d.trashBatchId).every((d) => d.purgeAt && d.deletedAt));
 
-  // The name can be reused while the old one is in Trash.
   await addFolder(ALICE, 'Taxes');
   assert.equal(world.tables.folders.length, 1);
-  world.tables.folders.length = 0; // remove it again for the restore below
+  world.tables.folders.length = 0;
 
   const [item] = (await call(T.listTrash, as(ALICE))).json.items;
   const restored = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'folder', id: item.id } });
@@ -325,10 +304,8 @@ test('deleting a folder that is not there is a success and changes nothing', asy
   assert.equal(live().length, 1);
 });
 
-// ---------- restore rules ----------
 test('restore: original folder gone -> top level with a message; name taken -> comes back with a counter, never refused', async () => {
   reset();
-  // 1. original folder deleted while the file was in Trash
   await addFolder(ALICE, 'Projects');
   const one = addDoc({ filename: 'plan.pdf', folder: 'Projects' });
   await trash.trashDocument(ALICE, one._id);
@@ -339,7 +316,6 @@ test('restore: original folder gone -> top level with a message; name taken -> c
   assert.equal(one.folder, 'root');
   assert.equal(one.deletedAt, null);
 
-  // 2. a file with that name was created in the original folder in the meantime
   await addFolder(ALICE, 'Docs');
   const two = addDoc({ filename: 'a.pdf', folder: 'Docs' });
   await trash.trashDocument(ALICE, two._id);
@@ -353,7 +329,6 @@ test('restore: original folder gone -> top level with a message; name taken -> c
   assert.equal(two.folder, 'Docs');
   assert.equal(two.deletedAt, null);
 
-  // 3. taken in the original folder AND at the top level: still not refused; the next free number
   const three = addDoc({ filename: 'b.pdf', folder: 'Docs' });
   await trash.trashDocument(ALICE, three._id);
   addDoc({ filename: 'b.pdf', folder: 'Docs' });
@@ -362,7 +337,6 @@ test('restore: original folder gone -> top level with a message; name taken -> c
   assert.equal(r3.json.name, 'b (2).pdf');
   assert.equal(three.deletedAt, null);
 
-  // 4. original at the top level and the name taken there: a counter too
   const four = addDoc({ filename: 'c.pdf', folder: 'root' });
   await trash.trashDocument(ALICE, four._id);
   addDoc({ filename: 'c.pdf', folder: 'root' });
@@ -370,7 +344,6 @@ test('restore: original folder gone -> top level with a message; name taken -> c
   assert.equal(r4.json.name, 'c (1).pdf');
   assert.equal(four.folder, 'root');
 
-  // 5. nothing is taken: the name is kept and no flag is raised
   const five = addDoc({ filename: 'd.pdf', folder: 'root' });
   await trash.trashDocument(ALICE, five._id);
   const r5 = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'file', id: String(five._id) } });
@@ -383,11 +356,11 @@ test('restoring a folder: parent gone -> top level; a folder with that name ther
   await addFolder(ALICE, 'Outer/Inner');
   addDoc({ filename: 'x.txt', folder: 'Outer/Inner' });
   await call(D.deleteFolder, { ...as(ALICE), query: { path: 'Outer/Inner' } });
-  world.tables.folders.length = 0; // "Outer" is deleted too
+  world.tables.folders.length = 0;
   const [item] = (await call(T.listTrash, as(ALICE))).json.items;
   assert.equal(item.originalLocation, 'Outer');
 
-  await addFolder(ALICE, 'Inner'); // a folder with that name now exists at the top level
+  await addFolder(ALICE, 'Inner');
   const clash = await call(T.restoreItem, { ...as(ALICE), body: { kind: 'folder', id: item.id } });
   assert.equal(clash.error.status, 409);
   assert.equal(clash.error.code, 'FOLDER_EXISTS');
@@ -401,7 +374,6 @@ test('restoring a folder: parent gone -> top level; a folder with that name ther
   assert.deepEqual(world.tables.folders.map((f) => folders.fullPathOf(f)), ['Inner']);
 });
 
-// ---------- permanent deletion, emptying, purging ----------
 test('permanent delete and Empty trash remove the encrypted data and thumbnail', async () => {
   reset();
   const a = addDoc({ filename: 'a.txt' });
@@ -443,18 +415,16 @@ test('items older than 30 days are purged, on request and by the sweep, with a f
   addDoc({ filename: 'bobs-old.txt', userId: BOB });
   await trash.trashDocument(BOB, world.tables.documents.find((d) => d.filename === 'bobs-old.txt')._id);
 
-  // 31 days later: everything trashed "yesterday" is expired for those that were trashed 31 days ago
   const past = new Date(Date.now() - 1000);
   old.purgeAt = past;
   world.tables.trashfolders[0].purgeAt = past;
   world.tables.documents.filter((d) => d.trashBatchId).forEach((d) => { d.purgeAt = past; });
 
-  const listed = await call(T.listTrash, as(ALICE)); // opportunistic purge on the owner's own request
+  const listed = await call(T.listTrash, as(ALICE));
   assert.deepEqual(listed.json.items.map((i) => i.name), ['fresh.txt']);
   assert.deepEqual(names(world.tables.documents), ['bobs-old.txt', 'fresh.txt']);
   assert.equal(world.tables.trashfolders.length, 0);
 
-  // The sweep covers every account.
   world.tables.documents.find((d) => d.filename === 'bobs-old.txt').purgeAt = past;
   const swept = await trash.purgeExpired();
   assert.equal(swept.deletedDocuments, 1);
@@ -465,7 +435,6 @@ test('items older than 30 days are purged, on request and by the sweep, with a f
   assert.match(dry, /process\.argv\.includes\('--confirm'\)/);
 });
 
-// ---------- isolation ----------
 test("another account's files and folders are 404 for trash, restore, permanent delete and the list", async () => {
   reset();
   await addFolder(ALICE, 'Private');
@@ -475,7 +444,6 @@ test("another account's files and folders are 404 for trash, restore, permanent 
   await call(D.deleteFolder, { ...as(ALICE), query: { path: 'Private' } });
   const [folderItem] = (await call(T.listTrash, as(ALICE))).json.items.filter((i) => i.kind === 'folder');
 
-  // Bob cannot trash alice's file or folder
   addDoc({ filename: 'bobs.txt', userId: BOB });
   const live1 = addDoc({ filename: 'alice-live.txt' });
   assert.equal((await call(D.deleteDocument, { ...as(BOB), params: { id: String(live1._id) } })).error.status, 404);
@@ -484,7 +452,6 @@ test("another account's files and folders are 404 for trash, restore, permanent 
   assert.equal((await call(D.deleteFolder, { ...as(BOB), query: { path: 'Other' } })).status, 204, 'idempotent: for bob there is no such folder');
   assert.ok(world.tables.folders.some((f) => f.name === 'Other'), "alice's folder untouched");
 
-  // ...nor see, restore or purge her Trash
   assert.deepEqual((await call(T.listTrash, as(BOB))).json.items, []);
   for (const [name, body] of [
     ['restore file', { kind: 'file', id: String(trashed._id) }],
@@ -500,7 +467,6 @@ test("another account's files and folders are 404 for trash, restore, permanent 
   assert.ok(world.tables.documents.some((d) => String(d._id) === String(trashed._id)));
   assert.ok(mine);
 
-  // and her view/photos/storage never include bob's
   assert.equal((await call(D.viewDocument, { ...as(BOB), params: { id: String(trashed._id) } })).error.status, 404);
   assert.ok((await call(D.listDocuments, as(BOB))).json.every((d) => d.filename === 'bobs.txt'));
 });
@@ -524,11 +490,8 @@ test('folder children are lazy, scoped to the account and never include Trash', 
 test('every query that serves the vault is filtered to non-trashed documents', () => {
   const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const read = (...parts) => strip(fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8'));
-  // documents.controller: every Document.find/findOne/aggregate/exists on the vault names deletedAt.
   const docs = read('controllers', 'documents.controller.js');
   for (const [, call] of docs.matchAll(/Document\.(?:find|findOne|exists|countDocuments)\(\{([^}]*)\}/g)) {
-    // The one deliberate exception: the upload-key lookup finds an upload that was already stored, trashed or not, so that
-    // sending the same upload again can never make a second file.
     if (/\buploadKey\b/.test(call)) continue;
     assert.match(call, /deletedAt/, `documents.controller query without deletedAt: ${call}`);
   }
@@ -552,7 +515,6 @@ test('the list marks files that are in an active share link', async () => {
   assert.equal((await call(D.listDocuments, as(ALICE))).json.find((d) => d.filename === 'shared.txt').shared, false, 'an expired link does not count');
 });
 
-// ---------- the storage meter and the quota ----------
 const meter = async (userId = ALICE) => (await call(D.getStorage, as(userId))).json;
 const expectMeter = async (label, { files, trashed, trashItems }) => {
   const m = await meter();
@@ -560,7 +522,6 @@ const expectMeter = async (label, { files, trashed, trashItems }) => {
   assert.equal(m.fileCount, files.length, `${label}: file count`);
   assert.equal(m.trashBytes, trashed.reduce((n, d) => n + d.encryptedBlob.length, 0), `${label}: trash bytes`);
   assert.equal(m.usedBytes, m.fileBytes + m.trashBytes, `${label}: used = files + trash`);
-  // The meter and the Trash page agree on what is in Trash.
   const page = (await call(T.listTrash, as(ALICE))).json.items;
   assert.equal(m.trashCount, page.length, `${label}: meter trash count equals the Trash page`);
   assert.equal(page.length, trashItems, `${label}: trash items`);
@@ -574,7 +535,6 @@ test('the meter equals files + Trash after every create, trash, restore, delete 
   const b = addDoc({ filename: 'b.bin', content: Buffer.alloc(2000, 2), folder: 'F' });
   const c = addDoc({ filename: 'c.bin', content: Buffer.alloc(3000, 3), folder: 'F' });
   const d = addDoc({ filename: 'd.bin', content: Buffer.alloc(4000, 4) });
-  // A document from before Trash existed has no deletedAt field at all: it is live, not Trash.
   const legacy = addDoc({ filename: 'legacy.bin', content: Buffer.alloc(500, 5) });
   delete legacy.deletedAt;
   delete legacy.purgeAt;
@@ -597,7 +557,7 @@ test('the meter equals files + Trash after every create, trash, restore, delete 
   await call(T.deleteItem, { ...as(ALICE), params: { kind: 'file', id: String(d._id) } });
   await expectMeter('permanently deleted', { files: [a, b, c], trashed: [legacy], trashItems: 1 });
   legacy.purgeAt = new Date(Date.now() - 1000);
-  await call(T.listTrash, as(ALICE)); // purge on request
+  await call(T.listTrash, as(ALICE));
   await expectMeter('purged', { files: [a, b, c], trashed: [], trashItems: 0 });
   await trash.trashDocument(ALICE, a._id);
   await call(T.emptyTrash, as(ALICE));
@@ -619,14 +579,13 @@ test('the quota refuses what would not fit, before storing it, and Trash counts 
   try {
     const { assertCanStore } = require('../utils/storage');
     const big = addDoc({ filename: 'big.bin', content: Buffer.alloc(900 * 1024) });
-    await assertCanStore(ALICE, 100 * 1024); // fits
+    await assertCanStore(ALICE, 100 * 1024);
     await assert.rejects(() => assertCanStore(ALICE, 200 * 1024), (err) => err.status === 413 && err.code === 'STORAGE_QUOTA' && /1 MB/.test(err.message));
     await trash.trashDocument(ALICE, big._id);
     await assert.rejects(() => assertCanStore(ALICE, 200 * 1024), (err) => err.code === 'STORAGE_QUOTA', 'Trash still counts');
     await call(T.emptyTrash, as(ALICE));
     await assertCanStore(ALICE, 200 * 1024);
     assert.equal((await meter()).quotaBytes, 1024 * 1024);
-    // an upload through the real handler is refused and nothing is stored
     const full = addDoc({ filename: 'full.bin', content: Buffer.alloc(1000 * 1024) });
     const before = world.tables.documents.length;
     const res = await call(D.createDocument, { ...as(ALICE), body: {}, files: { file: [{ buffer: Buffer.alloc(100 * 1024), originalname: 'x.bin', mimetype: 'application/octet-stream' }] } });

@@ -20,10 +20,8 @@ test('the share-link preview page says only that a document was shared: no file 
   assert.match(html, /<meta name="twitter:card" content="summary" \/>/);
   assert.match(html, /<meta name="robots" content="noindex, nofollow" \/>/);
   assert.equal(SHARE_TITLE, 'Warden — a document was shared with you');
-  // the only image is the fixed app icon: no per-share or user image
   const images = [...html.matchAll(/<meta[^>]+(?:og|twitter):image[^>]*content="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(images, ['/icons/icon-512.png']);
-  // nothing else about the page changed: the same inline theme script (the CSP allows it by hash) and the same app
   const script = (text) => /<script>([\s\S]*?)<\/script>/.exec(text)[1];
   assert.equal(script(html), script(indexHtml));
 });
@@ -47,14 +45,11 @@ test('the key after # is never sent to Warden: the share API helpers take no key
   const service = src('services', 'sharedService.js');
   assert.doesNotMatch(service, /location\.hash|readKeyFromHash|keyText|#k=/);
   const page = src('pages', 'SharedDocumentPage.jsx');
-  // the fragment is read once and kept in memory; it is removed from the address bar
   assert.match(page, /readKeyFromHash\(window\.location\.hash\)/);
   assert.match(page, /replaceState\(null, ''/);
-  // none of the calls that reach the server is handed the key
   for (const call of page.matchAll(/\b(openAccess|fetchSharedManifest|requestEmailCode|verifyEmailCode|fetchSharedFile|downloadSharedFile)\(([^)]*)\)/g)) {
     assert.doesNotMatch(call[2], /keyText|shareKey|key\b/i, call[0]);
   }
-  // and the share link helpers never put the key in a query string
   const links = src('utils', 'shareLinks.js');
   assert.doesNotMatch(links, /\?k=|&k=/);
 });

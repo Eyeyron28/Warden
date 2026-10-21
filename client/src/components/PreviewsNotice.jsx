@@ -1,14 +1,6 @@
 import { reasonLabel, summarizePreviews } from '../utils/previewWork.js';
 import styles from './PreviewsNotice.module.css';
 
-/**
- * A small, non-blocking line on My files about previews:
- *  - files without a preview exist  -> "Generate previews for N files" [Generate]
- *  - running                        -> progress and Pause (two files at a time, in the background)
- *  - finished                       -> "12 done, 2 could not be previewed" with each reason
- *  - earlier failures on record     -> "2 files could not be previewed" [Try again]
- * Nothing starts by itself: previews download and decrypt each file, so the person chooses.
- */
 function PreviewsNotice({ generator, documents, onRetried }) {
   const { phase, progress, candidates, failedBefore, start, pause, resume, dismiss, retryFailed } = generator;
   const nameOf = (id) => documents.find((doc) => doc.id === id)?.filename || 'A file';

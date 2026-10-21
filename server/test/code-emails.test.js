@@ -1,11 +1,3 @@
-// Run with: cd server && npm test
-//
-// Deliverability hygiene for the mail Warden sends (utils/emailTemplates.js, utils/email.js):
-//   - a message that carries a one-time code has no link and no image, only the code and plain text;
-//   - subjects are short, unique per purpose, and free of "!", all-caps shouting and spam words;
-//   - the From address is exactly the authenticated SMTP user, and a mismatch is warned about without printing the address;
-//   - transactional mail carries Auto-Submitted and X-Auto-Response-Suppress;
-//   - the lifetime shown is the one passed in.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -80,7 +72,6 @@ test('notification emails keep at most one link, and only to the app’s own add
 test('From is exactly the authenticated SMTP user, with the display name Warden', () => {
   assert.deepEqual(email.fromHeader('Warden <someone.else@example.com>', 'sender@gmail.com'), { name: 'Warden', address: 'sender@gmail.com' });
   assert.deepEqual(email.fromHeader('no-reply@example.com', 'sender@gmail.com'), { name: 'Warden', address: 'sender@gmail.com' });
-  // a provider whose SMTP user is not an address (an API key id): MAIL_FROM supplies it
   assert.deepEqual(email.fromHeader('Anything <mail@example.com>', 'apikey'), { name: 'Warden', address: 'mail@example.com' });
   assert.deepEqual(email.fromHeader('Warden <mail@example.com>'), { name: 'Warden', address: 'mail@example.com' });
 });

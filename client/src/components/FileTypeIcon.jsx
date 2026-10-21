@@ -9,7 +9,6 @@ const KINDS = {
   txt: { label: 'TXT', exts: ['txt', 'md', 'log', 'json', 'xml'] },
 };
 
-/** Picks the icon kind from the filename's extension; 'file' when unknown. */
 export function fileKindOf(filename = '') {
   const dot = filename.lastIndexOf('.');
   const ext = dot === -1 ? '' : filename.slice(dot + 1).toLowerCase();
@@ -17,12 +16,6 @@ export function fileKindOf(filename = '') {
   return found ? found[0] : 'file';
 }
 
-/**
- * A sheet of paper with a folded corner and the extension printed on it,
- * drawn inline (1.5px stroke, currentColor) so it follows the theme.
- * Decorative: the filename is always shown next to it, so it is hidden from
- * assistive tech.
- */
 function FileTypeIcon({ filename, size = 32 }) {
   const kind = fileKindOf(filename);
   const dot = (filename || '').lastIndexOf('.');

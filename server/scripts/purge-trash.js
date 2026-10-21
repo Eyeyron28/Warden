@@ -1,18 +1,3 @@
-/**
- * Permanently removes everything in Trash whose 30 days are over, for every
- * account - the encrypted file, its thumbnail, and the trashed-folder entries.
- *
- * You normally don't need this: MongoDB's TTL index on `purgeAt` removes expired
- * items on its own, and each account's own requests purge theirs. It exists for
- * a deterministic sweep (a cron, a one-off after an outage) on a host with no
- * long-running process.
- *
- *   node scripts/purge-trash.js            dry run (default): counts, deletes NOTHING
- *   node scripts/purge-trash.js --confirm  actually deletes
- *
- * Connects to MONGO_URI from the environment / .env. Prints the database NAME
- * (never the URI, which holds credentials).
- */
 require('dotenv').config();
 
 const mongoose = require('mongoose');

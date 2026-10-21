@@ -7,11 +7,6 @@ import { transfers, useTransfers } from '../services/transfers.js';
 import { createDismissTimer, importCardConfig } from '../utils/importCard.js';
 import { buildTray } from '../utils/trayModel.js';
 
-/**
- * The tray at the bottom right: one card for every transfer in the app (uploads, new versions, the zip import as its last row). It
- * opens with the first transfer, never takes focus, minimizes with Escape, and closes by itself 45 s after everything is sealed
- * with nothing failed (paused while the pointer or keyboard focus is on it). A failure keeps it open until dismissed.
- */
 function TransferTray() {
   const t = useTransfers();
   const job = useImportJob();
@@ -23,7 +18,6 @@ function TransferTray() {
   const timer = useRef(null);
   const shown = model.visible;
 
-  // The page leaves room at its bottom while the tray is up, so it never hides a footer.
   useEffect(() => {
     if (!shown) return undefined;
     document.documentElement.classList.add('import-card-open');

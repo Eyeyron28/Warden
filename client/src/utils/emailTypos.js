@@ -1,8 +1,3 @@
-/**
- * A gentle "Did you mean name@gmail.com?" for the most common typos in the domain part of an address. It only ever SUGGESTS:
- * the form is never blocked, and a domain that is not on this list is never touched.
- */
-
 const FIXES = Object.freeze({
   'gmial.com': 'gmail.com',
   'gmai.com': 'gmail.com',
@@ -21,10 +16,6 @@ const FIXES = Object.freeze({
   'outlook.con': 'outlook.com',
 });
 
-/**
- * @param {string} value what was typed in the email field
- * @returns {string | null} the corrected address to offer, or null when nothing looks like a known typo
- */
 export function suggestEmailFix(value) {
   const text = String(value ?? '').trim();
   const at = text.lastIndexOf('@');

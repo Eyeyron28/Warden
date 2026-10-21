@@ -37,10 +37,8 @@ function saveBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-/** The last import's report: kept in memory until the next import, a reload or a sign-out (not only while the card is up). */
 function ImportReport({ job }) {
   const imported = job.results.filter((item) => item.status === 'imported');
-  // Quarantine: saved but held for review, and refused outright (nothing saved), are counted apart from the problems.
   const heldItems = job.results.filter((item) => item.status === 'held');
   const refusedItems = job.results.filter((item) => item.status === 'refused');
   const problems = [
@@ -111,25 +109,18 @@ function FailureList({ items, title }) {
   );
 }
 
-/**
- * Export and import of your files as a zip, all in the browser. Nothing here touches a server
- * disk: files are fetched through the normal authenticated download (two at a time), zipped in
- * memory, and saved; an import unzips in memory and uploads through the normal upload.
- */
 function ExportPage() {
   usePageMeta('Export / Import', 'Take your files out as a zip, or bring a zip in.');
 
-  // ---- export ----
-  const [exportState, setExportState] = useState({ phase: 'idle' }); // idle | running | done | cancelled | error
+  const [exportState, setExportState] = useState({ phase: 'idle' });
   const exportAbort = useRef(null);
 
-  const guardExport = useSingleFlight(); // Export and Import each start once per press, even for two clicks in the same tick
+  const guardExport = useSingleFlight();
   const startExport = async () => {
     const controller = new AbortController();
     exportAbort.current = controller;
     setExportState({ phase: 'running', done: 0, total: 0, bytes: 0, current: '', stage: 'Listing your files…' });
     try {
-      // (files held in Quarantine are not in the list, so they are not in the zip; the count says how many were left out)
       const [documents, folderPaths, heldNow] = await Promise.all([listDocuments(), listFolders(), listHeld().then((data) => data.count, () => 0)]);
       if (documents.length === 0 && folderPaths.length <= 1) {
         setExportState({ phase: 'empty' });
@@ -139,11 +130,9 @@ function ExportPage() {
       const result = await buildExportZip({
         documents,
         folderPaths,
-        // An export is one event (below), not one download per file.
         fetchBytes: (id) => fetchDocumentBytes(id, { purpose: 'silent' }),
         JSZip,
         signal: controller.signal,
-        // (the builder's own "phase" must not replace the page's: that hid the progress and Cancel)
         onProgress: ({ phase, ...p }) => setExportState((current) => (current.phase === 'running' ? { ...current, ...p, stage: phase === 'zipping' ? 'Building the zip…' : '' } : current)),
       });
       if (result.cancelled) {
@@ -159,12 +148,8 @@ function ExportPage() {
     }
   };
 
-  // ---- import ----
-  // The import itself is an app-level job (services/importJob.js): it keeps running when this page is left, and the card at the
-  // bottom right follows it. This page only chooses the zip, starts the job, and shows whatever the job reports.
   const job = useImportJob();
-  // A chosen zip lives in the job module (memory only), so it is still here after another page; this page keeps only a refusal.
-  const [chosen, setChosen] = useState({ phase: 'idle' }); // idle | error
+  const [chosen, setChosen] = useState({ phase: 'idle' });
   const [blocked, setBlocked] = useState('');
   const running = job.status === 'running';
 
@@ -191,12 +176,12 @@ function ExportPage() {
       setChosen({ phase: 'error', message: plan.message });
       return;
     }
-    importJob.prepare({ name: file.name, bytes, plan }); // replaces any zip chosen before
+    importJob.prepare({ name: file.name, bytes, plan });
     setChosen({ phase: 'idle' });
   };
 
   const startImport = () => {
-    const started = importJob.startPrepared(); // the job takes over the zip
+    const started = importJob.startPrepared();
     if (!started.ok) {
       setBlocked(started.message);
       return;
@@ -313,7 +298,6 @@ function ExportPage() {
           )}
 
           {!running && (
-            // Always there; with no zip chosen it is aria-disabled (not disabled) so its reason can show on hover.
             <button
               type="button"
               className={`${styles.primary} ${styles.big}`}

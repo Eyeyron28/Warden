@@ -26,12 +26,6 @@ function formatMb(bytes) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)}MB`;
 }
 
-/**
- * Plain-language countdown from an ISO expiresAt, used both for a
- * freshly-generated link and for entries in the active-shares list -
- * computed live from the timestamp rather than the duration preset that
- * was picked, since the list endpoint only ever returns expiresAt.
- */
 function describeExpiry(expiresAtIso) {
   const ms = new Date(expiresAtIso).getTime() - Date.now();
   if (ms <= 0) return 'Expired';
@@ -49,13 +43,6 @@ function describeExpiry(expiresAtIso) {
   return `Expires in ${days} day${days === 1 ? '' : 's'}`;
 }
 
-/**
- * `documentIds` is the set this link will cover - one id (a single card's
- * Share button, unchanged behavior) or many (a folder selection resolved to
- * its nested documents plus loose files, all under ONE link). The
- * per-document "Active shares" list only exists for the single case; a
- * multi-file link is revoked right from its result view.
- */
 function ShareModal({ documentIds, title, onClose }) {
   const isSingle = documentIds.length === 1;
   const wide = useMediaQuery('(min-width: 760px)');
@@ -66,7 +53,6 @@ function ShareModal({ documentIds, title, onClose }) {
   const [creating, setCreating] = useState(false);
   const [createStatus, setCreateStatus] = useState('');
   const [createError, setCreateError] = useState('');
-  // Optional protections (all off by default).
   const [password, setPassword] = useState('');
   const [maxDownloadsText, setMaxDownloadsText] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
@@ -90,7 +76,6 @@ function ShareModal({ documentIds, title, onClose }) {
         if (!cancelled) setUsage(data);
       })
       .catch(() => {
-        // The line is informational; the server enforces the limits anyway.
       });
     return () => {
       cancelled = true;
@@ -115,8 +100,6 @@ function ShareModal({ documentIds, title, onClose }) {
     refreshShares();
   }, [refreshShares]);
 
-  // The endpoint takes durationHours (an offset from now); the interface only
-  // ever offers whole days (utils/shareExpiry.js), converted here.
   const customDaysMessage = isCustomExpiry ? customDaysProblem(customExpiry) : '';
   const isCustomExpiryValid = isCustomExpiry && customDaysMessage === '';
   const maxDownloadsValue = maxDownloadsText.trim() === '' ? null : Number(maxDownloadsText);
@@ -147,7 +130,6 @@ function ShareModal({ documentIds, title, onClose }) {
 
   const generating = useRef(false);
   const handleGenerate = async () => {
-    // Set before anything else: a second press in the same tick finds it taken (the disabled button is only the second line).
     if (!canGenerate || generating.current) return;
     generating.current = true;
     setCreating(true);
@@ -163,11 +145,6 @@ function ShareModal({ documentIds, title, onClose }) {
         ? await createShare(documentId, hours, options)
         : await createBulkShare(documentIds, hours, options);
 
-      // A password share: the server made the key and returned it in the link,
-      // hidden until now. THIS browser locks that key under the password
-      // (scrypt, in the browser; the password never leaves it), sends only the
-      // wrapped key, and shows a link WITHOUT the key. If anything fails the
-      // hidden share is deleted.
       let shareUrl = result.shareUrl;
       if (result.passwordPending) {
         setCreateStatus('Locking the link with your password…');
@@ -185,9 +162,6 @@ function ShareModal({ documentIds, title, onClose }) {
           throw err;
         }
       }
-      // result.shareUrl is built server-side from PUBLIC_APP_URL (in development only, from the local
-      // dev address), never from this tab's own address. Its #fragment is the share's key: it appears
-      // here, once, and nowhere on the server.
       setCreatedShare({
         ...result,
         purpose: purpose.trim() || null,
@@ -546,7 +520,6 @@ function ShareModal({ documentIds, title, onClose }) {
 
   return (
     <Modal title={title} onClose={onClose} size="share" footer={footer}>
-      {/* Wide: settings on the left, the link on the right. A phone: the link first. The DOM follows the visual order. */}
       <div className={styles.layout}>
         {wide ? (
           <>

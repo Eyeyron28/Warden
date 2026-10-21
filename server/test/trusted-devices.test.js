@@ -1,11 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// "Trust this browser": after a correct emailed code the owner can skip the code - never the password -
-// on that browser for 30 days. In-memory fakes, with a small browser that keeps cookies like a real one.
-//
-// The regression that started this file (Prompt 26D, part 1): trust was ONE cookie per browser, so trusting
-// the browser for a second account overwrote the first account's cookie and the first account was asked for
-// an emailed code again. Verified in a real browser first (see the report); here it is a test.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -55,7 +47,6 @@ function reset() {
 }
 const lastCode = () => /^(\d{6})$/m.exec(world.mails.at(-1).text)[1];
 
-/** A browser: keeps the cookies the server sets (and drops the ones it clears), sends them back on every request. */
 class Browser {
   constructor(userAgent = UA, ip = '203.0.113.9') {
     this.jar = new Map();
@@ -78,9 +69,8 @@ class Browser {
     return this.absorb(await call(handler, { ...options, headers: { ...this.headers(), ...(options.headers || {}) }, ip: this.ip }));
   }
 
-  /** Password, then (unless trusted) the emailed code. Returns what the server did. */
   async signIn(user, { trust, password = PASSWORD } = {}) {
-    budgets.clear(); // each sign-in stands for a separate hour of use
+    budgets.clear();
     const mailsBefore = world.mails.length;
     const first = await this.send(auth.unlock, { body: { email: user.email, password } });
     if (first.error || first.json.sessionToken) return { first, askedForCode: false, mails: world.mails.length - mailsBefore, token: first.json?.sessionToken };
@@ -94,8 +84,6 @@ class Browser {
 }
 
 const subjects = (since = 0) => world.mails.slice(since).map((m) => m.subject);
-
-// ---------- the cookie itself ----------
 
 test('ticking the box sets a hardened cookie named for the account, and stores only a hash', async () => {
   reset();
@@ -120,7 +108,6 @@ test('ticking the box sets a hardened cookie named for the account, and stores o
   assert.ok(!JSON.stringify(world.tables).includes(cookie.value), 'the raw token is stored nowhere');
   assert.ok(!Object.keys(row).some((k) => /ip/i.test(k)), 'no IP stored');
   assert.ok(!name.includes(String(ana._id)), 'the cookie name does not reveal the account id');
-  // the browser is also known as a device, and that device is the trusted one
   assert.equal(world.tables.devices.length, 1);
   assert.equal(world.tables.devices[0].trusted, true);
   assert.equal(String(row.deviceId), String(world.tables.devices[0]._id));
@@ -151,7 +138,6 @@ test('a trusted browser skips the code, but never the password', async () => {
   assert.equal(direct.mails, 0, 'no email sent');
   assert.ok(world.tables.trusteddevices[0].lastUsedAt instanceof Date);
 
-  // wrong password with the cookie: exactly what a wrong password gets without one
   const withCookie = await browser.send(auth.unlock, { body: { email: ana.email, password: 'Wrong-Password-1!' } });
   const without = await new Browser().send(auth.unlock, { body: { email: 'nobody@example.com', password: 'Wrong-Password-1!' } });
   assert.equal(withCookie.error.status, 401);
@@ -197,8 +183,6 @@ test("a missing, tampered, expired or another account's cookie gets the ordinary
   assert.equal(shape(expired), shape(baseline));
 });
 
-// ---------- the regression: what made a trusted browser ask for a code again ----------
-
 test('REGRESSION: trusting the same browser for a second account does not undo the first account\'s trust', async () => {
   reset();
   const ana = addUser('ana@example.com');
@@ -209,7 +193,6 @@ test('REGRESSION: trusting the same browser for a second account does not undo t
   const anaCookie = trusted.cookieNameFor(ana._id);
   const anaValue = browser.jar.get(anaCookie);
 
-  // The same browser, a second account, trust ticked. Before the fix this overwrote Ana's cookie.
   await browser.signIn(ben, { trust: true });
   assert.equal(browser.jar.get(anaCookie), anaValue, "Ana's cookie is still there, unchanged");
   assert.deepEqual(browser.trustCookies().sort(), [anaCookie, trusted.cookieNameFor(ben._id)].sort());
@@ -245,7 +228,6 @@ test('trust survives logout, an expired session, a new IP, a browser update and 
   await survives('a browser update (new User-Agent)', () => { browser.userAgent = UA_UPDATED; });
   await survives('the browser closed and reopened (cookies kept, session storage gone)', () => { world.tables.sessions = []; });
 
-  // 29 days after trusting: still trusted. 31 days after: asked again.
   const [record] = world.tables.trusteddevices;
   record.createdAt = new Date(Date.now() - 29 * DAY);
   record.expiresAt = new Date(Date.now() + 1 * DAY);
@@ -260,7 +242,6 @@ test('a trust cookie from before the per-account names is honoured once and conv
   const ana = addUser('ana@example.com');
   const old = new Browser();
   await old.signIn(ana, { trust: true });
-  // Rebuild what such a browser held: the same token under the old shared name only.
   const value = old.jar.get(trusted.cookieNameFor(ana._id));
   const legacy = new Browser();
   legacy.jar.set(trusted.LEGACY_COOKIE_NAME, value);
@@ -273,8 +254,6 @@ test('a trust cookie from before the per-account names is honoured once and conv
   assert.equal(next.askedForCode, false);
 });
 
-// ---------- 1b: which emails are sent at sign-in ----------
-
 test('1b: signing in sends only the sign-in code (never a verification link), and verification stays permanent', async () => {
   reset();
   const ana = addUser('ana@example.com');
@@ -283,17 +262,15 @@ test('1b: signing in sends only the sign-in code (never a verification link), an
 
   const first = await browser.signIn(ana, { trust: true });
   assert.equal(first.askedForCode, true);
-  // the sign-in code, and the heads-up that a browser is now trusted - nothing about verifying the account
   assert.deepEqual(subjects(mailsBefore), ['Your Warden sign-in code', 'New trusted browser on your Warden account']);
 
   world.mails = [];
-  await browser.signIn(ana); // trusted: no email at all
+  await browser.signIn(ana);
   assert.deepEqual(subjects(), []);
 
   world.mails = [];
   const other = new Browser();
-  await other.signIn(ana); // not trusted: exactly one email, the code
-  // (a second, unknown browser also gets the new-device notice - that is a different email, not a verification)
+  await other.signIn(ana);
   assert.deepEqual(subjects(), ['Your Warden sign-in code', 'New device signed in to your Warden account']);
 
   for (const mail of world.mails) assert.doesNotMatch(mail.subject, /verif/i);
@@ -307,14 +284,12 @@ test('1b: only an explicit resend (for a legacy unverified account) sends a veri
   pending.verificationTokenHash = 'x';
   pending.verificationTokenExpiresAt = new Date(Date.now() + DAY);
 
-  // an UNVERIFIED account trying to sign in is told so; no email is sent by the attempt
   world.mails = [];
   const blocked = await new Browser().send(auth.unlock, { body: { email: pending.email, password: PASSWORD } });
   assert.equal(blocked.error.status, 403);
   assert.equal(blocked.error.emailVerificationRequired, true);
   assert.deepEqual(subjects(), [], 'signing in never sends a verification email');
 
-  // resend: a verified account gets nothing (and the same answer); an unverified one gets the link
   const resendFor = (email) => call(auth.resendVerification, { body: { email } });
   const forVerified = await resendFor(verified.email);
   assert.deepEqual(subjects(), [], 'no verification email for a verified account');
@@ -322,7 +297,6 @@ test('1b: only an explicit resend (for a legacy unverified account) sends a veri
   assert.deepEqual(subjects(), ['Your new Warden verification link']);
   assert.deepEqual(forVerified.json, forPending.json, 'the same answer either way');
 
-  // structural: the verification-link template is used in exactly one place (sign-up now mails a CODE instead, see signup-flow.test.js)
   const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const users = [];
   const walk = (dir) => {
@@ -338,14 +312,11 @@ test('1b: only an explicit resend (for a legacy unverified account) sends a veri
   const text = src('controllers/auth.controller.js');
   const resend = text.slice(text.indexOf('const resendVerification ='), text.indexOf('const getPublicConfig'));
   assert.match(resend, /!user\.emailVerified[\s\S]*templates\.verifyEmailResend\(/);
-  // the unlock, verify-otp and issue-session code never mention verification templates or clear the flag
   const login = text.slice(text.indexOf('async function issueLoginSession'), text.indexOf('const getMe ='));
   assert.doesNotMatch(login, /verifyEmail|verifyEmailResend/);
   assert.doesNotMatch(login, /emailVerified\s*=\s*false/);
   for (const file of ['utils/accountReset.js', 'controllers/passwordReset.controller.js']) assert.doesNotMatch(src(file), /emailVerified\s*=\s*false/, file);
 });
-
-// ---------- removing trust ----------
 
 test('the account page lists trusted browsers (marking this one) and removes one or all', async () => {
   reset();
@@ -396,14 +367,12 @@ test('"Forget this browser", sign out one device, and sign out others (with the 
   const deviceOf = (browser) => devices.find((d) => d.deviceIdHash === trusted.hashToken(browser.jar.get('warden_did')));
   const me = { userId: ana._id, deviceId: deviceOf(here)._id, session: { idHash: world.tables.sessions.find((s) => String(s.deviceId) === String(deviceOf(here)._id)).sessionIdHash } };
 
-  // forget one browser's trust only: its session stays, the next sign-in there asks for a code
   const forget = await call(security.forgetTrustedDevice, { ...me, params: { id: String(deviceOf(laptop)._id) } });
   assert.equal(forget.status, 200);
   assert.equal(deviceOf(laptop).trusted, false);
   assert.equal((await laptop.signIn(ana)).askedForCode, true);
   assert.equal(world.tables.sessions.filter((s) => String(s.deviceId) === String(deviceOf(phone)._id)).length, 1);
 
-  // sign out the phone: sessions and trust gone, the others untouched
   const out = await call(security.signOutDevice, { ...me, params: { id: String(deviceOf(phone)._id) } });
   assert.equal(out.status, 200);
   assert.equal(out.json.self, false);
@@ -411,7 +380,6 @@ test('"Forget this browser", sign out one device, and sign out others (with the 
   assert.equal(world.tables.trusteddevices.filter((t) => String(t.deviceId) === String(deviceOf(phone)._id)).length, 0);
   assert.equal((await phone.signIn(ana)).askedForCode, true, 'the phone now needs a code again');
 
-  // sign out others with the forget option: this browser keeps its session AND its trust
   await laptop.signIn(ana, { trust: true });
   const others = await call(security.signOutOthers, { ...me, body: { forgetTrusted: true } });
   assert.equal(others.status, 200);
@@ -431,7 +399,7 @@ test('password reset / wipe (all sessions) and account deletion remove every tru
   await new Browser().signIn(ben, { trust: true });
   assert.equal(world.tables.trusteddevices.length, 3);
 
-  await destroyAllSessionsForUser(ana._id); // what the password reset ends with
+  await destroyAllSessionsForUser(ana._id);
   assert.deepEqual(world.tables.trusteddevices.map((r) => String(r.userId)), [String(ben._id)]);
   assert.ok(world.tables.devices.filter((d) => String(d.userId) === String(ana._id)).every((d) => d.trusted === false), 'devices are no longer marked trusted');
 
@@ -460,7 +428,6 @@ test('a trusted browser still needs a fresh code for deleting the account and sh
   assert.equal(withoutCode.error.status, 401);
   assert.equal(world.tables.users.length, 1, 'nothing deleted');
 
-  // Structural: only login (unlock) consults the cookie.
   const root = path.join(__dirname, '..');
   const users = [];
   for (const folder of ['controllers', 'routes', 'middleware', 'utils']) {

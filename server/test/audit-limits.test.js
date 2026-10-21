@@ -1,14 +1,3 @@
-// Run with: cd server && npm test
-//
-// What the activity log's hash chain can and cannot do, shown against a REAL local MongoDB (test/helpers/realMongo.js).
-// The site says the check "detects edits and gaps" and "cannot detect the removal of the newest entries by someone who
-// can write to the database". This test keeps those words true:
-//   - an edited event is detected;
-//   - a gap in the middle is detected;
-//   - deleting the newest events WITHOUT moving the head is detected;
-//   - deleting the newest events AND moving the head back to match is NOT detected (a known limit, needs no key).
-// If an external anchor for the head is ever added, the last case should start failing, and the wording on the site
-// (pages/public/*, DevicesPage, DEPLOY.md) can then be strengthened.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 

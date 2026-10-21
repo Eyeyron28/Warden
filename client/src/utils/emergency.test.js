@@ -42,7 +42,6 @@ const read = (relative) => readFileSync(fileURLToPath(new URL(`../${relative}`, 
 const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const KIT = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567-ABCD-EFGH-IJKL-MNOP-QRST';
 
-// ---------- the wizard ----------
 test('wizard: five screens in order, one step at a time, and Back goes back', () => {
   assert.deepEqual([...STEPS], ['contact', 'wait', 'scope', 'confirm', 'kit']);
   assert.equal(nextStep('contact'), 'wait');
@@ -115,7 +114,6 @@ test('wizard: Next is gated by each screen’s own validation, and the confirm s
   assert.equal(lines['Waiting period'], '3 days');
   assert.match(lines['They can see'], /1 folder: Taxes\/2024/);
   assert.match(lines['What they can do'], /Read and download only/);
-  // the body never carries the code or any secret: the caller adds the code fields
   assert.deepEqual(Object.keys(setupBody(filled)).sort(), ['contactEmail', 'contactLabel', 'scope', 'waitMinutes']);
 });
 
@@ -131,7 +129,6 @@ test('the kit screen cannot be left until the owner confirms they saved it', () 
   assert.ok(!/onCreated\(.*\)\s*;?\s*onCancel/.test(wizard));
 });
 
-// ---------- the kit is held in memory only ----------
 test('the kit holder keeps the code in a variable, hands it out, and forgets it', () => {
   const holder = createKitHolder();
   assert.equal(holder.has(), false);
@@ -177,10 +174,8 @@ test('the kit never reaches browser storage, the address bar, a cookie or a log:
     assert.doesNotMatch(text, /console\.(log|info|warn|error|debug)/, `${file} must not log`);
     assert.doesNotMatch(text, /location\.(hash|search|href)\s*=(?!=)|navigate\([^)]*kit|to=\{[^}]*kit|setSearchParams|setParams\([^)]*kit/i, `${file} must not put the kit in a URL`);
   }
-  // the kit travels only in the setup/regenerate RESPONSE and the contact's POST body; the service never stores it
   const service = stripComments(read('services/emergencyService.js'));
   assert.doesNotMatch(service, /localStorage|sessionStorage|console\./);
-  // the page clears it when it is left, and the holder is the only home it has
   const page = read('pages/EmergencyAccessPage.jsx');
   assert.match(page, /createKitHolder\(\)/);
   assert.match(page, /holder\.clear\(\)/);
@@ -189,12 +184,10 @@ test('the kit never reaches browser storage, the address bar, a cookie or a log:
   assert.match(screen, /beforeunload/, 'a refresh or closed tab asks first');
   assert.match(screen, /QRCode\.toDataURL\(kit/, 'the QR is drawn in the browser');
   assert.doesNotMatch(screen, /https?:\/\/[^'"`\s]*(qr|chart\.googleapis|api\.qrserver)/i, 'no external QR service');
-  // kit inputs (public page) do not autofill or spell-check
   const contact = read('pages/EmergencyContactPage.jsx');
   assert.match(contact, /id="ec-kit"[\s\S]*autoComplete="off"[\s\S]*spellCheck=\{false\}/);
 });
 
-// ---------- the printed sheet ----------
 test('the printed sheet: contact name, address, wait, three steps, kit and QR place, privacy line and date; no owner secrets', () => {
   const sheet = buildKitSheet({ contactName: 'Sam Reyes', address: 'https://warden.example.com/emergency', waitMinutes: 10080, kit: KIT, date: new Date('2026-10-09T08:00:00Z') });
   assert.equal(sheet.title, SHEET_TITLE);
@@ -209,13 +202,11 @@ test('the printed sheet: contact name, address, wait, three steps, kit and QR pl
   assert.deepEqual(sheet.kitRows.flat(), kitGroups(KIT));
   assert.match(sheet.privacyLine, /Keep this sheet private/);
   assert.match(sheet.dateLine, /^Printed October 9, 2026$/);
-  // the sheet is built from exactly these inputs: anything else a caller passes cannot appear on it
   const withSecrets = buildKitSheet({ contactName: 'Sam', address: 'https://w.example/emergency', waitMinutes: 4320, kit: KIT, ownerPassword: 'hunter2-PASSWORD', recoveryKey: 'RECOVERY-KEY-XXXX', ownerEmail: 'owner@private.example', date: new Date() });
   const everything = JSON.stringify(withSecrets);
   for (const secret of ['hunter2-PASSWORD', 'RECOVERY-KEY-XXXX', 'owner@private.example']) assert.ok(!everything.includes(secret), secret);
   assert.deepEqual(Object.keys(withSecrets).sort(), ['address', 'contactLine', 'dateLine', 'kit', 'kitRows', 'privacyLine', 'steps', 'title', 'waitText']);
   assert.equal(buildKitSheet({ address: 'a', waitMinutes: 4320, kit: KIT }).contactLine, 'For: the person you named as your trusted contact');
-  // honest wording: no end-to-end claim, and what a leak means
   assert.doesNotMatch(everything, /end-to-end/i);
   assert.match(sheet.privacyLine, /copy of Warden’s database/);
 });
@@ -232,7 +223,6 @@ test('the print stylesheet shows ONLY the sheet, on A4, and the sheet is invisib
   assert.doesNotMatch(stripComments(sheet), /password|recovery|ownerEmail|email/i, 'the sheet component knows nothing about the owner’s secrets or address');
 });
 
-// ---------- emergency mode ----------
 test('emergency mode: every client route but Files goes to Files', () => {
   assert.deepEqual([...EMERGENCY_ROUTES], ['/files']);
   assert.equal(emergencyRedirect('/files'), null);
@@ -259,17 +249,14 @@ test('emergency mode: the contact’s screens are built from only read-only part
   for (const forbidden of ['NewMenu', 'UploadForm', 'SelectionBar', 'ContextMenu', 'MoveModal', 'ShareModal', 'EditDocumentModal', 'NewFolderModal', 'RenameFolderModal', 'FrequentFiles', 'ExpiringBanner', 'ExpiryModal', 'PreviewsNotice', 'usePreviewGenerator', 'deleteDocument', 'uploadDocument', 'moveItems', 'createFolder', 'renameFolder', 'updateDocument', 'putThumbnail', 'recordDownload', 'getStorage', 'onDropOnFolder', 'draggable']) {
     assert.ok(!page.includes(forbidden), `the contact's Files must not use ${forbidden}`);
   }
-  // only these two menu actions
   const menu = page.slice(page.indexOf('const menuFor'), page.indexOf('if (unavailable)'));
   assert.deepEqual([...menu.matchAll(/label: '([^']+)'/g)].map((m) => m[1]).sort(), ['Download', 'Open', 'Open / Preview']);
   const shell = stripComments(read('components/emergency/EmergencyShell.jsx'));
   assert.match(shell, /emergencyRedirect\(location\.pathname\)/);
   assert.doesNotMatch(shell, /<Sidebar|<Header|FolderTree|'\/trash'|'\/account'|'\/overview'|'\/devices'|type="search"/);
-  // the preview hides Share, Rename and Move to trash, and downloads through the server so it is logged
   const preview = read('components/FilePreview.jsx');
   assert.match(preview, /\{!readOnly && \(/);
   assert.match(preview, /if \(!bytes \|\| readOnly\)/);
-  // the app picks the shell from the server's answer
   const app = read('App.jsx');
   assert.match(app, /mode\.emergency \? \(\s*<Suspense fallback=\{<AppFrameSkeleton \/>\}>\s*<EmergencyShell \/>\s*<\/Suspense>\s*\) : \(\s*<AppLayout/);
   assert.match(app, /verify: async \(\) => setModeFromMe\(await getMe\(\{ maxAgeMs: JUST_ASKED_MS \}\)\)/);
@@ -295,7 +282,6 @@ test('the session banner says read-only and when it ends', () => {
   assert.equal(sessionBannerText(null, () => 'x'), 'Emergency access: read-only.');
 });
 
-// ---------- the owner's banner and countdown ----------
 test('the owner’s banner comes from the server status, so a reload shows it; dismissing is per request and per tab session', () => {
   const when = (iso) => `at ${iso}`;
   const pending = { request: { id: 'r1', status: 'pending', releaseAt: '2999-01-01T00:00:00Z' } };
@@ -303,7 +289,6 @@ test('the owner’s banner comes from the server status, so a reload shows it; d
   assert.equal(shown.show, true);
   assert.equal(shown.text, 'Someone requested emergency access. It will be granted on at 2999-01-01T00:00:00Z unless you deny it.');
   assert.equal(shown.requestId, 'r1');
-  // the same status gives the same banner after a reload (nothing but the server's answer is needed)
   assert.deepEqual(bannerFor(pending, { formatWhen: when }), shown);
   assert.equal(bannerFor(pending, { dismissedId: 'r1', formatWhen: when }).show, false, 'dismissed in this session');
   assert.equal(bannerFor(pending, { dismissedId: 'r0', formatWhen: when }).show, true, 'a different request is not dismissed');
@@ -356,13 +341,11 @@ test('approve-now and turn-off ask for confirmation and a fresh code first', () 
   assert.match(page, /type: 'confirmReplace'/);
   assert.match(page, /This replaces your current setup/);
   assert.match(page, /replace=\{replaceMode\}/);
-  // the demo badge only when the server says so
   assert.match(page, /status\?\.demoMode && <span className=\{styles\.demoBadge\} data-testid="demo-badge">Demo mode: short waits are enabled\.<\/span>/);
   const wizard = read('components/emergency/EmergencyWizard.jsx');
   assert.match(wizard, /waitChoices\(demoMode\)/);
 });
 
-// ---------- the public page ----------
 test('the public page speaks in one voice: the same neutral confirmation, the same generic failure', () => {
   assert.equal(NEUTRAL_CODE_MESSAGE, 'If these details match an active setup, we sent a code to the contact’s email.');
   assert.equal(GENERIC_FAILURE, 'That didn’t work. Check the details and try again.');
@@ -374,11 +357,9 @@ test('the public page speaks in one voice: the same neutral confirmation, the sa
   assert.equal(publicFailureMessage(undefined), GENERIC_FAILURE);
   assert.match(publicFailureMessage({ response: { status: 429, data: { error: { message: 'Too many attempts. Please try again later.' } } } }), /Too many attempts/);
   assert.equal(publicFailureMessage({ response: { status: 429, data: {} } }), 'Too many attempts. Please wait a while and try again.');
-  // answers given only to a contact who proved who they are
   assert.match(publicFailureMessage({ response: { status: 429, data: { error: { message: 'The owner denied the last request. You can ask again 24 hours after that.' } } } }), /24 hours/);
   assert.match(publicFailureMessage({ response: { status: 409, data: { error: { code: 'NOT_YET' } } } }), /waiting period has not ended/);
   assert.match(publicFailureMessage({ response: { status: 410 } }), /time to open the vault has passed/);
-  // The owner could not be emailed, so no request was made: said only to someone who passed the kit and code checks.
   assert.match(publicFailureMessage({ response: { status: 503 } }), /could not process your request right now.*try again later/);
   assert.equal(requestSentText('2026-10-12T01:00:00Z', (v) => `<${v}>`), 'Your request was sent. Access can be available on <2026-10-12T01:00:00Z>. Come back to this page then.');
 });
@@ -398,9 +379,7 @@ test('the public page: three steps, neutral messages, one failure sentence, no a
   assert.match(code, /navigate\('\/files'/);
   assert.match(page, /Send me a code/);
   assert.match(page, /Open the vault/);
-  // success does not echo the owner's address or name
   assert.doesNotMatch(code, /result\.(ownerEmail|email|owner)/);
-  // the footer links of the landing and sign-in pages reach it
   const footer = read('components/site/SiteFooter.jsx');
   assert.equal((footer.match(/to="\/emergency"/g) || []).length, 2, 'full footer and the compact one on the sign-in page');
   assert.match(read('App.jsx'), /path="emergency" element=\{<EmergencyContactPage \/>\}/);

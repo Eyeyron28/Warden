@@ -14,14 +14,10 @@ import { formatBytes } from '../utils/listing.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './ExpiredPage.module.css';
 
-const isSessionExpired = (err) => err?.response?.status === 401; // the app then signs you out
+const isSessionExpired = (err) => err?.response?.status === 401;
 const folderLabel = (folder) => (!folder || folder === 'root' ? 'My files' : folder);
 const openLink = (doc) => `/files?path=${encodeURIComponent(doc.folder && doc.folder !== 'root' ? doc.folder : '')}&open=${encodeURIComponent(doc.id)}`;
 
-/**
- * Expired documents: the files whose "Expires on" day has passed (Trash is left out), oldest first. It reads the same list as the
- * Overview's expiring card, so there is one request when the page opens. The row actions are the ones My files has.
- */
 function ExpiredPage() {
   usePageMeta('Expired documents', 'Documents that passed their expiry date.');
   const { showToast } = useShell();
@@ -70,7 +66,6 @@ function ExpiredPage() {
     }
   };
 
-  // A new date can make the file current again: the row then leaves this list, like in the Overview.
   const expirySaved = (updated) => {
     setDocs((current) =>
       current.map((doc) =>

@@ -15,16 +15,8 @@ const isEditable = (element) =>
   (element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)) &&
   !(element.tagName === 'INPUT' && element.type === 'checkbox');
 
-// Esc / Ctrl+A belong to an open dialog, menu or viewer first.
 const dialogOpen = () => document.querySelector('[aria-modal="true"]') !== null;
 
-/**
- * Selection state for one file view. `orderedKeys` is every selectable item
- * in display order (it drives ranges, and anything that leaves the list is
- * dropped from the selection). `allKeys` is what "select all" (the header checkbox and
- * Ctrl/Cmd+A) selects: on the Files page that is the FILES, so selecting every file never selects a
- * folder; it defaults to every item. Also wires Esc (clear) for as long as the view is mounted.
- */
 export function useSelection(orderedKeys, allKeys = orderedKeys) {
   const [state, setState] = useState(emptySelection);
   const signature = orderedKeys.join('\u0000');

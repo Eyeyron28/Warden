@@ -13,18 +13,13 @@ import styles from './QuarantinePage.module.css';
 
 const isSessionExpired = (err) => err?.response?.status === 401;
 
-/**
- * Quarantine: files the upload rules found risky, held (encrypted, like everything else) until their owner decides. They are not in
- * My files, search, Photos, Recent or Shared, and cannot be previewed, downloaded or shared. Release (after typing a word) puts one
- * back with the others; Delete moves it to Trash. Loaded on demand.
- */
 function QuarantinePage() {
   usePageMeta('Quarantine', 'Files that looked risky, held until you decide.');
   const { showToast, refreshSidebar } = useShell();
-  const [state, setState] = useState('loading'); // loading | error | list
+  const [state, setState] = useState('loading');
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
-  const [releasing, setReleasing] = useState(null); // { item, busy, error }
+  const [releasing, setReleasing] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   const load = useCallback(async () => {

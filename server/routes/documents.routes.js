@@ -30,34 +30,19 @@ const { setStarred, listRecent, getDetails, batchMove, batchTrash } = require('.
 const { releaseHeld } = require('../controllers/quarantine.controller');
 const { setNote, uploadVersion, restoreVersion, deleteVersion, downloadVersion } = require('../controllers/notesVersions.controller');
 
-// 4MB, down from the old local-only 20MB cap: Vercel Hobby caps a whole
-// request body at 4.5MB, so a single upload has to fit comfortably under
-// that (plus the small multipart envelope around it) - see server.js's
-// own express.json limit comment for the matching reasoning on the
-// JSON/base64 upload path (POST /api/sync/push).
 const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 
-// Memory storage only: the file buffer stays in RAM for encryption and is
-// never written to a temp file on disk.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
-  // Browsers send file names as UTF-8; the default (latin1) turns "Résumé 履歴.pdf" into mojibake.
   defParamCharset: 'utf8',
 });
 
-// An upload carries the document under "file" and, optionally, a small
-// preview image under "thumb" (drawn by the browser from the plaintext
-// before it leaves the page; the controller encrypts it - see
-// utils/thumbnails.js). Anything else in the multipart body is rejected by
-// multer as an unexpected field.
 const uploadFields = upload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'thumb', maxCount: 1 },
 ]);
 
-// Wraps multer so a file-too-large rejection comes back as a normal JSON
-// error (via the shared errorHandler) instead of multer's raw error shape.
 function handleUpload(req, res, next) {
   uploadFields(req, res, (err) => {
     if (!err) return next();
@@ -72,11 +57,8 @@ function handleUpload(req, res, next) {
   });
 }
 
-// Every route below requires an unlocked vault session.
 router.use(requireSession);
 
-// Stars, Recent, the details panel and the batch actions: each has its OWN per-account budget (a bucket of its own, counted by
-// the signed-in account), after the session check, so a flood on one cannot use up another's.
 const perAccount = (name, max) =>
   createRateLimiter({ name, max, windowMs: 60 * 60 * 1000, keyFn: (req) => (req.userId ? String(req.userId) : null) });
 const starLimit = perAccount('docs-star', 600);
@@ -91,14 +73,12 @@ const versionDeleteLimit = perAccount('docs-version-delete', 120);
 const versionDownloadLimit = perAccount('docs-version-download', 300);
 const releaseLimit = perAccount('docs-quarantine-release', 60);
 
-// Registered before the routes with an :id so "recent" and "batch" are never captured as one.
 router.post('/star', starLimit, setStarred);
 router.get('/recent', recentLimit, listRecent);
 router.post('/batch/move', batchMoveLimit, batchMove);
 router.post('/batch/trash', batchTrashLimit, batchTrash);
 router.get('/:id/details', detailsLimit, getDetails);
 router.post('/:id/quarantine/release', releaseLimit, releaseHeld);
-// Private notes and version history: also each its own bucket, counted per account.
 router.put('/:id/note', noteLimit, setNote);
 router.post('/:id/versions', versionUploadLimit, handleUpload, uploadVersion);
 router.post('/:id/versions/:versionId/restore', versionRestoreLimit, restoreVersion);
@@ -107,7 +87,6 @@ router.get('/:id/versions/:versionId/download', versionDownloadLimit, downloadVe
 
 router.delete('/folders', deleteFolder);
 router.delete('/:id', deleteDocument);
-// The speed limits run first, before the body is read, scanned or encrypted (a refused upload still counts).
 router.post('/', uploadRateLimit, handleUpload, createDocument);
 router.get('/', listDocuments);
 router.get('/expiring', listExpiringDocuments);
@@ -116,7 +95,6 @@ router.get('/folders/children', listFolderChildren);
 router.get('/photos', listPhotos);
 router.get('/storage', getStorage);
 router.post('/folders', createFolder);
-// Registered before PATCH /:id so "folders" is never captured as an id.
 router.patch('/folders', renameFolder);
 router.post('/move', moveItems);
 router.get('/:id/view', viewDocument);

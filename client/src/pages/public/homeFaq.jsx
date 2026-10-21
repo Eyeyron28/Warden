@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { MAX_FILE_SIZE_MB } from '../../config.js';
 import site from '../../components/site/site.module.css';
 
-// The questions on the landing page. Every answer has to match the code; src/utils/claims.test.js reads this file.
 export const FAQ_ITEMS = [
   {
     question: 'What is the recovery key?',

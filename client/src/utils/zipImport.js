@@ -3,22 +3,6 @@ import { readZipEntries } from './zipNames.js';
 import { uniqueName } from './zipExport.js';
 import { limitCodeOf, limitMessage, retrySeconds } from './uploadLimits.js';
 
-/**
- * "Import .zip": a zip opened in the browser, its files uploaded through the NORMAL upload path
- * (same 4 MB cap, same quota, same naming and folder rules - this module only decides WHAT to
- * upload, never how).
- *
- * A zip is untrusted input. Before any library inflates anything, the central directory is read
- * (utils/zipNames.js) and the archive is refused if it looks like a bomb or an attack:
- *   - too big as a file, too many entries, or too much declared uncompressed data;
- *   - an entry that expands far beyond what it took to store (compression ratio);
- *   - encrypted or ZIP64 entries.
- * Entries whose path is unsafe (".." segments, absolute paths, drive letters, NUL) are IGNORED and
- * listed, never written anywhere. Entries are never extracted to a disk at all: each file is
- * inflated into memory, one at a time, and handed to the uploader. A ".zip" inside the zip is just
- * a file (never opened), unless its own directory looks like a bomb, in which case it is skipped.
- */
-
 export const IMPORT_LIMITS = Object.freeze({
   maxArchiveBytes: 64 * 1024 * 1024,
   maxEntries: 1000,
@@ -26,16 +10,13 @@ export const IMPORT_LIMITS = Object.freeze({
   maxTotalBytes: 64 * 1024 * 1024,
   maxDepth: 12,
   maxRatio: 100,
-  ratioFloor: 1024 * 1024, // ratios only matter for entries that expand past this
+  ratioFloor: 1024 * 1024,
 });
 
 export const IMPORT_CONCURRENCY = 2;
 
 const JUNK = /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db|desktop\.ini)(\/|$)/i;
 
-/**
- * @returns {{ segments: string[], isDir: boolean } | { unsafe: true } | { junk: true }}
- */
 export function safeZipPath(rawName) {
   if (typeof rawName !== 'string' || rawName === '' || rawName.includes('\0')) return { unsafe: true };
   if (/^[\\/]/.test(rawName) || /^[A-Za-z]:/.test(rawName)) return { unsafe: true };
@@ -50,19 +31,6 @@ export function safeZipPath(rawName) {
 
 const refuse = (reason, message) => ({ ok: false, reason, message });
 
-/**
- * Looks inside a zip WITHOUT inflating it and says what an import would do.
- *
- * @param {Uint8Array} bytes
- * @returns {{ ok: false, reason: string, message: string } | {
- *   ok: true,
- *   files: Array<{ entry: string, name: string, dir: string, size: number }>,
- *   folders: string[],
- *   ignored: Array<{ path: string, reason: string }>,
- *   skipped: Array<{ path: string, reason: string }>,
- *   totalBytes: number,
- * }}
- */
 export function inspectZip(bytes, limits = IMPORT_LIMITS) {
   if (!(bytes instanceof Uint8Array)) return refuse('not-a-zip', 'That is not a zip file.');
   if (bytes.length > limits.maxArchiveBytes) return refuse('too-big', 'That zip is too large to import here.');
@@ -113,7 +81,6 @@ export function inspectZip(bytes, limits = IMPORT_LIMITS) {
       continue;
     }
     if (/\.zip$/i.test(parsed.segments[parsed.segments.length - 1] || '')) {
-      // Zips are only accepted through Export / Import, and this import never opens a zip inside a zip.
       skipped.push({ path: entry.name, reason: 'A zip inside a zip is not imported' });
       continue;
     }
@@ -131,46 +98,31 @@ export function inspectZip(bytes, limits = IMPORT_LIMITS) {
   return { ok: true, files, folders: [...folders].sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b)), ignored, skipped, totalBytes };
 }
 
-/** Whether a file that is itself a zip declares a bomb-like directory (it is never opened, only judged). */
 export function looksLikeZipBomb(bytes, limits = IMPORT_LIMITS) {
   if (!(bytes instanceof Uint8Array) || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return false;
   const inner = inspectZip(bytes, limits);
   return !inner.ok && ['suspicious-compression', 'too-big-uncompressed', 'too-many-entries', 'too-big'].includes(inner.reason);
 }
 
-/**
- * Uploads what `inspectZip` found. `uploadFile(file, folder)` is the normal upload (it enforces the
- * quota, the 4 MB cap and the naming rules and creates the folder); `createFolder(path)` makes the
- * empty ones. Quota exhaustion stops the rest (everything after it would fail the same way).
- *
- * `onResult({ path, status, reason?, size, savedAs? })` is called once per file as it finishes ('imported' or 'failed'), so a
- * caller can keep a per-file report; `savedAs` is the final name when the server added a counter to it.
- *
- * An upload limit from the server (too many uploads too fast, or the most documents an account may hold) stops the rest the same way:
- * what was imported is kept, nothing more is sent, and `limitHit` says why ({ code, message }).
- *
- * @returns {Promise<{ uploaded: number, failures: Array<{ path: string, reason: string }>, cancelled: boolean, quotaHit: boolean, limitHit: { code: string, message: string } | null }>}
- */
 export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, signal, onProgress = () => {}, onResult = () => {}, concurrency = IMPORT_CONCURRENCY, limits = IMPORT_LIMITS }) {
   const zip = await JSZip.loadAsync(bytes);
   const failures = [];
   let uploaded = 0;
-  let held = 0; // saved, but held in Quarantine (not counted as imported)
+  let held = 0;
   let done = 0;
   let quotaHit = false;
   let limitHit = null;
   const total = plan.files.length;
   const report = (current) => onProgress({ done, total, uploaded, current });
 
-  // Folders first, so the empty ones exist too. A folder that is already there is fine.
   const withFiles = new Set();
   for (const { dir } of plan.files) {
     const parts = dir ? dir.split('/') : [];
-    for (let n = 1; n <= parts.length; n += 1) withFiles.add(parts.slice(0, n).join('/')); // a file's folders come with it
+    for (let n = 1; n <= parts.length; n += 1) withFiles.add(parts.slice(0, n).join('/'));
   }
   for (const path of plan.folders) {
     if (signal?.aborted) break;
-    if (withFiles.has(path)) continue; // uploading into it creates it
+    if (withFiles.has(path)) continue;
     try {
       // eslint-disable-next-line no-await-in-loop
       await createFolder(path);
@@ -191,7 +143,7 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
         const entry = zip.file(item.entry);
         if (!entry) throw new Error('Not found in the zip');
         // eslint-disable-next-line no-await-in-loop
-        const data = await entry.async('uint8array'); // JSZip fails if this differs from the declared size
+        const data = await entry.async('uint8array');
         if (data.length > limits.maxFileBytes) throw new Error('Larger than the 4 MB a file can be');
         if (/\.zip$/i.test(item.name) && looksLikeZipBomb(data, limits)) {
           const reason = 'A zip inside the zip that looks like a decompression bomb, skipped';
@@ -222,12 +174,10 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else if (code === 'USE_IMPORT') {
-          // A zip that is only a zip by its bytes (renamed): the server refuses it, and the import says why.
           const reason = 'A zip inside a zip is not imported';
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'failed', reason, size: item.size });
         } else if (code === 'FILE_BLOCKED') {
-          // Quarantine refused it outright: nothing was saved.
           const reason = 'Not saved: it matches a rule that Warden refuses outright';
           failures.push({ path: shown, reason });
           onResult({ path: shown, status: 'refused', reason, size: item.size, reasons: (error.response.data.error.reasons || []).map((r) => r.code) });
@@ -249,7 +199,6 @@ export async function runImport({ bytes, plan, JSZip, uploadFile, createFolder, 
     }
   }
   if (limitHit) {
-    // the files that were never sent: listed, so the report says what is still to do
     for (let i = next; i < plan.files.length; i += 1) {
       const item = plan.files[i];
       const path = item.dir ? `${item.dir}/${item.name}` : item.name;

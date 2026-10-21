@@ -16,10 +16,6 @@ import { visitMemory } from './services/visitMemory.js';
 import { useSessionToken } from './utils/useSessionToken.js';
 import { getEmergencyMode, setModeFromMe, subscribeEmergencyMode, wasEmergencyTab } from './services/emergencyMode.js';
 
-// Every route except the home page is its own chunk, so the landing page
-// downloads only what it shows. Home itself is imported eagerly - it's the
-// first thing most visitors see, and a spinner there would cost more than
-// the bytes it saves.
 const PrivacyPage = lazy(() => import('./pages/public/PrivacyPage.jsx'));
 const TermsPage = lazy(() => import('./pages/public/TermsPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage.jsx'));
@@ -38,7 +34,6 @@ const ExportPage = lazy(() => import('./pages/ExportPage.jsx'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage.jsx'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage.jsx'));
 const QuarantinePage = lazy(() => import('./pages/QuarantinePage.jsx'));
-// Shares the Overview page's chunk (the two pages are used together).
 const ExpiredPage = lazy(() => import('./pages/OverviewPage.jsx').then((m) => ({ default: m.ExpiredPage })));
 const WasntMePage = lazy(() => import('./pages/auth/WasntMePage.jsx'));
 const EmergencyAccessPage = lazy(() => import('./pages/EmergencyAccessPage.jsx'));
@@ -47,35 +42,19 @@ const EmergencyShell = lazy(() => import('./components/emergency/EmergencyShell.
 const SharesPage = lazy(() => import('./pages/SharesPage.jsx'));
 const SharedDocumentPage = lazy(() => import('./pages/SharedDocumentPage.jsx'));
 
-/**
- * The vault needs a session. Without one - never logged in, "Lock
- * vault", or a session that expired mid-use (the axios 401 interceptor
- * clears the token) - send the person to /login, remembering where they
- * were so login can bring them straight back.
- */
 function RequireSession({ children }) {
   const token = useSessionToken();
   const location = useLocation();
   const ready = useSessionCheck();
-  // The page being looked at, in memory, for the one case where a session the server ended may return to it.
   useEffect(() => {
     if (token) visitMemory.trackVisit(`${location.pathname}${location.search}`);
   }, [token, location.pathname, location.search]);
-  // A token kept from before a reload (or handed over by another tab) is proved with the server first, so a
-  // dead one sends you to the login page with a message instead of a screen full of failed requests.
   if (!ready) return <AppFrameSkeleton />;
-  // An emergency session that ended (4 hours, turned off by the owner, signed out) says so on the contact's own page.
   if (!token && wasEmergencyTab()) return <Navigate to="/emergency?ended=1" replace />;
-  // The sign-in page is its own route, and nothing about this page travels with the redirect: a fresh sign-in lands on My Files
-  // (services/visitMemory.js decides the one exception, a session the server ended).
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
 
-/**
- * The signed-in app, or - when the server says this session is an Emergency Access session - the contact's read-only
- * vault instead. The mode comes from GET /api/auth/me, so a reload cannot turn one into the other.
- */
 function SignedInShell({ onLocked }) {
   const mode = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
   return mode.emergency ? (
@@ -87,7 +66,6 @@ function SignedInShell({ onLocked }) {
   );
 }
 
-// Checked once per page load, shared by every route that needs the session (services/sessionCheck.js).
 let sessionCheck = null;
 function checkSessionOnce() {
   if (!sessionCheck) {
@@ -96,12 +74,6 @@ function checkSessionOnce() {
   return sessionCheck;
 }
 
-/**
- * The landing page for a visitor who already has a session (another tab of this browser, or this one): straight to My Files,
- * the same place the login page sends a signed-in visitor. It never waits for the answer: the landing page shows as usual
- * and the redirect happens only when the existing session check says the session is valid. Nobody without a session
- * triggers a request (picking a token up from another tab is a message between tabs, not a server call).
- */
 function LandingGate({ children }) {
   const token = useSessionToken();
   const mode = useSyncExternalStore(subscribeEmergencyMode, getEmergencyMode);
@@ -115,7 +87,6 @@ function LandingGate({ children }) {
       cancelled = true;
     };
   }, []);
-  // Only a token this tab holds and the server accepted: not while checking, and not after a log out clears the token.
   if (token && !mode.emergency && result === 'valid') return <Navigate to="/files" replace />;
   return children;
 }
@@ -133,15 +104,12 @@ function useSessionCheck() {
 }
 
 function App() {
-  // "Log out": always asks first (one dialog, with an extra line when files are being sealed or an import is running).
   const handleLocked = useCallback(
     () =>
       transfers.requestSignOut(async () => {
         try {
           await logoutVault();
         } catch {
-          // Locking the vault should never get the user stuck - worst case is
-          // an orphaned server-side session that expires naturally in 30 min.
         } finally {
           forgetPreviousVisit({ reason: 'signout' });
           clearToken();
@@ -155,7 +123,6 @@ function App() {
       <Routes>
         <Route element={<PublicLayout />}>
           <Route index element={<LandingGate><HomePage /></LandingGate>} />
-          {/* Contact is a section of the one-page landing site; the old /about URL goes to the top of it. */}
           <Route path="about" element={<Navigate to="/" replace />} />
           <Route path="contact" element={<Navigate to="/#contact" replace />} />
           <Route path="privacy" element={<PrivacyPage />} />
@@ -170,9 +137,6 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
-        {/* The signed-in app: header + sidebar around one real route per section,
-            so refresh and the back button work. A reload ends the session by
-            design, and login brings you back to the route you were on. */}
         <Route
           element={
             <RequireSession>
@@ -196,8 +160,6 @@ function App() {
         </Route>
         <Route path="/vault" element={<Navigate to="/files" replace />} />
         <Route path="/shares" element={<Navigate to="/shared" replace />} />
-        {/* Outside the account flow entirely: a share-link recipient has
-            never logged into this account and never will. */}
         <Route path="/shared/:shareId" element={<SharedDocumentPage />} />
       </Routes>
     </Suspense>

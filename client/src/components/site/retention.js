@@ -1,5 +1,3 @@
-// How long each kind of data is kept. Every row has to match the code: utils/trash.js, utils/auditConfig.js,
-// utils/sessionStore.js, utils/otpConfig.js, utils/trustedDevice.js, utils/shareLimits.js, utils/legacyCleanup.js.
 export const RETENTION = [
   { what: 'Your files, folders and file details', how: 'Until you delete them or delete your account.' },
   { what: 'Trash', how: '30 days, still encrypted, then removed with the previews.' },

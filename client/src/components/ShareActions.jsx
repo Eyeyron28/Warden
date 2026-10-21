@@ -13,7 +13,6 @@ import {
 } from '../utils/shareLinks.js';
 import styles from './ShareActions.module.css';
 
-// A coloured letter badge per app: no third-party icon files, nothing loaded from another site.
 const BADGES = {
   whatsapp: { letter: 'W', color: '#1fa855' },
   telegram: { letter: 'T', color: '#1d8fd1' },
@@ -25,17 +24,9 @@ const BADGES = {
 const COPIED_MS = 2000;
 const APP_WAIT_MS = 1600;
 
-/**
- * Everything you can do with a finished share link: copy it, show it as a QR,
- * or send it through an app. The link (with its #k= key) goes only where the
- * person points it - their clipboard, the QR drawn right here, or the app they
- * choose - never to Warden's server. Targets come from utils/shareLinks.js,
- * which encodes every value and allows only https, viber and fb-messenger.
- */
 function ShareActions({ link, passwordProtected = false, recipientEmail = '', showQr = false }) {
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState('');
-  // On a wide screen the QR code is simply there (the right column has room); on a phone it opens with its button.
   const [qrOpen, setQrOpen] = useState(showQr);
   const [qrUrl, setQrUrl] = useState(null);
   const timers = useRef([]);
@@ -48,7 +39,6 @@ function ShareActions({ link, passwordProtected = false, recipientEmail = '', sh
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
-  // The QR is drawn in the browser from the same string Copy copies.
   useEffect(() => {
     if (!qrOpen) return undefined;
     let cancelled = false;
@@ -73,12 +63,10 @@ function ShareActions({ link, passwordProtected = false, recipientEmail = '', sh
     try {
       await navigator.share(nativeSharePayload(link));
     } catch (err) {
-      // Closing the share sheet is not an error.
       if (err?.name !== 'AbortError') setNotice('Sharing did not work. Copy the link instead.');
     }
   };
 
-  /** A custom-scheme link: if nothing takes the page away from us, no app handled it. */
   const openApp = (target) => {
     if (!isAllowedShareHref(target.href)) return;
     let handled = false;

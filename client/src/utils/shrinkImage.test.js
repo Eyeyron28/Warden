@@ -10,7 +10,6 @@ const photo = (size = LIMIT + 1000, name = 'IMG_1234.PNG', type = 'image/png') =
   return file;
 };
 
-// Stand-ins for the browser: a canvas that records its size, and a createImageBitmap we can make fail.
 function fakeBrowser({ bitmap = { width: 4000, height: 3000 }, optionsRejected = false, decodeFails = false, blobSizes = [100], canvasLog = [] } = {}) {
   let call = 0;
   const closed = [];
@@ -75,7 +74,7 @@ test('a browser that cannot encode says so, and a result bigger than the origina
   fakeBrowser({ blobSizes: [null] });
   assert.deepEqual(await shrinkToJpeg(photo(), LIMIT), { ok: false, message: CANNOT_SAVE });
   fakeBrowser({ blobSizes: [3 * 1024 * 1024] });
-  const small = photo(2 * 1024 * 1024); // below the limit already, so a 3 MB result would be bigger than the original
+  const small = photo(2 * 1024 * 1024);
   assert.deepEqual(await shrinkToJpeg(small, LIMIT), { ok: false, message: CANNOT_FIT });
 });
 

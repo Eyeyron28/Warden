@@ -1,8 +1,3 @@
-// node scripts/profile-upload.js   (from server; needs the LOCAL throwaway MongoDB on 127.0.0.1:27099, or a local WARDEN_TEST_MONGO)
-//
-// Times each stage of POST /api/documents for a 4 MB PDF against the real app on a local throwaway database: no .env is read, nothing
-// connects to Atlas, mail is captured. It wraps the functions the upload controller calls (before the app loads), so the production
-// code carries no timing code. Real Atlas latency, Vercel cold starts and distance from the region cannot be measured here.
 const http = require('node:http');
 const path = require('node:path');
 
@@ -47,7 +42,6 @@ const wrap = (target, key, label) => {
   const realEmail = require('../utils/email');
   require.cache[emailPath].exports = { ...realEmail, sendEmail: async (m) => { mails.push(m); return true; } };
 
-  // Wrap the stages BEFORE the controller destructures them.
   wrap(require('../utils/storage'), 'assertCanStore', 'quota check');
   wrap(require('../utils/folders'), 'ensureFolderPath', 'folder lookup');
   wrap(require('../utils/crypto'), 'encryptFile', 'encryption (AES-256-GCM)');
@@ -98,11 +92,10 @@ const wrap = (target, key, label) => {
   const code = /(?<![\d-])(\d{6})(?![\d-])/.exec(mails.at(-1).text)[1];
   const token = (await api('POST', '/api/auth/signup/verify', { json: { email, password, code } })).body.sessionToken;
 
-  // a PDF-shaped 4 MB file with incompressible content
   const bytes = Buffer.alloc(SIZE);
   require('crypto').randomFillSync(bytes);
   Buffer.from('%PDF-1.4\n').copy(bytes);
-  const thumb = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64'); // a tiny WebP (the browser sends a preview with the file)
+  const thumb = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64');
 
   for (let run = 0; run < RUNS + 1; run += 1) {
     current = null;
@@ -110,12 +103,11 @@ const wrap = (target, key, label) => {
     form.append('file', new Blob([bytes], { type: 'application/pdf' }), `profile-${run}.pdf`);
     form.append('thumb', new Blob([thumb], { type: 'image/webp' }), 'thumb');
     const started = process.hrtime.bigint();
-    // `current` is created by the server's request hook; the client side is measured around the fetch
     const response = await fetch(`${base}/api/documents`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
     await response.arrayBuffer();
     const ended = process.hrtime.bigint();
     if (response.status !== 201) throw new Error(`upload answered ${response.status}`);
-    if (run === 0) continue; // the first request warms the connection and the code
+    if (run === 0) continue;
     const ms = (a, b) => Number(b - a) / 1e6;
     const row = { ...current };
     row['request: transfer and body parse'] = ms(current.began, current.entered);

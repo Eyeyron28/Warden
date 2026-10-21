@@ -1,17 +1,8 @@
 const dns = require('dns').promises;
 
-/**
- * Can this email domain receive mail at all? Answers `false` only when DNS says, clearly, that it cannot - a domain that
- * does not exist, or one with no MX records and no address (A/AAAA) to fall back on, as the mail standard (RFC 5321 5.1)
- * has it, or a "null MX" (RFC 7505: a single MX of "."). Any other outcome - a timeout, a server failure, a refused
- * query - answers `true`: a flaky resolver must never stop someone signing up.
- *
- * It looks only at the DOMAIN the person typed, so the answer says nothing about whether any account exists.
- */
-
 const LOOKUP_TIMEOUT_MS = 3000;
 const CACHE_MS = 10 * 60 * 1000;
-const cache = new Map(); // domain -> { at, ok }
+const cache = new Map();
 
 class LookupTimeout extends Error {
   constructor() {
@@ -28,7 +19,6 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// "This name has no such records / does not exist": the only answers that count as a no.
 const CLEAR_NO = new Set(['ENOTFOUND', 'ENODATA', 'NXDOMAIN']);
 
 async function tryLookup(fn, domain, timeoutMs) {
@@ -43,13 +33,12 @@ async function lookupDomain(domain, timeoutMs, state) {
   const mx = await tryLookup((d) => dns.resolveMx(d), domain, timeoutMs);
   if (mx.records) {
     if (mx.records.length === 0) return lookupAddresses(domain, timeoutMs, state);
-    // Null MX: the domain says outright that it takes no mail.
     if (mx.records.every((record) => !record.exchange || record.exchange === '.')) return false;
     return true;
   }
   if (CLEAR_NO.has(mx.error?.code)) return lookupAddresses(domain, timeoutMs, state);
   state.flaky = true;
-  return true; // timeout or any other trouble: allow
+  return true;
 }
 
 async function lookupAddresses(domain, timeoutMs, state) {
@@ -68,7 +57,6 @@ async function lookupAddresses(domain, timeoutMs, state) {
   return false;
 }
 
-/** @param {string} address an already-normalized single mailbox */
 async function domainCanReceiveMail(address, { timeoutMs = LOOKUP_TIMEOUT_MS, now = Date.now() } = {}) {
   const domain = String(address).split('@')[1]?.toLowerCase();
   if (!domain) return false;
@@ -76,7 +64,6 @@ async function domainCanReceiveMail(address, { timeoutMs = LOOKUP_TIMEOUT_MS, no
   if (hit && now - hit.at < CACHE_MS) return hit.ok;
   const state = { flaky: false };
   const ok = await lookupDomain(domain, timeoutMs, state);
-  // Only a clear answer is remembered; "allowed because DNS was flaky" is asked again next time.
   if (!state.flaky) {
     if (cache.size > 500) cache.clear();
     cache.set(domain, { at: now, ok });

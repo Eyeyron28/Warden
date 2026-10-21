@@ -1,13 +1,3 @@
-// Run with: cd server && npm test
-//
-// Signup, resend-verification and password-reset start must not reveal whether an address has an account - not by the
-// body, not by the status, and not by how long they take. The mailer takes a fixed 40 ms here (a stand-in for SMTP), the
-// models are the in-memory fakes, and the real scrypt/key work runs.
-//
-// The timing assertion is deliberately generous so it is not flaky on a busy machine: the MEDIANS of 5 interleaved
-// runs per path may differ by at most 25 % (or 25 ms, whichever is larger). The gaps this guards against were far
-// outside that - a new address took about 8x as long as an existing one on signup, and a resend that sent nothing
-// answered at once while a real one waited for the mailer.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -41,7 +31,6 @@ const answerOf = (out) => (out.error ? { status: out.error.status, message: out.
 function assertSimilar(label, a, b) {
   const ma = median(a);
   const mb = median(b);
-  // 25 ms floor: setTimeout on Windows rounds to ~15.6 ms steps, which alone can move a 40 ms wait by 16 ms.
   const allowed = Math.max(25, 0.25 * Math.max(ma, mb));
   assert.ok(Math.abs(ma - mb) <= allowed, `${label}: medians ${ma.toFixed(0)} ms vs ${mb.toFixed(0)} ms differ by more than ${allowed.toFixed(0)} ms (${a.map((x) => x.toFixed(0))} / ${b.map((x) => x.toFixed(0))})`);
 }
@@ -55,7 +44,6 @@ const addUser = (email, extra = {}) => {
 test('signup start: an existing address and a new one answer alike and take alike', async () => {
   addUser('taken@example.com');
   const start = (email) => call(signupStart, { body: { email, password: PASSWORD, termsAccepted: true } });
-  // Some real starts first, so the look-alike's learned time has settled (as on any server that has been sending codes).
   for (let i = 0; i < 8; i += 1) await start(`warm-up-${i}@example.com`);
   const fresh = [];
   const taken = [];
@@ -77,7 +65,6 @@ test('signup start: an existing address and a new one answer alike and take alik
 });
 
 test('resend-verification: an unverified account, a verified one and an unknown address answer alike and take alike', async () => {
-  // Some real sends first, so the look-alike's learned time has settled (as on any server that has been sending codes).
   for (let i = 0; i < 8; i += 1) {
     addUser(`warm-${i}@example.com`, { emailVerified: false });
     await call(auth.resendVerification, { body: { email: `warm-${i}@example.com` } });
@@ -106,7 +93,6 @@ test('resend-verification: an unverified account, a verified one and an unknown 
 });
 
 test('password-reset start: a real account and an unknown address answer alike and take alike', async () => {
-  // Warm the look-alike with some real sends.
   for (let i = 0; i < 8; i += 1) {
     addUser(`warm-reset-${i}@example.com`);
     await call(reset.startReset, { body: { email: `warm-reset-${i}@example.com` } });

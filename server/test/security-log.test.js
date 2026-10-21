@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// Security events in the server log (utils/securityLog.js): one JSON line per event, with the type, the bucket, a count, the
-// request id and the time, and NEVER an email address, a token, a code or an IP address. Runs the REAL app against a LOCAL
-// throwaway MongoDB (skipped, with the reason, without one). Mail is captured, no .env is read.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -35,7 +30,6 @@ const it = (name, fn) =>
     return fn(context);
   });
 
-/** Runs `fn` while collecting every console.warn line that is a security event. */
 async function capture(fn) {
   const lines = [];
   const real = console.warn;
@@ -45,7 +39,6 @@ async function capture(fn) {
       const parsed = JSON.parse(text);
       if (EVENTS.has(parsed.type)) lines.push({ text, parsed });
     } catch {
-      // not an event
     }
   };
   try {
@@ -85,7 +78,6 @@ async function signUp(email) {
   return { email, token: verified.body.sessionToken, userId: user._id };
 }
 
-/** The rule for every line: only these fields, ids that are hashes, and nothing that identifies a person or a session. */
 function assertClean(lines, secrets) {
   assert.ok(lines.length > 0, 'at least one event line');
   for (const { text, parsed } of lines) {
@@ -145,7 +137,6 @@ it('requests refused with 429 are logged by limiter bucket, and a flood is thinn
   assert.ok(limited[0].parsed.subject, 'the caller only as a hash');
   assertClean(limited, ['flood0@example.com']);
 
-  // The thinning, directly: a hundred events in a minute are far fewer lines.
   resetSecurityLogSampling();
   const flood = await capture(async () => {
     for (let i = 0; i < 100; i += 1) logSecurity('rate_limited', { bucket: 'x', count: i });

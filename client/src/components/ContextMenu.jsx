@@ -5,13 +5,6 @@ import { placeAtPoint } from '../utils/menuPosition.js';
 import dropdownStyles from './DropdownMenu.module.css';
 import styles from './ContextMenu.module.css';
 
-/**
- * A right-click / long-press / Shift+F10 menu at a point. `items` are
- * `{ label, icon?, onSelect, danger?, disabled?, title? }` or `{ separator: true }`.
- * It is positioned by utils/menuPosition.js (flips and clamps so it stays
- * inside the viewport) and closes itself after an item runs; focus returns to
- * `returnFocus` (the row it was opened from) on Esc.
- */
 function ContextMenu({ x, y, items, label, returnFocus, onClose }) {
   const placement = useCallback(
     (size, viewport) => placeAtPoint({ x, y }, size, viewport),

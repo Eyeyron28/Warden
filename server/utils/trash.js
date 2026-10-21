@@ -23,22 +23,6 @@ const { dropReminders } = require('./reminderCleanup');
 const { dropVersions, pruneOrphanVersions } = require('./versions');
 const { freeName } = require('./uniqueName');
 
-/**
- * Trash: deleting a file or folder is a soft delete. The encrypted data stays
- * exactly where it is, marked deletedAt, for RETENTION_DAYS; it can be restored
- * or deleted for good. Shares that include a trashed file are stopped at the
- * moment it is trashed (a restore does not bring them back).
- *
- * A trashed FOLDER is one entry: the TrashFolder record remembers its
- * structure and its documents share a trashBatchId, so it restores - and is
- * purged - as a whole.
- *
- * Purging (removing the encrypted data) happens three ways, none of which needs
- * a long-running process: a MongoDB TTL index on purgeAt (models/Document.js,
- * models/TrashFolder.js), purgeExpired() called on the account's own requests,
- * and scripts/purge-trash.js for every account.
- */
-
 const RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = RETENTION_DAYS * DAY_MS;
@@ -48,23 +32,15 @@ const NAME_EXISTS = 'NAME_EXISTS';
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const asObjectId = (id) => new mongoose.Types.ObjectId(String(id));
 
-/** Stops every share that includes any of these documents. */
 function revokeSharesForDocuments(userId, documentIds, session = null) {
   return removeShares({ ownerUserId: userId, sourceDocumentIds: { $in: documentIds.map(asObjectId) } }, { session });
 }
 
-/**
- * Moves one file to Trash. Returns the document's summary, or null if there is
- * no such (not already trashed) file in this account - another account's id is
- * indistinguishable from a missing one.
- */
 async function trashDocument(userId, documentId) {
   if (!mongoose.Types.ObjectId.isValid(documentId)) return null;
   const existing = await Document.findOne({ _id: documentId, userId, deletedAt: null }).select('_id');
   if (!existing) return null;
 
-  // Stop the shares FIRST: if anything fails after this, the file is merely
-  // still in the vault with its (now dead) links gone - never the reverse.
   await revokeSharesForDocuments(userId, [existing._id]);
 
   const now = new Date();
@@ -75,11 +51,6 @@ async function trashDocument(userId, documentId) {
   return result.matchedCount === 0 ? null : { id: existing._id, purgeAt: new Date(now.getTime() + RETENTION_MS) };
 }
 
-/**
- * Moves a folder and everything in it to Trash as one entry. Idempotent: a
- * folder that is not there returns null. One transaction where MongoDB allows
- * it (utils/folders.js runInTransaction).
- */
 async function trashFolder(userId, path) {
   const canonical = await resolveFolderPath(userId, path);
   if (canonical === null || canonical === '') return null;
@@ -141,10 +112,6 @@ function daysLeft(purgeAt, now = new Date()) {
   return Math.max(0, Math.ceil((purgeAt.getTime() - now.getTime()) / DAY_MS));
 }
 
-/**
- * Everything in the account's Trash, newest first: files trashed on their own
- * and folders (a folder's own files are inside its entry, not listed again).
- */
 async function listTrash(userId) {
   const now = new Date();
   await purgeExpired(userId, now);
@@ -199,11 +166,6 @@ async function listTrash(userId) {
   return { items, retentionDays: RETENTION_DAYS };
 }
 
-/**
- * Puts a file back. Goes to its original folder, or to the top level when that folder no longer exists (and says so). When a
- * file with its name is there now, it comes back WITH A COUNTER ("report (1).pdf", utils/uniqueName.js) and says so: nothing is
- * refused and nothing is overwritten.
- */
 async function restoreFile(userId, documentId) {
   if (!mongoose.Types.ObjectId.isValid(documentId)) throw httpError(404, 'Item not found.');
   const doc = await Document.findOne({ _id: documentId, userId, deletedAt: { $ne: null }, trashBatchId: null }).select(
@@ -230,10 +192,6 @@ async function restoreFile(userId, documentId) {
   return { kind: 'file', id: String(doc._id), restoredTo: destination, message, name: free.name, nameChanged: free.changed };
 }
 
-/**
- * Puts a trashed folder back with everything in it. Same rules as files for
- * where it goes; a name clash that survives falls back to 409 FOLDER_EXISTS.
- */
 async function restoreFolder(userId, batchId) {
   const trashed = typeof batchId === 'string' ? await TrashFolder.findOne({ userId, batchId }) : null;
   if (!trashed) throw httpError(404, 'Item not found.');
@@ -260,7 +218,6 @@ async function restoreFolder(userId, batchId) {
 
   await runInTransaction(async (session) => {
     const opts = session ? { session } : {};
-    // Recreate the folder records (parents first, so each path resolves).
     const ordered = [...trashed.subPaths].sort((a, b) => a.split('/').length - b.split('/').length);
     for (const subPath of ordered) {
       // eslint-disable-next-line no-await-in-loop
@@ -280,7 +237,6 @@ async function restoreFolder(userId, batchId) {
   return { kind: 'folder', id: batchId, restoredTo: parent, path: newPath, message };
 }
 
-/** Deletes one trashed entry for good: the ciphertext and thumbnail go with the document. */
 async function deletePermanently(userId, kind, id) {
   if (kind === 'file') {
     if (!mongoose.Types.ObjectId.isValid(id)) throw httpError(404, 'Item not found.');
@@ -303,7 +259,6 @@ async function deletePermanently(userId, kind, id) {
   throw httpError(400, 'Unknown item kind.');
 }
 
-/** Empties the account's Trash. */
 async function emptyTrash(userId) {
   const goneIds = await Document.distinct('_id', { userId, deletedAt: { $ne: null } });
   const documents = await Document.deleteMany({ userId, deletedAt: { $ne: null } });
@@ -313,17 +268,11 @@ async function emptyTrash(userId) {
   return { deletedDocuments: documents.deletedCount, deletedFolders: folders.deletedCount };
 }
 
-/**
- * Removes everything whose retention period is over - for one account, or for
- * all of them (no userId). Documents and folder entries carry the same purgeAt,
- * so a folder's documents go with it.
- */
 async function purgeExpired(userId = null, now = new Date()) {
   const scope = userId ? { userId } : {};
   const goneIds = await Document.distinct('_id', { ...scope, purgeAt: { $lte: now } });
   const documents = await Document.deleteMany({ ...scope, purgeAt: { $lte: now } });
   await dropReminders(null, goneIds);
-  // Versions of what was just removed, and of anything the database's own TTL index removed on its own.
   await dropVersions(null, goneIds);
   await pruneOrphanVersions(userId);
   const folders = await TrashFolder.deleteMany({ ...scope, purgeAt: { $lte: now } });

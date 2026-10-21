@@ -11,8 +11,6 @@ const src = path.join(here, '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-// ---------- the in-browser encryption demo ----------
-
 test('the demo encrypts in this tab and decrypts back to the same text (WebCrypto AES-256-GCM)', async () => {
   assert.equal(demoSupported(), true);
   const key = await createDemoKey();
@@ -67,7 +65,6 @@ test('the demo makes no network call at all', async () => {
   } finally {
     for (const [name, value] of Object.entries(saved)) globalThis[name] = value;
   }
-  // And nothing in its source can reach the network or any storage.
   for (const file of ['utils/encryptionDemo.js', 'components/site/EncryptionDemo.jsx']) {
     const text = strip(read(file));
     assert.doesNotMatch(text, /\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|axios|services\/api|localStorage|sessionStorage|indexedDB|document\.cookie/, file);
@@ -75,8 +72,6 @@ test('the demo makes no network call at all', async () => {
   }
   assert.match(read('components/site/EncryptionDemo.jsx'), /Demo: runs only in this tab/);
 });
-
-// ---------- the page itself ----------
 
 const LANDING = [
   'pages/public/HomePage.jsx',
@@ -115,7 +110,6 @@ test('no inline script, inline handler, eval or raw HTML on the landing page (th
     const text = strip(read(file));
     assert.doesNotMatch(text, /<script\b|dangerouslySetInnerHTML|\beval\s*\(|new Function\s*\(|javascript:|\bon[a-z]+=["']/i, file);
   }
-  // index.html: the one inline script is the existing, hashed theme snippet; the rest is the module entry.
   const html = fs.readFileSync(path.join(src, '..', 'index.html'), 'utf8');
   const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1].trim());
   assert.equal(scripts.length, 2);
@@ -192,9 +186,7 @@ test('there is one navigation bar on the landing page: the header (no second sec
   for (const file of walk(src).filter((f) => /\.(jsx?|css)$/.test(f) && !f.endsWith('landing.test.js'))) {
     assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /PageIndex|useActiveSection/, file);
   }
-  // The legal pages keep their own "On this page" list; the landing page does not have one.
   assert.doesNotMatch(strip(read('pages/public/HomePage.jsx')) + strip(read('pages/public/HomeBelow.jsx')), /On this page/);
-  // The offset for a section title under the sticky header is ONE rule (global.css [id]), not two added together.
   const css = fs.readFileSync(path.join(src, 'styles', 'global.css'), 'utf8');
   assert.equal((css.match(/scroll-margin-top/g) || []).length, 1);
   assert.doesNotMatch(css, /scroll-padding-top/);

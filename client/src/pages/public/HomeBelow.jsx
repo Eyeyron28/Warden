@@ -14,9 +14,6 @@ import ContactSection from './ContactSection.jsx';
 import site from '../../components/site/site.module.css';
 import styles from './HomeBelow.module.css';
 
-// Copy rule (same as HomePage): every line matches what the code does. Nothing here says the server cannot read your files
-// while you are signed in, and nothing says "end-to-end" except to deny it.
-
 const FEATURES = [
   { tag: 'Files', title: 'Encrypted storage', body: 'Each file and its preview image is AES-256-GCM ciphertext in the database. A changed byte makes it refuse to decrypt.' },
   { tag: 'Files', title: 'Folders and previews', body: 'Nested folders, rename and move, and previews for common file types. The server decrypts a preview for you over HTTPS.' },
@@ -46,12 +43,7 @@ function Heading({ id, number, label, title, children }) {
   );
 }
 
-/**
- * Everything on the landing page below the hero. It is loaded as its own chunk (HomePage lazy-loads it after the first
- * paint), which keeps the first screen light. The section ids exist in HomePage already, so links to them work at once.
- */
 function HomeBelow() {
-  // Starts the typed word in the heading above (the page shows the static word until this chunk is here).
   useEffect(() => startTypewriter(document.querySelector('#home-title span'), site.srOnly), []);
 
   return (

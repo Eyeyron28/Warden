@@ -1,20 +1,8 @@
-/**
- * Warden password policy - mirrors server/utils/passwordPolicy.js exactly,
- * so the strength meter and requirement checklist can update on every
- * keystroke without a round-trip to the backend. Keep the two in sync if
- * the rules ever change; the backend is still the source of truth and
- * re-validates on submit.
- */
-
-// 12, not the more common 8 - see the backend module for the full
-// rationale (NIST SP 800-63B, offline brute-force resistance).
 const MIN_LENGTH = 12;
 const MAX_LENGTH = 128;
 
 const SPECIAL_CHARS = new Set('!@#$%^&*()_+-=[]{};\':"\\|,.<>/?'.split(''));
 
-// Small hardcoded blocklist - a real product would check a breach corpus
-// (e.g. Have I Been Pwned), but Warden is fully offline by design.
 const COMMON_PASSWORDS = [
   'password',
   '12345678',
@@ -101,10 +89,6 @@ function hasBadPattern(password) {
   return containsCommonPassword(password) || hasSequentialRun(password) || hasRepeatedRun(password);
 }
 
-/**
- * @param {string} password
- * @returns {{ valid: boolean, errors: string[] }}
- */
 function validatePassword(password) {
   if (typeof password !== 'string' || password.length === 0) {
     return { valid: false, errors: ['A password is required.'] };
@@ -130,10 +114,6 @@ function validatePassword(password) {
 
 const STRENGTH_LABELS = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'];
 
-/**
- * @param {string} password
- * @returns {{ score: number, label: string }}
- */
 function calculatePasswordStrength(password) {
   if (typeof password !== 'string' || password.length === 0) {
     return { score: 0, label: STRENGTH_LABELS[0] };
@@ -162,11 +142,6 @@ function calculatePasswordStrength(password) {
   return { score, label: STRENGTH_LABELS[score] };
 }
 
-/**
- * Requirement-by-requirement pass/fail, for the live checklist UI.
- * @param {string} password
- * @returns {Array<{ key: string, label: string, met: boolean }>}
- */
 function getRequirementChecklist(password) {
   const value = typeof password === 'string' ? password : '';
 

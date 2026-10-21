@@ -10,33 +10,16 @@ import { EXPIRY_STORAGE_NOTE } from '../utils/expiry.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './EditDocumentModal.module.css';
 
-// document.expiryDate arrives as an ISO string (e.g.
-// "2026-12-31T00:00:00.000Z") from the backend, always UTC midnight for
-// a date-only field - slicing the first 10 characters gives the native
-// <input type="date"> value directly, with no timezone conversion to get
-// wrong (going through `new Date(...)` and reading local components
-// could shift the date by a day for some timezones).
 function toDateInputValue(isoExpiryDate) {
   return isoExpiryDate ? isoExpiryDate.slice(0, 10) : '';
 }
 
-/**
- * Edit form for a document's metadata - filename and expiry date. Backed
- * by PATCH /api/documents/:id, which is deliberately metadata-only (see
- * that controller): this form never touches the encrypted file content.
- *
- * The folder is shown read-only with a "Move..." button rather than as an
- * editable field: moving only happens through the Move picker, which
- * enforces the folder rules (no "josh" next to "Josh") and name-conflict
- * checks that a free-text field would bypass.
- */
 function EditDocumentModal({ document, onClose, onSaved, onMove }) {
   const [filename, setFilename] = useState(document.filename);
   const nameRef = useRef(null);
   const originalExt = splitName(document.filename).ext;
   const previewName = keepExtension(document.filename, filename);
 
-  // Opens with only the base name selected, so typing replaces "mod12" and leaves ".pdf" alone.
   useEffect(() => {
     const input = nameRef.current;
     if (!input) return;
@@ -53,7 +36,6 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
     event.preventDefault();
     if (submitting) return;
 
-    // The extension stays unless a different one was typed on purpose (see utils/fileNames.js).
     const trimmedFilename = keepExtension(document.filename, filename);
     if (!trimmedFilename) {
       setError('Filename cannot be empty.');
@@ -62,9 +44,6 @@ function EditDocumentModal({ document, onClose, onSaved, onMove }) {
 
     const originalExpiryValue = toDateInputValue(document.expiryDate);
 
-    // Only send fields that actually changed, matching the backend's
-    // partial-update design - a filename-only edit shouldn't also resend
-    // expiryDate just because the form has a field for it.
     const updates = {};
     if (trimmedFilename !== document.filename) updates.filename = trimmedFilename;
     if (expiryDate !== originalExpiryValue) updates.expiryDate = expiryDate || null;

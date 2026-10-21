@@ -11,76 +11,42 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Simple folder/category organization. Flat string rather than a
-    // reference to a Folder collection, since Warden doesn't have nested
-    // folder documents (yet).
     folder: {
       type: String,
       default: 'root',
     },
-    // The encrypted file content itself. Storing it inline in Mongo is the
-    // simplest starting point, but for larger files it may be better to
-    // store the encrypted blob on disk and keep only a file path/reference
-    // here instead - that's a decision to revisit once the actual
-    // encrypt/upload flow is implemented.
     encryptedBlob: {
       type: Buffer,
-      // Presence enforced by the pre('validate') hook at the bottom of this
-      // file, which (unlike `required: true`) accepts an empty Buffer.
     },
-    // Initialization vector used for this file's AES encryption.
     iv: {
       type: String,
       required: true,
     },
-    // AES-256-GCM authentication tag, required to decrypt encryptedBlob at
-    // all - GCM won't decrypt without it (and rejects the ciphertext if it
-    // doesn't match, which is what catches tampering/corruption).
     authTag: {
       type: String,
       required: true,
     },
-    // SHA-256 of the ORIGINAL, decrypted file content. Distinct from
-    // authTag: authTag verifies the ciphertext wasn't tampered with in
-    // storage, this verifies the plaintext still matches what was
-    // originally uploaded, which matters once sync/backup starts copying
-    // files around.
     checksum: {
       type: String,
       required: true,
     },
-    // Original file's MIME type, captured at upload time so it can be
-    // restored on the Content-Type header when serving the file back -
-    // encryption strips that information, so it has to be stored
-    // separately.
     mimeType: {
       type: String,
       required: true,
     },
-    // Which client originally created/uploaded this document. ("restored" is
-    // kept in the list for rows made when drive backups existed.)
     originDevice: {
       type: String,
       enum: ['pc', 'phone', 'restored'],
       required: true,
     },
-    // Optional renewal/expiry date, for documents like IDs or licenses.
     expiryDate: {
       type: Date,
     },
-    // The "Expires on" day the owner set (passport, licence, ...), at 00:00 UTC. Stored READABLE by the server on
-    // purpose, so a reminder can go out while nobody is signed in (utils/docExpiry.js). null = none.
     docExpiresAt: {
       type: Date,
       default: null,
       index: true,
     },
-    // Optional encrypted preview thumbnail (see utils/thumbnails.js). Same
-    // protection as the file: AES-256-GCM under the account's DEK with its
-    // own random IV/auth tag. thumbMime is the type of the PLAINTEXT image
-    // (image/webp or image/jpeg) and doubles as the "has a thumbnail" marker,
-    // so list queries can leave thumbCipher out entirely. A document without
-    // these fields is fully valid.
     thumbCipher: {
       type: Buffer,
       validate: {
@@ -98,52 +64,26 @@ const documentSchema = new mongoose.Schema(
       type: String,
       enum: ['image/webp', 'image/jpeg'],
     },
-    // What the bytes say the file is (utils/sniff.js), from the plaintext at
-    // upload: an image mime type, or 'none'. null means "not classified yet"
-    // (older files; the Photos endpoint classifies them on demand). This - not
-    // the file name or the mimeType the browser claimed - decides what shows in Photos.
     sniffedType: { type: String, default: null },
-    // What kind of preview the bytes allow: 'image', 'pdf' or 'none'; null = not known yet
-    // (older files and phone uploads; the browser sniffs them when it makes previews).
     previewKind: { type: String, enum: ['image', 'pdf', 'none', null], default: null },
-    // A preview that could not be made is recorded, so the same file is not tried again on
-    // every run: when, and a short reason code (see PREVIEW_FAILURE_REASONS in utils/thumbnails.js).
     thumbFailedAt: { type: Date, default: null },
     thumbFailReason: { type: String, default: null },
-    // Trash (soft delete). A trashed document keeps its encrypted data until it
-    // is restored or purged. deletedAt marks it trashed; purgeAt is when it is
-    // removed for good (TTL index below); trashBatchId groups documents that were
-    // trashed together WITH a folder (null for a file trashed on its own).
-    // How the owner uses it. Updated when it is viewed or downloaded; independent of the 30-day
-    // activity log, so "Overview" still has them after the log forgets.
     lastOpenedAt: { type: Date, default: null },
     viewCount: { type: Number, default: 0 },
     downloadCount: { type: Number, default: 0 },
-    // A star the owner put on the file (Starred view). A document saved before this existed has none, which reads as false.
     starred: { type: Boolean, default: false },
-    // A private note the owner wrote on the file: plain text, encrypted with the vault key exactly like a share's purpose label
-    // (the same three fields and the same encryptFile call), so the database never holds it readable. hasNote is the only part the
-    // list ever reads. A document without a note has none of these.
     hasNote: { type: Boolean, default: false },
     noteCipher: { type: String },
     noteIv: { type: String },
     noteAuthTag: { type: String },
-    // How many versions of this file have ever been kept (the next one is this + 1); see models/DocumentVersion.js.
     versionCounter: { type: Number, default: 0 },
-    // The random key the browser made for ONE upload attempt (a UUID). A second request with the same key, from the same account,
-    // is the same upload sent twice (a double click, a retry): it gets the first document back and stores nothing. Unset on
-    // older documents; the unique index below covers only documents that have one.
     uploadKey: { type: String },
-    // What the upload scanner found (utils/fileScanner.js). verdict: clean | suspicious | unchecked (a blocked file is never stored).
-    // reasons are CODES. A document saved before quarantine existed has none of this: it reads as "not scanned".
     scan: {
       verdict: { type: String, enum: ['clean', 'suspicious', 'unchecked'] },
       reasons: { type: [String], default: undefined },
       scannerVersion: { type: Number },
       scannedAt: { type: Date },
     },
-    // Quarantine: a suspicious file is stored encrypted like any other but held, hidden from every list, preview, download, share
-    // and export until the owner releases it (utils/quarantine.js). Documents without this field are not held.
     quarantine: {
       state: { type: String, enum: ['held', 'released'] },
       heldAt: { type: Date },
@@ -152,8 +92,6 @@ const documentSchema = new mongoose.Schema(
     deletedAt: { type: Date, default: null },
     purgeAt: { type: Date, default: null },
     trashBatchId: { type: String, default: null },
-    // Whether this document has been synced between the PC backend and the
-    // phone client yet.
     syncStatus: {
       type: String,
       enum: ['pending', 'synced'],
@@ -165,13 +103,6 @@ const documentSchema = new mongoose.Schema(
   }
 );
 
-// Presence check for encryptedBlob, done here instead of `required: true`
-// on the path: Mongoose's built-in required check for Buffers also rejects a
-// zero-length Buffer, but AES-GCM of an empty file legitimately produces an
-// empty ciphertext (integrity lives in authTag). Without this, any 0-byte
-// file - an __init__.py or .gitkeep inside an uploaded folder - failed with
-// "encryptedBlob is required" and aborted the whole folder upload. A blob
-// must still be PRESENT (a real Buffer); it just may be empty.
 documentSchema.pre('validate', function requireEncryptedBlob(next) {
   if (!Buffer.isBuffer(this.encryptedBlob)) {
     this.invalidate('encryptedBlob', 'Path `encryptedBlob` is required.', this.encryptedBlob);
@@ -179,24 +110,14 @@ documentSchema.pre('validate', function requireEncryptedBlob(next) {
   next();
 });
 
-// Every list/filter query in documents.controller.js and sync.controller.js
-// is userId + something else (folder, expiryDate, checksum) - this compound
-// index covers all of them without a separate index per field.
 documentSchema.index({ userId: 1, folder: 1 });
 documentSchema.index({ userId: 1, checksum: 1 });
-// The vault list is "this account's live documents, newest first", and Photos / the expiry list filter the same way:
-// each has an index that ends with the field it sorts or filters by, so none of them reads every document to find its rows.
 documentSchema.index({ userId: 1, deletedAt: 1, createdAt: -1 });
 documentSchema.index({ userId: 1, deletedAt: 1, sniffedType: 1 });
 documentSchema.index({ userId: 1, deletedAt: 1, docExpiresAt: 1 });
-// Quarantine's own list: this account's held files, newest first (PARTIAL: only held documents are in it).
 documentSchema.index({ userId: 1, 'quarantine.heldAt': -1 }, { partialFilterExpression: { 'quarantine.state': 'held' } });
 documentSchema.index({ trashBatchId: 1 }, { sparse: true });
-// One document per (account, upload key). PARTIAL: only documents that carry a key are in it, so older documents and uploads
-// without a key (which never had one) cannot collide, and the build cannot fail on existing data. NOT on file names.
 documentSchema.index({ userId: 1, uploadKey: 1 }, { unique: true, partialFilterExpression: { uploadKey: { $type: 'string' } } });
-// MongoDB removes the whole document (ciphertext and thumbnail included) when
-// purgeAt passes. Documents that are not in Trash have no purgeAt, so never expire.
 documentSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Document', documentSchema);

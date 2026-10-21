@@ -60,20 +60,16 @@ test('rename keeps the extension unless a different one is typed on purpose', ()
 test('every browser download path names files through the shared rules', () => {
   const src = path.join(here, '..');
   const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
-  // Vault downloads use the name the server chose (extension recovered from the bytes).
   for (const file of ['pages/FilesPage.jsx', 'pages/PhotosPage.jsx']) {
     assert.match(read(file), /const \{ bytes, filename \} = await fetchDocumentBytes/, file);
     assert.doesNotMatch(read(file), /downloadBytes\(bytes, doc\.filename\)/, file);
   }
   assert.match(read('components/FilePreview.jsx'), /downloadBytes\(bytes, name \?\? doc\.filename\)/);
-  // The service sanitises once more before saving; share links use the same functions as the vault.
   assert.match(read('services/documentsService.js'), /sanitizeDownloadName\(filename\)/);
   const share = read('pages/SharedDocumentPage.jsx');
   assert.match(share, /downloadName\(entry\.name, new Uint8Array\(plain\)\)/);
-  // (a watermarked image download is stamped first, so the saved URL is `target.url`: the original bytes otherwise)
   assert.match(share, /saveBlobAs\(target\.url, loaded\.fileName\)/);
   assert.match(share, /saveBlobAs\(target\.url, opened\.fileName\)/);
   assert.doesNotMatch(share, /saveBlobAs\([^,]+, entry\.name\)/);
-  // The rename dialog applies the keep-the-extension rule.
   assert.match(read('components/EditDocumentModal.jsx'), /keepExtension\(document\.filename, filename\)/);
 });

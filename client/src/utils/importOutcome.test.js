@@ -21,8 +21,6 @@ const job = (patch = {}) => ({
 });
 const statuses = (...list) => list.map((status, n) => ({ path: `f${n}`, status }));
 
-// ---------- the real case: a zip with 1 clean and 3 risky files ----------
-
 test('a zip with 1 clean and 3 risky files, built in memory and imported through the real import code, reports 1 imported and 3 held', async () => {
   const zip = new JSZip();
   zip.file('Mix/clean.txt', 'plain words');
@@ -33,22 +31,18 @@ test('a zip with 1 clean and 3 risky files, built in memory and imported through
   const plan = inspectZip(bytes);
   assert.equal(plan.ok, true);
   const results = [];
-  // the server's answer for each file, as the real upload route gives it (held: true with reasons for the risky ones)
   const uploadFile = async (file) => (file.name === 'clean.txt' ? { id: 'ok', filename: file.name } : { id: `h-${file.name}`, held: true, reasons: [{ code: 'PDF_ACTIVE', text: 'x' }] });
   const out = await runImport({ bytes, plan, JSZip, uploadFile, createFolder: async () => {}, onResult: (r) => results.push(r), concurrency: 1 });
   assert.equal(out.uploaded, 1, 'only the clean file is imported');
   assert.equal(out.held, 3);
   const state = job({ uploaded: out.uploaded, results, total: 4, done: 4 });
   assert.deepEqual(outcomeOf(state), { imported: 1, held: 3, refused: 0, other: 0 });
-  // the words that were wrong before: "Imported 1 file, 3 skipped" (held counted as skipped) and "Some files were not imported."
   assert.equal(describeCard(state).title, 'Imported 1 file, 3 held for review');
   assert.equal(skippedCount(state), 0, 'a held file is not a skipped one');
   const tray = buildTray({ rows: [], announce: '' }, state);
   assert.equal(tray.rows[0].line, 'Imported 1 file, 3 held for review · each file checked');
   assert.equal(tray.title, 'Sealed 1, 3 held for review');
 });
-
-// ---------- the wording ----------
 
 test('"Imported 4 files" only when every file is clean; held and not saved are named; nothing clean says so', () => {
   assert.equal(outcomeText({ imported: 4, held: 0, refused: 0, other: 0 }), 'Imported 4 files');
@@ -104,8 +98,6 @@ test('the screen-reader sentence at the end uses the same counts: held files are
   assert.match(jobCode, /announce: `Import \$\{cancelled \? 'cancelled' : 'finished'\}\. \$\{outcomeLine\(/);
   assert.doesNotMatch(jobCode, /Import finished\. \$\{uploaded\} file/);
 });
-
-// ---------- the look of the rows, rendered ----------
 
 let ui;
 test.before(async () => {
@@ -180,7 +172,6 @@ test('the finished import row shows "Review held files" only when something is h
 test('amber and its icon meet WCAG AA (3:1 for the icon, 4.5:1 for text) on the tray background, light and dark', () => {
   const tokens = fs.readFileSync(path.join(src, 'styles/tokens.css'), 'utf8');
   const pick = (block, name) => new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(block)?.[1];
-  // the tokens file: dark is the default (first block), light is the :root[data-theme='light'] override
   const lightStart = tokens.indexOf(":root[data-theme='light']");
   assert.ok(lightStart > 0);
   const dark = tokens.slice(0, lightStart);

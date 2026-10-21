@@ -5,8 +5,6 @@ const AuditEvent = require('../models/AuditEvent');
 const { LIVE } = require('../utils/storage');
 const { NOT_HELD } = require('../utils/quarantineFilter');
 
-// Routes are async, but Express doesn't forward rejected promises to
-// error-handling middleware on its own - this small wrapper does that.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -17,7 +15,6 @@ const FREQUENT_WINDOW_DAYS = 30;
 const EXPIRING_SOON_DAYS = 7;
 const MAX_STALE_LIST = 300;
 
-/** What the Overview shows for one document; never any content. */
 const brief = (doc) => ({
   id: String(doc._id),
   filename: doc.filename,
@@ -31,22 +28,14 @@ const brief = (doc) => ({
 
 const newestOpen = (a, b) => new Date(b.lastOpenedAt || 0) - new Date(a.lastOpenedAt || 0);
 
-/** When a document was last touched: opened, or else created. */
 const lastTouched = (doc) => new Date(doc.lastOpenedAt || doc.createdAt || 0).getTime();
 
-/** Live (not trashed) documents of one account, with only the fields the insights need. */
 function liveDocuments(userId) {
   return Document.find({ userId, deletedAt: LIVE.deletedAt, ...NOT_HELD }).select('filename folder viewCount downloadCount lastOpenedAt createdAt starred');
 }
 
-/**
- * The most-opened files in the last 30 days, from the activity log ("Frequently used"). Falls back to the
- * newest-opened files when the log has nothing yet. Trashed and deleted files never appear.
- */
 async function frequentFor(userId, knownDocs, now = new Date()) {
   const since = new Date(now.getTime() - FREQUENT_WINDOW_DAYS * DAY_MS);
-  // Counted inside MongoDB over the last 30 days of this account's `view` events (an index serves it), instead of
-  // reading every `view` event the account ever had into memory and counting them here.
   const grouped = await AuditEvent.aggregate([
     { $match: { userId, type: 'view', targetId: { $ne: null }, at: { $gte: since } } },
     { $group: { _id: '$targetId', opens: { $sum: 1 } } },
@@ -54,8 +43,6 @@ async function frequentFor(userId, knownDocs, now = new Date()) {
     { $limit: 50 },
   ]);
   const counts = new Map(grouped.map((row) => [String(row._id), row.opens]));
-  // Overview already holds every live document; "Frequently used" on its own asks only for the few it can show: the
-  // most-opened ones, and (for the fallback below) the ones opened in the window.
   const docs =
     knownDocs ||
     (await Document.find({
@@ -69,7 +56,6 @@ async function frequentFor(userId, knownDocs, now = new Date()) {
     .filter(([id]) => byId.has(id))
     .map(([id, opens]) => ({ ...brief(byId.get(id)), opens }))
     .sort((a, b) => b.opens - a.opens || newestOpen(a, b));
-  // Starred files come first (each group keeps its own order: most opened, then newest).
   const starredFirst = (list) => [...list].sort((a, b) => Number(b.starred) - Number(a.starred));
   if (ranked.length > 0) return starredFirst(ranked).slice(0, TOP);
   return starredFirst(docs
@@ -79,7 +65,6 @@ async function frequentFor(userId, knownDocs, now = new Date()) {
     .slice(0, TOP);
 }
 
-/** Files not opened (or, never opened, not created) for at least `days`, oldest first. */
 function staleOf(docs, now = new Date(), days = STALE_DAYS) {
   const cutoff = now.getTime() - days * DAY_MS;
   return docs
@@ -88,7 +73,6 @@ function staleOf(docs, now = new Date(), days = STALE_DAYS) {
     .map((doc) => ({ ...brief(doc), idleDays: Math.floor((now.getTime() - lastTouched(doc)) / DAY_MS) }));
 }
 
-/** Link statistics from the share records: counts and a file name only, never who opened them. */
 async function sharingStats(userId, now = new Date()) {
   const shares = await Share.find({ ownerUserId: userId, ready: { $ne: false }, expiresAt: { $gt: now } }).select('shareId openCount lastOpenedAt expiresAt sourceDocumentIds fileCount');
   const soon = now.getTime() + EXPIRING_SOON_DAYS * DAY_MS;
@@ -107,11 +91,6 @@ async function sharingStats(userId, now = new Date()) {
   };
 }
 
-/**
- * GET /api/insights/overview
- * Everything the Overview page shows, from this account's own counters and events. Trashed files are left out
- * (the same "live" rule the file list and the quota use).
- */
 const getOverview = asyncHandler(async (req, res) => {
   const now = new Date();
   const docs = await liveDocuments(req.userId);
@@ -130,14 +109,12 @@ const getOverview = asyncHandler(async (req, res) => {
   });
 });
 
-/** GET /api/insights/stale - the files behind the "stale" count, oldest first (at most 300). */
 const getStale = asyncHandler(async (req, res) => {
   const docs = await liveDocuments(req.userId);
   const stale = staleOf(docs);
   res.status(200).json({ days: STALE_DAYS, total: stale.length, items: stale.slice(0, MAX_STALE_LIST) });
 });
 
-/** GET /api/insights/frequent - the "Frequently used" row of My files (at most 5; empty when nothing was opened). */
 const getFrequent = asyncHandler(async (req, res) => {
   res.status(200).json({ items: await frequentFor(req.userId, null) });
 });

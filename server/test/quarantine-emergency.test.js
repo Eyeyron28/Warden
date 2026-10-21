@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Emergency Access and Quarantine: a read-only emergency session never lists or reads a file held in Quarantine (whole-vault or
-// folder-scoped), cannot see the Quarantine list or release anything, and the allowlist is unchanged. In-memory world, no database.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 

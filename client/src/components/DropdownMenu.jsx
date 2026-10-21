@@ -4,13 +4,6 @@ import MenuPanel from './MenuPanel.jsx';
 import { placeBelow } from '../utils/menuPosition.js';
 import styles from './DropdownMenu.module.css';
 
-/**
- * Trigger + panel dropdown. The panel is a MenuPanel: portal, fixed position
- * and collision handling (flips above a button near the bottom, is pulled back
- * inside near either side), so it can never overflow the screen. Trigger and
- * option list are render props so callers control what they look like.
- * Options should be `<button role="menuitem">`.
- */
 function DropdownMenu({ trigger, children, align = 'left', label }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);

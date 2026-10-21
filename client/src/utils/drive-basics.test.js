@@ -31,7 +31,6 @@ const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const TOKEN = `${'a'.repeat(64)}.${'b'.repeat(64)}`;
 
-/** A fake server: records every request and answers by route. */
 function fakeServer(answers = {}) {
   const seen = [];
   api.defaults.adapter = (config) => {
@@ -42,8 +41,6 @@ function fakeServer(answers = {}) {
   };
   return seen;
 }
-
-// ---------- the lists mirror the server's ----------
 
 test('the colour and icon lists are the server\'s, and every colour has a value for dark and for light', () => {
   const server = require('../../../server/utils/folderStyle.js');
@@ -63,8 +60,6 @@ test('the colour and icon lists are the server\'s, and every colour has a value 
   assert.equal(folderColorVar('javascript:alert(1)'), undefined, 'only listed ids become a colour');
   assert.equal(folderColorVar(null), undefined);
 });
-
-// ---------- the service calls ----------
 
 test('stars, batch move and batch trash go out 50 files at a time with a result for each; nothing is lost across batches', async () => {
   invalidateAll();
@@ -139,8 +134,6 @@ test('the look of every styled folder arrives with the top-level folder answer (
   assert.deepEqual(getFolderStyles(), {}, 'a different sign-in never sees the previous one\'s folders');
 });
 
-// ---------- dragging and the batch result text ----------
-
 test('a drag carries one id or several; the batch answer becomes one line of text', () => {
   const event = (value) => ({ dataTransfer: { getData: () => value, types: ['application/x-warden-document'] } });
   assert.deepEqual(idsFromDrag(event('a1')), ['a1']);
@@ -151,8 +144,6 @@ test('a drag carries one id or several; the batch answer becomes one line of tex
   assert.deepEqual(describeMove({ movedCount: 0, destination: 'T', results: [{ status: 'conflict', message: 'A file named "x" is already there.' }] }), { error: 'A file named "x" is already there.' });
   assert.deepEqual(describeMove({ movedCount: 0, destination: 'T', results: [{ status: 'unchanged', message: 'Already in this folder.' }] }), { message: 'Already in that folder' });
 });
-
-// ---------- the pieces are wired ----------
 
 test('the file list offers star, details, folder looks, select-by-long-press and dragging the whole selection', () => {
   const browser = strip(read('components/FileBrowser.jsx'));

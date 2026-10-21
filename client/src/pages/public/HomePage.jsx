@@ -10,18 +10,8 @@ import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './HomePage.module.css';
 
-// Copy rule for this page: every claim has to match what the code actually does (see server/utils/crypto.js,
-// controllers/auth.controller.js and controllers/documents.controller.js). Uploads and downloads are encrypted and
-// decrypted by the server in memory during a signed-in session, so this page never says "the server can't read your
-// files", never says "end-to-end" except to deny it, and keeps the list of what Warden does not protect against in view
-// (pages/public/limits.js). src/utils/claims.test.js reads these files.
-//
-// Everything below the hero is a separate chunk (HomeBelow), loaded as soon as this page renders, so the first screen
-// stays small: the hero, the encryption demo and the facts strip are all that ships with the main bundle.
-
 const HomeBelow = lazy(() => import('./HomeBelow.jsx'));
 
-// Each one matches the code: crypto.js, auth.controller.js, sessionStore.js, utils/trash.js, accountCreate.js.
 const FACTS = [
   { big: 'AES-256-GCM', small: 'for every file' },
   { big: 'scrypt', small: 'for your password' },
@@ -37,10 +27,8 @@ function HomePage() {
     'Warden stores your IDs, contracts and records encrypted, with the key locked by your password and recovery key. File names and sizes are visible to the server, and it is not end-to-end encrypted. A student project, provided as-is.'
   );
   const signedIn = Boolean(useSessionToken());
-  // Only when the server says sign-up needs an invite code; a failed lookup just shows nothing here.
   const { status: configStatus, config } = useSignupConfig();
   const inviteOnly = !signedIn && configStatus === 'ready' && config?.signupMode === 'invite';
-  // Set once, by the account page, right after a successful deletion.
   const accountDeleted = Boolean(useLocation().state?.accountDeleted);
 
   const primaryCta = signedIn ? (
@@ -80,7 +68,6 @@ function HomePage() {
         </div>
       )}
 
-      {/* ---- Hero ---- */}
       <section className={styles.hero} aria-labelledby="home-title">
         <div className={`${styles.wrap} ${styles.heroGrid}`}>
           <div className={styles.heroCopy}>
@@ -113,7 +100,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ---- Facts strip ---- */}
       <section className={styles.factsBand} aria-label="Facts">
         <ul className={`${styles.wrap} ${styles.facts}`}>
           {FACTS.map((fact) => (

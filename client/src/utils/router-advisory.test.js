@@ -4,9 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// docs/KNOWN-LIMITS.md explains why two react-router advisories do not reach this app. These checks keep that explanation true:
-// they fail when a new way to navigate to a computed address appears, or when server-side rendering or a data router is added.
-
 const here = path.dirname(fileURLToPath(import.meta.url));
 const src = path.join(here, '..');
 
@@ -31,22 +28,18 @@ test('GHSA-337j-9hxr-rhxg (deserializeErrors, server-side hydration): the app ha
   assert.match(main, /createRoot\(/, 'the page is rendered in the browser only');
 });
 
-// GHSA-wrjc-x8rr-h8h6 (open redirect by a backslash in <Link>/<Navigate>/navigate): it needs a computed address that a person
-// controls. Every navigation target that is not a plain "/path" string is listed here with why it is safe; a new one fails the
-// test until someone looks at it.
 const REVIEWED = new Map([
-  ['App.jsx', ['"/emergency?ended=1"', '"/login"']], // string literals
-  ['components/emergency/EmergencyShell.jsx', ['{redirect}', '{item.to}']], // emergencyRedirect(location.pathname) returns one of the app's own fixed paths; items are a constant list
-  ['components/site/SiteHeader.jsx', ['{link.to}']], // NAV_LINKS, constants
-  ['components/VaultHealthCard.jsx', ['{fixPath(item)}']], // fixed paths written by the server (utils/vaultHealth.js), or /expired
-  ['pages/ExpiredPage.jsx', ['{openLink(doc)}']], // the same fixed start as the Overview's
-  ['pages/OverviewPage.jsx', ['{openLink(doc)}']], // always "/files?path=" + encodeURIComponent(...): a fixed start
-  ['components/DriveList.jsx', ['{openLink(doc)}']], // the same helper, in the Starred and Recent lists
-  ['pages/ExportPage.jsx', ['{filesLink(job.destination)}']], // filesLink(): "/files" + an encoded ?path= (utils/importCard.js)
-  ['components/TransferTray.jsx', ['row.actions.show', 'row.actions.review']], // a tray row's target: only '/export', '/quarantine' or filesLink() ("/files" + an encoded ?path=)
-  ['components/ImportCard.jsx', ['view.target']], // utils/importCard.js: only '/export' or filesLink() ("/files" + an encoded ?path=)
-  ['pages/auth/LoginPage.jsx', ['landing']], // goes through safeRedirectPath (utils/safeRedirect.js)
-  // `path ? "/files?path=" + encodeURIComponent(path) : '/files'`: both branches start with the fixed text "/files".
+  ['App.jsx', ['"/emergency?ended=1"', '"/login"']],
+  ['components/emergency/EmergencyShell.jsx', ['{redirect}', '{item.to}']],
+  ['components/site/SiteHeader.jsx', ['{link.to}']],
+  ['components/VaultHealthCard.jsx', ['{fixPath(item)}']],
+  ['pages/ExpiredPage.jsx', ['{openLink(doc)}']],
+  ['pages/OverviewPage.jsx', ['{openLink(doc)}']],
+  ['components/DriveList.jsx', ['{openLink(doc)}']],
+  ['pages/ExportPage.jsx', ['{filesLink(job.destination)}']],
+  ['components/TransferTray.jsx', ['row.actions.show', 'row.actions.review']],
+  ['components/ImportCard.jsx', ['view.target']],
+  ['pages/auth/LoginPage.jsx', ['landing']],
   ['components/FolderTree.jsx', ['path ? `/files?path=${encodeURIComponent(path']],
   ['pages/FilesPage.jsx', ['path ? `/files?path=${encodeURIComponent(path']],
 ]);
@@ -55,8 +48,6 @@ function dynamicTargets(text) {
   const found = [];
   for (const match of text.matchAll(/<(?:Link|NavLink|Navigate)\b[^>]*?\bto=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) found.push(match[1]);
   for (const match of text.matchAll(/\bnavigate\(\s*([^,)]*(?:\([^)]*\))?[^,)]*)/g)) found.push(match[1].trim());
-  // Plain strings and template literals whose first characters are a fixed "/word" cannot start with "//" or "/\".
-  // (The home page, "/", is a plain string too.)
   return found.filter((target) => !/^\{?\s*["'`]\/([A-Za-z#?]|["'`]$)/.test(target));
 }
 

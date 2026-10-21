@@ -1,11 +1,3 @@
-// Run with: cd server && npm test
-//
-// autoIndex is off (config/db.js), so the ONLY thing that creates indexes is utils/migrateIndexes.js. If it silently missed
-// one, a unique constraint (an email, a share id, one active emergency request) or a TTL (sessions, rate-limit windows,
-// codes) would simply not exist in production. This compares what every model DECLARES (schema.indexes(), which includes
-// field-level index / unique / expires) with what the database actually HAS after the migration ran on an empty database:
-// keys, unique, sparse, partial filters and expireAfterSeconds must all match.
-// Uses a LOCAL throwaway MongoDB (test/helpers/realMongo.js); skipped, with the reason, without one.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,7 +18,6 @@ const { migrateIndexes, indexSignature } = require('../utils/migrateIndexes');
 let connected = { ok: false, reason: '' };
 test.before(async () => {
   connected = await connectThrowaway('index_coverage');
-  // Mongoose must not build anything by itself here: only the migration may.
   mongoose.set('autoIndex', false);
 });
 test.after(disconnectThrowaway);
@@ -51,7 +42,6 @@ async function actualIndexes(model) {
   }
 }
 
-/** Every declared index of a model that the database does not have, or has with different options. */
 function gaps(model, actual) {
   const found = [];
   for (const [fields, options = {}] of model.schema.indexes()) {
@@ -91,7 +81,6 @@ it('the migration builds EVERY declared index (unique, partial, sparse and TTL i
     const actual = await actualIndexes(model);
     problems.push(...gaps(model, actual));
     const declared = model.schema.indexes();
-    // An index nobody declared would be a leftover or a typo.
     for (const index of actual) if (!declared.some(([fields]) => keyOf(fields) === keyOf(index.key))) extra.push(`${model.modelName}: undeclared ${keyOf(index.key)}`);
     report.push(`${model.modelName} (${model.collection.name}): ${declared.map(([fields, options]) => describeIndex(fields, options)).join(' | ') || '(only _id)'}`);
   }
@@ -105,7 +94,6 @@ it('the TTL indexes keep their exact expireAfterSeconds', async () => {
   for (const model of Object.values(mongoose.models)) {
     for (const index of await actualIndexes(model)) if (index.expireAfterSeconds !== undefined) ttl[`${model.modelName}.${Object.keys(index.key)[0]}`] = index.expireAfterSeconds;
   }
-  // Every TTL here is "expire at the date stored in the field" (0 seconds after it).
   assert.ok(Object.keys(ttl).length >= 10, 'expected the TTL indexes of sessions, codes, shares, rate limits...');
   for (const [name, seconds] of Object.entries(ttl)) assert.equal(seconds, 0, `${name} should expire exactly at its date`);
   for (const key of ['Session.expiresAt', 'RateLimit.windowExpiresAt', 'Document.purgeAt', 'AuditEvent.expiresAt', 'OtpChallenge.expiresAt']) assert.ok(key in ttl, `${key} must be a TTL index`);
@@ -115,7 +103,6 @@ it('the unique indexes that guard the app exist and really reject a duplicate', 
   const RateLimit = mongoose.models.RateLimit;
   await RateLimit.create({ bucket: 'cov', key: 'a', count: 1, windowExpiresAt: new Date(Date.now() + 60000) });
   await assert.rejects(RateLimit.create({ bucket: 'cov', key: 'a', count: 1, windowExpiresAt: new Date(Date.now() + 60000) }), (err) => err.code === 11000);
-  // The partial unique index: only ONE active emergency request per access, any number of inactive ones.
   const actual = await actualIndexes(mongoose.models.EmergencyRequest);
   const partial = actual.find((index) => index.partialFilterExpression);
   assert.ok(partial?.unique, 'accessId+active must be a partial unique index');
@@ -132,7 +119,6 @@ it('the migration is idempotent: a second run builds nothing, a forced re-run ch
   assert.equal(again.built, false, 'the marker says these exact indexes were built');
   assert.deepEqual(await snapshot(), before);
 
-  // Two instances starting together, with the marker gone: both build, nothing breaks, nothing is duplicated.
   await mongoose.connection.db.collection('migrations').deleteOne({ _id: again.id });
   const [one, two] = await Promise.all([migrateIndexes(), migrateIndexes()]);
   assert.equal(one.built && two.built, true);
@@ -181,9 +167,6 @@ it('an unchanged start costs one marker read; the hash changes only when a decla
 });
 
 test('the app, loaded the way production loads it, registers every model file', () => {
-  // A model that nothing requires would never get its indexes from the migration (it walks mongoose.models).
-  // Run in a child so this file's own requires do not hide a missing one. No .env is read (dotenv is replaced),
-  // and MONGO_URI points at a closed local port: nothing connects anywhere.
   const script = `
     const Module = require('module');
     const load = Module._load;
@@ -212,7 +195,6 @@ it('Quarantine\'s list is served by its own partial index (only held documents a
   assert.ok(declared, 'the partial index is declared on the model');
   assert.deepEqual(declared[1].partialFilterExpression, { 'quarantine.state': 'held' });
   const user = new mongoose.Types.ObjectId();
-  // many ordinary documents and a few held ones
   const rows = Array.from({ length: 300 }, (_, n) => ({ userId: user, filename: `f${n}`, folder: 'root', encryptedBlob: Buffer.alloc(1), iv: 'x', authTag: 'y', checksum: 'z', createdAt: new Date(), deletedAt: null }));
   for (let n = 0; n < 3; n += 1) rows[n] = { ...rows[n], quarantine: { state: 'held', heldAt: new Date(Date.now() - n * 1000) } };
   await Document.collection.insertMany(rows);
@@ -221,7 +203,6 @@ it('Quarantine\'s list is served by its own partial index (only held documents a
   assert.match(stages, /IXSCAN/, 'an index scan');
   assert.match(stages, /quarantine\.heldAt/, 'the held-files index');
   assert.ok(plan.executionStats.totalDocsExamined <= 3, `examined ${plan.executionStats.totalDocsExamined} documents for 3 held ones`);
-  // the count behind the sidebar badge (the storage meter's heldCount) uses it as well
   const count = await Document.collection.find({ userId: user, deletedAt: null, 'quarantine.state': 'held' }).explain('executionStats');
   assert.ok(count.executionStats.totalDocsExamined <= 3);
 });

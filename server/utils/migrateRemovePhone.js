@@ -2,17 +2,8 @@ const mongoose = require('mongoose');
 
 const MIGRATION_ID = 'remove-phone-vault-v1';
 
-// Rate-limit buckets that only the pairing code used (per account and per connection).
 const PAIRING_BUCKETS = ['pair-complete-account', 'pair-complete', 'pair-owner'];
 
-/**
- * One-time, idempotent. Warden is a website now, so everything the phone vault stored goes:
- * paired devices (with their token hashes), pairing tokens, phone-recovery requests, pairing
- * codes still waiting in OtpChallenge, the pairing rate-limit counters, and the phone's upload
- * id on documents. Runs after every successful connection but costs one read once its marker
- * exists. Safe to run twice, or to interrupt: every step is a delete-by-filter, and the marker
- * is written last.
- */
 async function migrateRemovePhone() {
   const db = mongoose.connection.db;
   const migrations = db.collection('migrations');

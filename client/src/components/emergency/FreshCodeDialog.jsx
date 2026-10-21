@@ -6,12 +6,6 @@ import { extractErrorMessage } from '../../services/api.js';
 import { resendOwnerCode, startOwnerCode } from '../../services/emergencyService.js';
 import styles from './emergency.module.css';
 
-/**
- * The fresh emailed code every Emergency Access change needs. It asks the server to email a code for ONE action
- * ('setup' | 'regenerate' | 'revoke' | 'approve-now'), shows the six-box code entry, and hands `{ challengeToken,
- * code }` to `onVerified`. The server checks the code when the action itself runs (a code made for another action
- * is refused there), so a wrong code comes back from that call and the caller can reopen this dialog.
- */
 function FreshCodeDialog({ action, title, intro, onVerified, onClose }) {
   const [challenge, setChallenge] = useState(null);
   const [error, setError] = useState('');

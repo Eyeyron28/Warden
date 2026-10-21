@@ -7,12 +7,6 @@ import { KIT_ACK_TEXT, canLeaveKitScreen, describeWait } from '../../utils/emerg
 import { kitRows } from '../../utils/kitHolder.js';
 import styles from './emergency.module.css';
 
-/**
- * The Emergency Kit, shown ONCE. The kit code and its QR code exist only in this component's memory: they are never
- * written to localStorage, sessionStorage, a cookie, the address bar or a log, and they are gone when this screen is
- * left. The screen cannot be left until the owner confirms they have saved or printed it (and a refresh or tab
- * close asks first). The QR is drawn here in the browser: nothing is sent to any service.
- */
 function KitScreen({ kit, contactName, contactUrl, waitMinutes, replaced = false, onDone }) {
   const [qr, setQr] = useState(null);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -30,7 +24,6 @@ function KitScreen({ kit, contactName, contactUrl, waitMinutes, replaced = false
     };
   }, [kit]);
 
-  // Closing the tab or reloading would lose the kit for good: ask first.
   useEffect(() => {
     const guard = (event) => {
       event.preventDefault();

@@ -5,27 +5,17 @@ import { thumbnailResult } from './thumbnail.js';
 import { failedPreviews, isPreviewCandidate, runPreviews } from './previewWork.js';
 
 const deps = {
-  // Drawing a preview is not the person opening the file: it counts as nothing.
   fetchBytes: (id) => fetchDocumentBytes(id, { purpose: 'silent' }),
   drawThumbnail: (blob, kind) => thumbnailResult(blob, kind),
   uploadThumbnail: putThumbnail,
   recordFailure: markThumbnailFailed,
 };
 
-/**
- * Background preview generation for My files, two files at a time, only while this page is open
- * (so only while the person is unlocked) and only after they press Generate. Pause takes effect
- * between files. Failures are recorded on the server (so a file is not retried every run) and
- * collected here for the summary.
- *
- * `onResult(result)` lets the page update its list: { id, status: 'done' } or
- * { id, status: 'failed', reason }.
- */
 export function usePreviewGenerator({ documents, onResult }) {
   const candidates = useMemo(() => documents.filter(isPreviewCandidate), [documents]);
   const failedBefore = useMemo(() => failedPreviews(documents), [documents]);
 
-  const [phase, setPhase] = useState('idle'); // idle | running | pausing | paused | done
+  const [phase, setPhase] = useState('idle');
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: [] });
   const queueRef = useRef([]);
   const doneIdsRef = useRef(new Set());
@@ -66,7 +56,7 @@ export function usePreviewGenerator({ documents, onResult }) {
 
   const pause = useCallback(() => {
     pausedRef.current = true;
-    setPhase('pausing'); // the files already started finish first
+    setPhase('pausing');
   }, []);
 
   const resume = useCallback(() => work(), [work]);
@@ -76,13 +66,11 @@ export function usePreviewGenerator({ documents, onResult }) {
     setProgress({ done: 0, total: 0, failures: [] });
   }, []);
 
-  // "Try again" for files that failed before: forget the records, then the list shows them as candidates again.
   const retryFailed = useCallback(async () => {
     await retryFailedThumbnails();
     return true;
   }, []);
 
-  // Leaving the page (or the session ending) stops the work.
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return { phase, progress, candidates, failedBefore, start, pause, resume, dismiss, retryFailed };

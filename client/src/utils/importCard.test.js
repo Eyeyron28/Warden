@@ -29,8 +29,6 @@ const state = (patch = {}) => ({
 });
 const finished = (patch = {}) => state({ status: 'done', phase: 'finished', done: 48, uploaded: 48, finishedAt: 2, ...patch });
 
-// ---------- what the card says and where a click goes ----------
-
 test('running: "Importing backup.zip", "12 of 48 files", a percentage, Cancel, a click opens the Import screen, and it never closes itself', () => {
   const view = describeCard(state());
   assert.equal(view.kind, 'running');
@@ -105,8 +103,6 @@ test('no card when there is no job, or once it has been dismissed (the report st
   assert.equal(describeCard(finished({ cardVisible: false })), null);
 });
 
-// ---------- the 45-second dismissal ----------
-
 function fakeClock() {
   const timers = [];
   const clock = { t: 0 };
@@ -165,11 +161,11 @@ test('while the card has keyboard focus the timer is paused, and it resumes with
   const timer = createDismissTimer({ ms: 45_000, onExpire: () => { gone += 1; }, ...fake });
   timer.start();
   fake.advance(30_000);
-  timer.pause(); // focus enters the card
+  timer.pause();
   assert.equal(timer.remaining(), 15_000);
   fake.advance(600_000);
   assert.equal(gone, 0, 'paused: it stays however long focus is there');
-  timer.resume(); // focus leaves
+  timer.resume();
   fake.advance(14_999);
   assert.equal(gone, 0);
   fake.advance(1);

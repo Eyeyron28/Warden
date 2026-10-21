@@ -33,11 +33,6 @@ import Banner from '../components/Banner.jsx';
 
 const ICONS = { emergency: Lifebuoy, account: UserCircle, sharing: ShareNetwork, download: DownloadSimple, upload: UploadSimple, trash: Trash, vault: Eye };
 
-/**
- * Devices & activity: the browsers signed in to this account (and a way to end any of them), and a timeline of
- * what happened - sign-ins, files opened, links shared - kept for 30 days. Unusual activity is flagged. The log
- * is a hash chain that detects edits and gaps (not the removal of the newest entries by someone who can write to the database): "Verify log" checks it.
- */
 function DevicesPage() {
   usePageMeta('Devices & activity', 'The browsers signed in to your account, and what has happened on it.');
   const navigate = useNavigate();
@@ -45,7 +40,7 @@ function DevicesPage() {
   const [devices, setDevices] = useState([]);
   const [devicesError, setDevicesError] = useState('');
   const [loadingDevices, setLoadingDevices] = useState(true);
-  const [confirm, setConfirm] = useState(null); // { kind: 'device' | 'others', device? }
+  const [confirm, setConfirm] = useState(null);
   const [forgetToo, setForgetToo] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -126,7 +121,6 @@ function DevicesPage() {
             : `Signed out ${result.devices} other device${result.devices === 1 ? '' : 's'}${forgetToo ? ' and removed their trust' : ''}.`
         );
       } else if (confirm.kind === 'device') {
-        // Signing THIS device out ends the session an import may be using: ask first (the device list itself stays as it was).
         if (confirm.device.current && transfers.isRunning()) {
           const proceeded = await transfers.requestSignOut(async () => {
             const result = await signOutDevice(confirm.device.id);

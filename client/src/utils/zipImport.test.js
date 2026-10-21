@@ -136,7 +136,6 @@ test('the storage limit stops the import and says so; other failures are listed,
   assert.equal(result.failures.length, 3);
   assert.ok(result.failures.every((f) => /storage is full/i.test(f.reason)));
 
-  // an ordinary rejection (type or size) is one listed failure; the rest carry on
   const other = await runImport({
     bytes,
     plan,
