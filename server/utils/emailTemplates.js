@@ -218,6 +218,17 @@ const templates = {
       warning: `${NEVER_SHARE} ${IGNORE_IF_NOT_YOU} Your password has not changed and will not unless this code is entered; if you did not ask for this, someone may know your email address.`,
     }),
 
+  passwordChangeCode: ({ code, ttlMinutes }) =>
+    codeEmail({
+      subject: 'Confirm your new Warden password',
+      preheader: 'A code to confirm the change of your Warden password.',
+      title: 'Confirm your new password',
+      purposeLine: 'Someone signed in to your Warden account asked to change its password.',
+      code,
+      ttlMinutes,
+      warning: `${NEVER_SHARE} ${IGNORE_IF_NOT_YOU} Your password has not changed and will not unless this code is entered; if you did not ask for this, change your password and check your devices.`,
+    }),
+
   shareCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your code to open a shared document',
@@ -264,22 +275,27 @@ const templates = {
 
   passwordChanged: ({ method, when, browser }) => {
     const wipe = method === 'wipe';
+    const fromAccount = method === 'password';
     return renderEmail({
       subject: 'Your Warden password was changed',
-      preheader: 'Your password was reset and every device was signed out.',
+      preheader: fromAccount ? 'Your password was changed and your other devices were signed out.' : 'Your password was reset and every device was signed out.',
       title: 'Your password was changed',
       intro: wipe
         ? 'Your Warden password was reset without your recovery key. Your previous vault was erased and replaced by a new, empty one with a new recovery key.'
-        : 'Your Warden password was changed using your recovery key. Your documents were kept.',
+        : fromAccount
+          ? 'Your Warden password was changed from your Account page. Your documents and your recovery key were kept.'
+          : 'Your Warden password was changed using your recovery key. Your documents were kept.',
       details: [
         ['When', formatManilaTime(when)],
         ['Browser', browser || 'Unknown'],
-        ['What happened', wipe ? 'Password reset, vault erased and replaced' : 'Password changed with the recovery key'],
-        ['Signed out', 'Every device, and all trusted browsers'],
+        ['What happened', wipe ? 'Password reset, vault erased and replaced' : fromAccount ? 'Password changed from the Account page' : 'Password changed with the recovery key'],
+        ['Signed out', fromAccount ? 'Your other devices, and all trusted browsers' : 'Every device, and all trusted browsers'],
       ],
       warning: wipe
         ? "If this wasn't you, someone can read this mailbox: secure your email account first, then reset your Warden password again."
-        : "If this wasn't you, someone has your recovery key: reset your password now and treat the documents in this vault as exposed.",
+        : fromAccount
+          ? "If this wasn't you, someone was signed in to your account: reset your password now and check your devices."
+          : "If this wasn't you, someone has your recovery key: reset your password now and treat the documents in this vault as exposed.",
       cta: appLink('/forgot-password') ? { label: 'Reset your password now', href: appLink('/forgot-password') } : null,
       footerNote: 'The next login needs your new password and an emailed code.',
     });
@@ -481,6 +497,7 @@ const MAIL_CLASS = Object.freeze({
   signInCode: 'priority',
   deleteAccountCode: 'priority',
   passwordResetCode: 'priority',
+  passwordChangeCode: 'priority',
   passwordChanged: 'priority',
   accountDeleted: 'priority',
   emergencyContactRequestCode: 'priority',

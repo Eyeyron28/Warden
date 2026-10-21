@@ -11,6 +11,11 @@ const { sendEmail } = require('../utils/email');
 const { templates } = require('../utils/emailTemplates');
 const { PURPOSES, startChallenge, consumeChallenge, resendChallenge } = require('../utils/otpChallenge');
 const { deleteAccountData } = require('../utils/accountDeletion');
+const { deriveEncryptionKey, fingerprintDEK, unwrapKey, verifyPassword } = require('../utils/crypto');
+const { validatePassword } = require('../utils/passwordPolicy');
+const { finalizeReset } = require('../utils/accountReset');
+const { destroyOtherSessions } = require('../utils/sessionStore');
+const { revokeAllTrustedDevices, labelFromUserAgent } = require('../utils/trustedDevice');
 const { checkPasswordWithLockout } = require('./auth.controller');
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -94,6 +99,79 @@ const deleteAccount = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true });
 });
 
+function checkNewPassword(user, newPassword) {
+  if (typeof newPassword !== 'string' || !newPassword) throw httpError(400, 'A new password is required.');
+  const { valid, errors } = validatePassword(newPassword);
+  if (!valid) throw Object.assign(httpError(400, 'Password does not meet the security requirements.'), { errors });
+  if (verifyPassword(newPassword, user.salt, user.passwordHash)) {
+    throw httpError(400, 'Your new password must be different from your current password.');
+  }
+}
+
+function unlockVaultKey(user, password) {
+  try {
+    const kek = deriveEncryptionKey(password, user.salt);
+    const dek = unwrapKey(user.wrappedDEKPassword, kek, user.wrappedDEKPasswordIv, user.wrappedDEKPasswordAuthTag);
+    return fingerprintDEK(dek) === user.dekFingerprint ? dek : null;
+  } catch {
+    return null;
+  }
+}
+
+const passwordStart = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || !currentPassword) throw httpError(400, 'Your current password is required.');
+  const user = await currentUser(req);
+  await checkPasswordWithLockout(user, currentPassword);
+  checkNewPassword(user, newPassword);
+
+  const dek = unlockVaultKey(user, currentPassword);
+  if (!dek) throw httpError(500, 'We couldn’t start the password change. Nothing has changed; please try again.');
+
+  res.status(200).json(await startChallenge({ user, secret: dek, purpose: PURPOSES.passwordChange }));
+});
+
+const passwordResend = asyncHandler(async (req, res) => {
+  res.status(200).json(
+    await resendChallenge({
+      challengeToken: req.body?.challengeToken,
+      purpose: PURPOSES.passwordChange,
+      userId: req.userId,
+      findUser: (id) => User.findById(id),
+    })
+  );
+});
+
+const passwordConfirm = asyncHandler(async (req, res) => {
+  const { challengeToken, code, newPassword } = req.body || {};
+  if (typeof challengeToken !== 'string' || typeof code !== 'string') throw httpError(400, 'The code is required.');
+  const user = await currentUser(req);
+  checkNewPassword(user, newPassword);
+
+  const { secret: dek } = await consumeChallenge({
+    challengeToken,
+    code,
+    purpose: PURPOSES.passwordChange,
+    userId: req.userId,
+  });
+  if (fingerprintDEK(dek) !== user.dekFingerprint) throw httpError(401, 'That code is incorrect or has expired.');
+
+  await finalizeReset(user, dek, newPassword);
+
+  const sessionsEnded = await destroyOtherSessions(req.userId, req.session.idHash);
+  await revokeAllTrustedDevices(req.userId);
+  await Device.updateMany({ userId: req.userId }, { $set: { trusted: false } });
+  clearTrustCookie(req, res, req.userId);
+
+  await recordEvent(req, 'password_changed');
+  await sendEmail({
+    to: user.email,
+    ...templates.passwordChanged({ method: 'password', when: new Date(), browser: labelFromUserAgent(req.headers?.['user-agent']) }),
+  }).catch(() => false);
+
+  res.status(200).json({ success: true, sessionsEnded });
+});
+
 const listTrustedDevices = asyncHandler(async (req, res) => {
   const mine = currentTokenHash(req, req.userId);
   const rows = await TrustedDevice.find({ userId: req.userId, expiresAt: { $gt: new Date() } });
@@ -130,6 +208,9 @@ const removeAllTrustedDevices = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  passwordStart,
+  passwordResend,
+  passwordConfirm,
   deleteChallenge,
   resendDeleteCode,
   deleteAccount,

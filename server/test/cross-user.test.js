@@ -142,6 +142,9 @@ async function buildWorld() {
   const del = await api('POST', '/api/account/delete-challenge', { token: A.token, json: { password: PASSWORD } });
   assert.equal(del.status, 200, del.text);
   world.deleteToken = del.body.challengeToken;
+  const pw = await api('POST', '/api/account/password/start', { token: A.token, json: { currentPassword: PASSWORD, newPassword: 'Zk4$wNb83&hRtq' } });
+  assert.equal(pw.status, 200, pw.text);
+  world.passwordToken = pw.body.challengeToken;
   const revokeChallenge = await api('POST', '/api/emergency/challenge', { token: A.token, json: { action: 'revoke' } });
   world.emergencyToken = revokeChallenge.body.challengeToken;
 
@@ -274,6 +277,9 @@ function plan() {
     'GET /api/account/preferences': { kind: 'own' },
     'PATCH /api/account/preferences': { kind: 'own', json: { expiryReminders: false } },
     'POST /api/account/delete-challenge': { kind: 'own', json: { password: PASSWORD } },
+    'POST /api/account/password/start': { kind: 'own', json: { currentPassword: PASSWORD, newPassword: 'Zk4$wNb83&hRtq' } },
+    'POST /api/account/password/resend': { kind: 'foreign', expect: [401], json: () => ({ challengeToken: w.passwordToken }), why: 'a challenge token is a credential: one that is not the caller’s is refused' },
+    'POST /api/account/password/confirm': { kind: 'foreign', expect: [401], json: () => ({ challengeToken: w.passwordToken, code: '000000', newPassword: 'Zk4$wNb83&hRtq' }), why: 'same: another account’s challenge token is not usable by B' },
     'POST /api/account/resend-delete-code': { kind: 'foreign', expect: [401], json: () => ({ challengeToken: w.deleteToken }), why: "the token is a credential, not an object id: a challenge that is not B's is refused like any invalid code" },
     'DELETE /api/account': { kind: 'foreign', expect: [401], json: () => ({ challengeToken: w.deleteToken, code: '000000', emailConfirmation: B_EMAIL }), why: 'same: A’s challenge token is not usable by B (B types its own address, so the token is what is tested)' },
     'GET /api/account/trusted-devices': { kind: 'own' },

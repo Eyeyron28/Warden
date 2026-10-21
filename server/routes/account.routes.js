@@ -3,6 +3,9 @@ const express = require('express');
 const requireSession = require('../middleware/requireSession');
 const createRateLimiter = require('../middleware/rateLimit');
 const {
+  passwordStart,
+  passwordResend,
+  passwordConfirm,
   deleteChallenge,
   resendDeleteCode,
   deleteAccount,
@@ -28,6 +31,9 @@ router.patch('/preferences', requireSession, updatePreferences);
 router.get('/trusted-devices', requireSession, listTrustedDevices);
 
 router.use(byIp, requireSession, byAccount);
+router.post('/password/start', passwordStart);
+router.post('/password/resend', passwordResend);
+router.post('/password/confirm', passwordConfirm);
 router.post('/delete-challenge', deleteChallenge);
 router.post('/resend-delete-code', resendDeleteCode);
 router.delete('/', deleteAccount);

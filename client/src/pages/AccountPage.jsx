@@ -7,6 +7,7 @@ import Icon from '../components/site/Icon.jsx';
 import OtpChallengePanel from '../components/OtpChallengePanel.jsx';
 import TrustedBrowsers from '../components/TrustedBrowsers.jsx';
 import ReminderSetting from '../components/ReminderSetting.jsx';
+import ChangePassword from '../components/ChangePassword.jsx';
 import AuthLayout from './auth/AuthLayout.jsx';
 import PasswordInput from './auth/PasswordInput.jsx';
 import { getMe } from '../services/authService.js';
@@ -122,6 +123,7 @@ function AccountPage() {
       <div className={styles.appStack}>
         <ReminderSetting />
         <TrustedBrowsers />
+        <ChangePassword />
 
         <section className={styles.danger} aria-labelledby="delete-account-title">
           <h2 id="delete-account-title" className={styles.dangerTitle}>

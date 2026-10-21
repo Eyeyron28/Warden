@@ -11,7 +11,7 @@ const email = require('../utils/email');
 
 const CODE = '482916';
 const code = (name, ttlMinutes = 5) => templates[name]({ code: CODE, ttlMinutes });
-const CODE_TEMPLATES = ['signInCode', 'deleteAccountCode', 'passwordResetCode', 'shareCode', 'signupCode', 'emergencyContactRequestCode', 'emergencyContactSessionCode', 'emergencyOwnerSetupCode'];
+const CODE_TEMPLATES = ['signInCode', 'deleteAccountCode', 'passwordResetCode', 'passwordChangeCode', 'shareCode', 'signupCode', 'emergencyContactRequestCode', 'emergencyContactSessionCode', 'emergencyOwnerSetupCode'];
 
 test('every email that carries a code has no link and no image, a plain-text part, and the code only in the body', () => {
   for (const name of CODE_TEMPLATES) {
