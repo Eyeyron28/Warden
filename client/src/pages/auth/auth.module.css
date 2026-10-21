@@ -203,6 +203,7 @@
 }
 
 .accountLeft {
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -216,6 +217,16 @@
 
   .appStack > .danger {
     grid-column: 1 / -1;
+  }
+
+  .accountLeft > .trusted {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .accountLeft > .trusted .trustedActions {
+    margin-top: auto;
   }
 }
 
@@ -457,6 +468,13 @@ button.inlineLink:disabled {
   margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
+}
+
+.trustedActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
 }
 
 .trustedItem {
