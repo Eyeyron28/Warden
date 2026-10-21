@@ -6,11 +6,6 @@ import AuthLayout from './AuthLayout.jsx';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 
-/**
- * Where "This wasn't me" in the new-device email lands. The link carries nothing (no token, no key): this page
- * only explains what to do, and its button is the ordinary password reset, which ends every session and
- * every trusted browser when it finishes.
- */
 function WasntMePage() {
   usePageMeta('This wasn’t me', 'Secure your Warden account after a sign-in you do not recognise.');
   return (

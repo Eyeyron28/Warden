@@ -18,14 +18,12 @@ test('a valid session sends the landing page to the login target, with replace',
 test('the landing page renders as it is while checking, signed out, expired or unverified', () => {
   assert.match(gate, /return children;/);
   assert.doesNotMatch(gate, /Skeleton|Spinner|return null/);
-  // Only 'valid' redirects; the other outcomes (none, expired, unverified) and "still checking" (null) fall through.
   assert.equal((gate.match(/result ===/g) || []).length, 1);
 });
 
 test('nobody without a session triggers a server call, and a log out leaves the landing page alone', () => {
   assert.match(gate, /getToken\(\) \|\| adoptTokenFromOtherTabs\(\)/);
   assert.match(gate, /\.then\(\(held\) => held && checkSessionOnce\(\)\)/);
-  // The log out clears the token first; the redirect needs a token.
   assert.match(app, /finally \{[\s\S]*?clearToken\(\);/);
   assert.match(gate, /if \(token &&/);
 });

@@ -1,19 +1,11 @@
 import { readZipDirectory } from './zipNames.js';
 
-/**
- * File names in the browser: a mirror of server/utils/fileNames.js (a test
- * keeps the two identical), used where the browser itself names a download -
- * share links, whose names and bytes the server never sees - and as a last
- * sanitising step before anything is saved.
- */
-
 const MAX_DOWNLOAD_NAME = 120;
 const MAX_EXTENSION = 16;
 const FORBIDDEN_IN_DOWNLOAD = '/\\:*?"<>|';
 const isControl = (code) => code < 32 || code === 127 || (code >= 0x80 && code <= 0x9f);
 const isBidiOverride = (code) => (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
 
-/** { base: 'report.final', ext: 'docx' } for "report.final.docx". A leading dot (".env") or a non-extension tail has no extension. */
 export function splitName(name) {
   const text = String(name ?? '');
   const dot = text.lastIndexOf('.');
@@ -44,7 +36,6 @@ const ascii = (b, from, to) => String.fromCharCode(...b.subarray(from, to));
 const MP4_BRANDS = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'dash', 'mmp4', 'M4V ']);
 const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'heim', 'heis', 'mif1', 'msf1']);
 
-/** The extension the BYTES call for (never the name or a claimed type), or null when unknown. */
 export function sniffExtension(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (b.length < 4) return null;
@@ -72,22 +63,16 @@ export function sniffExtension(bytes) {
   return null;
 }
 
-/** Adds `.ext` only when the name has no extension and one is known. */
 export function withSniffedExtension(name, ext) {
   if (!ext || splitName(name).ext) return name;
   return `${name}.${ext}`;
 }
 
-/** The name a download should carry: sanitised, with a missing extension recovered from the bytes. */
 export function downloadName(storedName, bytes) {
   const clean = sanitizeDownloadName(storedName);
   return sanitizeDownloadName(withSniffedExtension(clean, sniffExtension(bytes)));
 }
 
-/**
- * The file name in a Content-Disposition header. RFC 5987 `filename*=` (the real,
- * possibly non-ASCII name) wins over the quoted ASCII fallback, whichever comes first.
- */
 export function filenameFromDisposition(header, fallback = 'document') {
   const text = String(header ?? '');
   const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(text);
@@ -95,18 +80,12 @@ export function filenameFromDisposition(header, fallback = 'document') {
     try {
       return decodeURIComponent(star[1].trim());
     } catch {
-      // fall through to the quoted name
     }
   }
   const quoted = /filename\s*=\s*"([^"]*)"/i.exec(text) || /filename\s*=\s*([^;]+)/i.exec(text);
   return quoted ? quoted[1].trim() : fallback;
 }
 
-/**
- * Rename: the original extension stays unless the person deliberately types a
- * different one. A new name with no extension gets the old one back; ending the
- * new name with a dot ("notes.") is the deliberate way to remove it.
- */
 export function keepExtension(oldName, newName) {
   const typed = String(newName ?? '').trim();
   if (typed === '') return '';

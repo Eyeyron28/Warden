@@ -1,7 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// A dead bearer token is tagged SESSION_INVALID so the client can tell it
-// apart from other 401s (a wrong password or code) and only then end its session.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 

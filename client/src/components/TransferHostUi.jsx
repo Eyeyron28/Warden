@@ -3,10 +3,6 @@ import TransferTray from './TransferTray.jsx';
 import { transfers, useTransfers } from '../services/transfers.js';
 import styles from './TransferTray.module.css';
 
-/**
- * Everything the transfers put on screen: the tray, and the question asked when someone presses Lock vault or Log out while files
- * are being sealed or a zip is being imported. Loaded on demand (components/TransferHost.jsx).
- */
 function TransferHostUi() {
   const t = useTransfers();
   return (

@@ -1,10 +1,3 @@
-// node scripts/check-multiupload.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// The Upload dialog with several files, in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a
-// local WARDEN_TEST_MONGO; no .env is read), served with the production CSP. Files are made in memory. It checks: 12 selected files
-// give 10 rows and "2 were not added"; a removed row can be replaced with "Choose more"; an over-4 MB file shows its error and is
-// skipped; 3 valid files close the dialog at once, show 3 tray rows (2 running, 1 waiting) and all arrive in Files; files dropped
-// on the zone are added; no CSP violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -78,7 +71,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -113,11 +106,10 @@ try {
   browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, reducedMotion: 'reduce' });
   await context.addInitScript((value) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, token);
-  // the script holds uploads back, so the tray's running and waiting rows can be looked at
   const gate = { hold: false, held: [], posts: 0 };
   await context.route('**/api/documents', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
@@ -142,7 +134,6 @@ try {
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
-  // ---- 12 files: ten rows and a visible message ----
   let dialog = await openDialog();
   const rows = dialog.getByTestId('upload-row');
   const input = dialog.locator('input[type=file]');
@@ -160,20 +151,17 @@ try {
   check(box.y >= 0 && box.y + box.height <= 860 && box.height <= 860 * 0.9, `the dialog stays within 90 vh and the screen (${Math.round(box.height)} px high at 860)`);
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'multiupload-10-files-1280.png') });
 
-  // ---- remove one, choose more ----
   await rows.first().getByRole('button', { name: /^Remove batch-01/ }).click();
   check((await rows.count()) === 9, 'a removed row is gone');
   await input.setInputFiles([file('replacement.txt')]);
   await page.waitForTimeout(200);
   check((await rows.count()) === 10 && (await dialog.getByText('replacement.txt').count()) >= 1, '"Choose more" adds another file in its place');
-  // keyboard: Delete on a focused row
   await rows.nth(2).focus();
   await page.keyboard.press('Delete');
   check((await rows.count()) === 9, 'Delete on a focused row removes it');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await dialog.waitFor({ state: 'detached' });
 
-  // ---- an over-size file is skipped, 3 valid files go to the tray ----
   dialog = await openDialog();
   await dialog.locator('input[type=file]').setInputFiles([file('one.txt'), file('big.bin', 4 * 1024 * 1024 + 10), file('two.txt'), file('three.txt'), file('empty.txt', 0)]);
   await dialog.getByTestId('upload-row').first().waitFor();
@@ -203,7 +191,6 @@ try {
   check((await page.getByRole('button', { name: 'one.txt' }).count()) + (await page.getByText('three.txt').count()) >= 1, 'and they show in Files');
   await tray.getByRole('button', { name: 'Close the transfers' }).click();
 
-  // ---- drop onto the zone ----
   dialog = await openDialog();
   const zone = dialog.getByTestId('upload-zone');
   const dt = await page.evaluateHandle(() => {

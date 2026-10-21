@@ -54,8 +54,6 @@ function rig({ token = 'token-A', importStatus = 'idle' } = {}) {
   return { manager, calls, timers, clock, finished, events, session, imp, changes, signIn, fire, rows, phases, saved };
 }
 
-// ---------- the queue ----------
-
 test('at most 2 files travel at once; the rest wait in order and start as places free up', async () => {
   const r = rig();
   r.manager.enqueue([1, 2, 3, 4].map((n) => ({ kind: 'upload', file: file(`f${n}.txt`), folder: '' })));
@@ -85,7 +83,6 @@ test('the zip import shares the same two places: with two files of the import on
   slots.release();
   await third;
   assert.equal(got, true);
-  // an aborted waiter leaves the line and never takes a place
   const ctl = new AbortController();
   const waiting = slots.acquire(ctl.signal);
   ctl.abort();
@@ -93,8 +90,6 @@ test('the zip import shares the same two places: with two files of the import on
   assert.equal(slots.stats().waiting, 0);
   assert.match(strip(read('services/importRuntime.js')), /await uploadSlots\.acquire\(\);[\s\S]*uploadSlots\.release\(\)/);
 });
-
-// ---------- the phases ----------
 
 test('waiting, sending (bytes), sealing (all bytes sent), sealed - with the destination and a changed name', async () => {
   const r = rig();
@@ -138,8 +133,6 @@ test('screen updates are throttled to every 250 ms; the step into sealing is nev
   assert.equal(r.rows()[0].phase, 'sealing');
 });
 
-// ---------- cancel ----------
-
 test('Cancel: a waiting file leaves the queue and is never sent; a sending one is aborted and nothing was saved', async () => {
   const r = rig();
   const [a, b, c] = r.manager.enqueue(['a', 'b', 'c'].map((n) => ({ kind: 'upload', file: file(`${n}.txt`), folder: '' })));
@@ -179,8 +172,6 @@ test('Cancel while sealing says the file MAY already be saved, and the lists are
   assert.equal(row.error.maybeSaved, true);
   assert.equal(r.finished.length, 1, 'the refresh runs even though it was canceled');
 });
-
-// ---------- failure and retry ----------
 
 test('a failed upload keeps its file and offers Retry; the retry sends the SAME upload key and then seals once', async () => {
   const r = rig();
@@ -238,8 +229,6 @@ test('Upload new version: sealed with the file as the current version; a retry w
   assert.deepEqual(r.finished.at(-1).replacedIds, ['doc1']);
 });
 
-// ---------- the checks before the dialog closes ----------
-
 test('the 4 MB cap, the room left in the account and the name rules are checked before anything is queued', () => {
   const usage = { availableBytes: 3 * 1024 * 1024 };
   assert.deepEqual(validateUpload(file('ok.pdf', 1000), { usage }), { ok: true });
@@ -258,8 +247,6 @@ test('the 4 MB cap, the room left in the account and the name rules are checked 
   assert.equal(validateUpload(file('é'.repeat(255), 5), {}).ok, true, 'characters, not bytes');
   assert.equal(validateUpload(file('ok.txt', 5), { usage: null }).ok, true, 'no meter known: the server decides');
 });
-
-// ---------- the session ----------
 
 test('signing out, locking, an expiry or another account cancels every transfer and wipes the names', async () => {
   const r = rig();
@@ -303,15 +290,12 @@ test('Lock vault with files being sealed asks first; "keep going" changes nothin
   assert.equal(signedOut, 2);
   assert.deepEqual(r.rows(), []);
   assert.equal(r.imp.cleared, 1);
-  // an import running counts too, with its own words
   const i = rig({ importStatus: 'running' });
   const asked = i.manager.requestSignOut(async () => {});
   assert.equal(i.manager.getState().signOutPrompt.text, 'An import is running. Stop it and sign out?');
   await i.manager.answerSignOut(false);
   await asked;
 });
-
-// ---------- batches, announcements, the tab ----------
 
 test('one refresh per batch, not per file; the tab warns while anything is working; announcements at the start, each quarter and the end', async () => {
   const r = rig();
@@ -335,7 +319,6 @@ test('one refresh per batch, not per file; the tab warns while anything is worki
   const lines = [...heard].filter(Boolean);
   assert.ok(lines.includes('4 files sealed.'), lines.join(' | '));
   assert.ok(lines.length <= 6);
-  // a second batch refreshes again
   r.manager.enqueue([{ kind: 'upload', file: file('later.txt'), folder: '' }]);
   await flush();
   r.calls.at(-1).resolve(r.saved('later.txt'));
@@ -356,8 +339,6 @@ test('Dismiss removes a finished row; a running one cannot be dismissed; dismiss
   r.manager.dismiss(b);
   assert.equal(r.rows().length, 1);
 });
-
-// ---------- the model and the tray ----------
 
 const idleJob = { status: 'idle', cardVisible: false, results: [], skipped: [], ignored: [], announce: '' };
 const row = (patch) => ({ id: 1, kind: 'upload', name: 'a.pdf', size: 1000, phase: 'sending', state: 'running', bytesDone: 500, error: null, destination: '', resultId: null, savedAs: null, ...patch });
@@ -426,8 +407,6 @@ test('the overall progress counts bytes: sealed rows in full, canceled rows not 
   assert.equal(t([row({ phase: 'canceled', bytesDone: 100, error: { message: 'Canceled.' } }), row({ id: 2, phase: 'sealed' })]).overall, 100);
 });
 
-// ---------- memory only ----------
-
 test('nothing of the tray or the queue is written to any browser storage, and the upload is XMLHttpRequest with the key and abort support', () => {
   for (const file of ['services/transfers.js', 'services/uploadSlots.js', 'services/transferRuntime.js', 'utils/trayModel.js', 'components/TransferTray.jsx', 'components/TransferTrayView.jsx']) {
     assert.doesNotMatch(strip(read(file)), /localStorage|sessionStorage|indexedDB|caches\.|serviceWorker/, file);
@@ -452,7 +431,6 @@ test('every path that sends a file to the server goes through the manager', () =
     }
   };
   for (const dir of ['components', 'pages', 'services', 'utils']) walk(dir);
-  // the definitions, the manager's loaded runtime (injected as runtime.uploadDocument), and the zip import's own (slot-gated) upload: nothing else calls them
   assert.deepEqual(callers.sort(), ['services/documentsService.js', 'services/importRuntime.js', 'services/transfers.js']);
   for (const file of ['pages/FilesPage.jsx', 'components/scan/ScanDialog.jsx', 'components/DetailsVersions.jsx']) assert.match(strip(read(file)), /transfers\.enqueue\(/, file);
   assert.match(strip(read('pages/FilesPage.jsx')), /onDrop=\{handleComputerDrop\}/, 'files dropped on the page');

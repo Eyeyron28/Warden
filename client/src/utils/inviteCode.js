@@ -1,20 +1,12 @@
-/**
- * Pure helpers for the sign-up invite code (kept out of the component so they can
- * be tested without a browser).
- */
-
-// Same ceiling the server enforces (utils/inviteGate.js): anything longer is refused there.
 export const INVITE_MAX_LENGTH = 256;
 
 export const INVITE_REQUIRED_MESSAGE = 'Enter your invite code.';
 export const INVITE_REJECTED_MESSAGE = 'The invite code is missing or incorrect.';
 
-/** What is sent: the code without the spaces and line breaks a paste often carries. */
 export function cleanInviteCode(value) {
   return String(value ?? '').trim();
 }
 
-/** The field's own check, before anything is sent. '' means fine. */
 export function inviteFieldError(value) {
   const code = cleanInviteCode(value);
   if (!code) return INVITE_REQUIRED_MESSAGE;
@@ -22,7 +14,6 @@ export function inviteFieldError(value) {
   return '';
 }
 
-/** "30 seconds", "about 12 minutes", "about 2 hours". */
 export function formatRetry(seconds) {
   const s = Number(seconds);
   if (!Number.isFinite(s) || s <= 0) return 'a little while';
@@ -33,14 +24,6 @@ export function formatRetry(seconds) {
   return `about ${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
-/**
- * Turns a failed sign-up request into what the form should show:
- *   { kind: 'invite',   message }                       -> under the invite field, focus it
- *   { kind: 'rate',     message, retryAfterSeconds }    -> form-level, with the retry time
- *   { kind: 'password', message }                       -> under the password field
- *   { kind: 'email',    message }                       -> under the email field (its domain cannot receive mail)
- *   { kind: 'other',    message }                       -> form-level
- */
 export function describeSignupFailure(error, fallback = 'We couldn’t create your vault. Please try again.') {
   const status = error?.response?.status;
   const body = error?.response?.data?.error;

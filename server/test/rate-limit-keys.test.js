@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// F9: every limiter counts an IPv6 client by its /64 (one helper, utils/clientIp.js), so rotating the low bits of an
-//     address does not buy a fresh budget; IPv4 is unchanged.
-// F11: a limiter whose own key is empty falls back to the client address instead of skipping the limit.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -44,10 +39,8 @@ test('F9: IPv4 is unchanged (the key is the address) and an IPv4-mapped IPv6 add
 test('F11: a limiter whose key function returns nothing still limits, by address', async () => {
   fresh();
   const limiter = createRateLimiter({ name: 'by-email', max: 3, windowMs: 60000, keyFn: (req) => req.body?.email || null });
-  // no email in the body: before the fix every one of these was waved through
   const noEmail = await run(limiter, Array.from({ length: 5 }, () => ({ ip: '198.51.100.20', body: {} })));
   assert.deepEqual(noEmail, [200, 200, 200, 429, 429]);
-  // another address is not affected, and a request that does carry an email is counted under the email as before
   assert.equal(await hit(limiter, { ip: '198.51.100.21', body: {} }), 200);
   assert.deepEqual(await run(limiter, Array.from({ length: 4 }, (_, i) => ({ ip: `198.51.100.${30 + i}`, body: { email: 'a@example.com' } }))), [200, 200, 200, 429]);
 });

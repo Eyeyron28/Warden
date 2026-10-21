@@ -6,7 +6,6 @@ import { MAX_DOCX_UNCOMPRESSED, MAX_PREVIEW_BYTES, PREVIEW_MIME, sniffPreviewTyp
 const bytes = (...parts) => Uint8Array.from(parts.flatMap((part) => (typeof part === 'string' ? [...part].map((c) => c.charCodeAt(0)) : part)));
 const pad = (n = 32) => Array.from({ length: n }, (_, i) => ((i * 7 + 3) % 200) + 20);
 
-/** A structurally valid ZIP with these entry names (stored, empty bodies). */
 function buildZip(names, { uncompressed = 0 } = {}) {
   const enc = new TextEncoder();
   const locals = [];
@@ -92,7 +91,6 @@ test('text is recognised; HTML, SVG and XML are never previewed', () => {
     assert.equal(sniffPreviewType(new TextEncoder().encode(markup)).kind, 'markup', markup);
   }
   assert.equal(sniffPreviewType(new TextEncoder().encode('﻿<svg onload=alert(1)>')).kind, 'markup');
-  // Prose that only mentions tags is still plain text, shown as characters.
   assert.equal(sniffPreviewType(new TextEncoder().encode('# Notes\nUse <b>bold</b> and never <script>x</script> here.')).kind, 'text');
 });
 

@@ -18,7 +18,6 @@ const ACTION_LABEL = {
   trash_near_purge: 'Open Trash',
 };
 
-// Where a row's fix button goes: the server's path, except expired documents, which have their own page.
 const fixPath = (item) => (item.id === 'expired_docs' ? '/expired' : item.actionPath);
 
 const STATUS_ICON = { ok: CheckCircle, warn: WarningCircle, bad: XCircle };
@@ -26,12 +25,10 @@ const STATUS_WORD = { ok: 'OK', warn: 'Needs a look', bad: 'Needs action' };
 const RADIUS = 52;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-/** 'ok' from 80, 'warn' from 50, otherwise 'bad': only the ring's colour. */
 export function ringTone(score) {
   return score >= 80 ? 'ok' : score >= 50 ? 'warn' : 'bad';
 }
 
-/** The score as a ring, then the checklist that makes it up. Each row says what was counted. */
 function VaultHealthCard({ reloadKey = 0 }) {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState('');
@@ -62,7 +59,6 @@ function VaultHealthCard({ reloadKey = 0 }) {
       {health && (
         <div className={styles.body}>
           <div className={styles.ringBox}>
-            {/* Tapping the ring plays one quick glow pulse (touch screens have no hover). */}
             <div
               className={`${styles.ringWrap} ${styles[ringTone(health.score)]} ${pulse ? styles.tapPulse : ''}`}
               style={{ '--score': health.score }}
@@ -94,8 +90,6 @@ function VaultHealthCard({ reloadKey = 0 }) {
                   <circle cx="60" cy="8" r="3.4" className={styles.dot} />
                 </g>
               </svg>
-              {/* One centered layer inside the ring. The real number is the text of the first span (read by tests); CSS draws the
-                  same number from a counter in that same box, so the count-up ends exactly where the final number sits. */}
               <div className={styles.center} aria-hidden="true">
                 <span className={styles.num} data-wide={health.score >= 100 ? '' : undefined} data-testid="health-score">
                   {health.score}

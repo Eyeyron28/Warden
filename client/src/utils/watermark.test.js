@@ -24,7 +24,6 @@ test('only png, jpeg and webp downloads are stamped; gif, pdf and the rest are t
   assert.equal(await stampImageBlob(original, 'application/pdf', 'text'), original);
   const png = new Blob(['x'], { type: 'image/png' });
   assert.equal(await stampImageBlob(png, 'image/png', null), png, 'no purpose, no change');
-  // no canvas here (Node): it must fall back to the original and never throw
   assert.equal(await stampImageBlob(png, 'image/png', 'Visa · shared · Warden'), png);
 });
 

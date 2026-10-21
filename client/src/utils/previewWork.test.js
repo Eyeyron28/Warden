@@ -44,7 +44,6 @@ test('candidates: no preview yet, no earlier failure, within 4 MB, and not known
   assert.equal(isPreviewCandidate({ ...base, size: PREVIEW_MAX_BYTES + 1 }), false);
   assert.equal(isPreviewCandidate({ ...base, size: null }), true);
   assert.equal(isPreviewCandidate(null), false);
-  // the name never decides: a ".png" whose kind is 'none' is out, and a nameless 'pdf' is in
   assert.equal(isPreviewCandidate({ ...base, filename: 'pretty.png', previewKind: 'none' }), false);
   assert.equal(isPreviewCandidate({ ...base, filename: 'noext', previewKind: 'pdf' }), true);
   assert.deepEqual(failedPreviews([base, { ...base, id: 'b', thumbFailed: true }, { ...base, id: 'c', thumbFailed: true, hasThumb: true }]).map((d) => d.id), ['b']);
@@ -88,7 +87,6 @@ test('a corrupt PNG is recorded as failed (with the reason) and is not a candida
   const out = await previewOne({ id: 1, filename: 'bad.png' }, d);
   assert.deepEqual([out.status, out.reason], ['failed', 'decode-failed']);
   assert.deepEqual(d.recorded, [{ id: 1, reason: 'decode-failed', kind: 'image' }]);
-  // what the list says afterwards (the server stored thumbFailed): it is no longer worth trying
   assert.equal(isPreviewCandidate({ id: 1, hasThumb: false, thumbFailed: true, thumbFailReason: 'decode-failed', size: 10, previewKind: 'image' }), false);
 });
 
@@ -135,7 +133,6 @@ test('two at a time, and Pause takes effect between files without losing the res
   assert.equal(maxActive, 2);
   assert.equal(first.finished, false, 'stopped before the end');
   assert.ok(first.done >= 3 && first.done < 10);
-  // resume with what is left
   const left = queue.filter((doc) => doc.id >= first.done);
   paused = false;
   const second = await runPreviews(left, d, {});

@@ -19,30 +19,20 @@ import styles from '../components/emergency/emergency.module.css';
 
 const POLL_MS = 30 * 1000;
 
-/**
- * Emergency Access, for the owner: set it up, see who may ask and what they can see, replace the kit, turn it off,
- * and (when a request is open) deny it or approve it early.
- *
- * Honest wording on this page, as everywhere: Warden encrypts files on its server, so this is not end-to-end. The
- * kit is half a key; the server holds the other half and uses it only after the waiting period ends without a
- * denial. The kit exists only in this page's memory while it is shown, and never in any browser storage or URL.
- */
 function EmergencyAccessPage() {
   usePageMeta('Emergency Access', 'Let a person you trust request read-only access if you cannot be reached.');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [ownEmail, setOwnEmail] = useState('');
-  const [view, setView] = useState('main'); // main | wizard | kit
+  const [view, setView] = useState('main');
   const [replaceMode, setReplaceMode] = useState(false);
   const [kitMeta, setKitMeta] = useState(null);
-  const [dialog, setDialog] = useState(null); // { type, ... }
+  const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
   const holder = useRef(createKitHolder()).current;
   const [, redraw] = useState(0);
 
-  // `reuse`: the banner above this page has just asked, so opening the page does not ask a second time. After any write
-  // the cache is empty (services/api.js), so the reload that follows an action is always a real request.
   const load = useCallback(async ({ reuse = false } = {}) => {
     try {
       setStatus(await getEmergencyStatus({ maxAgeMs: reuse ? JUST_ASKED_MS : 0 }));
@@ -55,9 +45,7 @@ function EmergencyAccessPage() {
   useEffect(() => {
     load({ reuse: true });
     getMe().then((me) => setOwnEmail(me.email || '')).catch(() => {});
-    // A hidden tab does not poll (each poll counts against the account's request budget).
     const timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
-    // The kit is gone the moment this page is left.
     return () => {
       clearInterval(timer);
       holder.clear();

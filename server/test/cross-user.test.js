@@ -1,21 +1,3 @@
-// Run with: cd server && npm test
-//
-// CROSS-USER AUTHORIZATION, route by route, against the REAL app (test/helpers/liveApp.js: every middleware and router,
-// real HTTP, a LOCAL throwaway MongoDB, mail captured, no .env read). Skipped, with the reason, when no local MongoDB answers.
-//
-// Two accounts are made through the API. A owns documents (live, in a folder, trashed), a folder, a trashed folder, shares,
-// a device, a trusted browser, a delete-account challenge, reminders, activity events and an Emergency Access setup with an
-// open request. Then, signed in as B only, EVERY owner route is called with A's identifiers (in the path, the query and
-// the body). The router stack is walked to find the routes, so a route added later without a plan below FAILS this test.
-//
-// What is asserted:
-//   - the set of routes that need no session is exactly the known public set (a new unguarded route fails);
-//   - every owner route has a plan, and no plan is left unused;
-//   - a request that names one of A's objects is answered 403/404 (or the one documented denial for that route) and carries
-//     no data of A's;
-//   - a route with nothing to name (a list, a settings page) answers B's own data and none of A's;
-//   - after all of it, A's rows (documents, folders, trash, shares, devices, sessions, activity, emergency data, reminders)
-//     are byte-for-byte what they were, and A can still use everything.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -28,11 +10,8 @@ const B_EMAIL = 'b.owner@example.com';
 const A_CONTACT = 'a.contact@example.com';
 const A_FOLDER = 'A-Private-Folder';
 const A_TRASHED_FOLDER = 'A-Trashed-Folder';
-// A folder only A ever names: if it shows up in an answer to B, B was shown A's folders. (A_FOLDER is a name B also types in its
-// requests - folders are per-account, so B naming it makes B's OWN folder of that name; what matters is that A's is untouched.)
 const A_HIDDEN = 'A-Hidden-Folder-ZQX';
 
-// ---------- the routes that need no session (everything else must be owner-scoped) ----------
 const REMOVED = ['/api/backup', '/api/backup/*', '/api/auth/recover-via-usb', '/api/pair', '/api/pair/*', '/api/pairing', '/api/pairing/*', '/api/sync', '/api/sync/*', '/api/devices', '/api/devices/*', '/api/auth/recover-via-phone', '/api/auth/recover-via-phone/*'].map((p) => `ALL ${p}`);
 const PUBLIC_ROUTES = new Set([
   ...REMOVED,
@@ -48,7 +27,6 @@ const PUBLIC_ROUTES = new Set([
   'GET /api/cron/purge-trash', 'GET /api/cron/reminders',
 ]);
 
-/** Every route of the real app with whether a session is required, found by walking the router stack. */
 function enumerateRoutes(app) {
   const requireSession = require('../middleware/requireSession');
   const out = [];
@@ -91,7 +69,6 @@ const it = (name, fn) =>
     return fn(context);
   });
 
-// ---------- the world ----------
 const world = {};
 
 const codeFromMail = (mail) => /(?<![\d-])(\d{6})(?![\d-])/.exec(mail.text)[1];
@@ -99,7 +76,6 @@ const lastMailTo = (address) => live.mails.filter((mail) => mail.to === address)
 
 async function signUpAndIn(email) {
   const { api, mongoose } = live;
-  // The real two-step sign-up: a code to the address first, the account only once it is entered.
   const started = await api('POST', '/api/auth/signup/start', { json: { email, password: PASSWORD, termsAccepted: true } });
   assert.equal(started.status, 200, started.text);
   assert.equal(await mongoose.models.User.countDocuments({ email }), 0, 'no account before the code');
@@ -124,7 +100,6 @@ async function buildWorld() {
   world.A = A;
   world.B = B;
 
-  // A: a folder with a shared document in it, a document with an expiry date, a trashed document, a trashed folder
   assert.equal((await api('POST', '/api/documents/folders', { token: A.token, json: { name: A_FOLDER, parentPath: '' } })).status, 201);
   const doc1 = await api('POST', '/api/documents', { token: A.token, form: textFile('A-secret-1.txt', 'A secret one', A_FOLDER) });
   const doc2 = await api('POST', '/api/documents', { token: A.token, form: textFile('A-secret-2.txt', 'A secret two') });
@@ -144,7 +119,6 @@ async function buildWorld() {
   const trash = await api('GET', '/api/trash', { token: A.token });
   world.trashedFolderId = trash.body.items.find((item) => item.kind === 'folder').id;
 
-  // A: two shares (one limited), a device, a trusted browser, reminders
   const share1 = await api('POST', `/api/documents/${world.docId}/share`, { token: A.token, json: { durationHours: 24 } });
   assert.equal(share1.status, 201, share1.text);
   world.shareId = share1.body.id;
@@ -152,7 +126,6 @@ async function buildWorld() {
   const share2 = await api('POST', `/api/documents/${world.docId2}/share`, { token: A.token, json: { durationHours: 24, maxDownloads: 3 } });
   assert.equal(share2.status, 201, share2.text);
   world.shareId2 = share2.body.id;
-  // A: a private note on one file, and a replaced file (so it has a previous version)
   assert.equal((await api('PUT', `/api/documents/${world.docId2}/note`, { token: A.token, json: { note: 'A-private-note: the safe code' } })).status, 200);
   assert.equal((await api('POST', `/api/documents/${world.docId}/versions`, { token: A.token, form: textFile('A-secret-1.txt', 'A secret one, replaced') })).status, 201);
   const versions = await api('GET', `/api/documents/${world.docId}/details`, { token: A.token });
@@ -166,14 +139,12 @@ async function buildWorld() {
   await M.ReminderLog.create({ userId: A.userId, fileId: world.docId2, threshold: 7, sent: true });
   world.folderRowId = String((await M.Folder.findOne({ userId: A.userId, name: A_FOLDER }).lean())._id);
 
-  // A: challenges (delete account, and an Emergency Access action) held by A only
   const del = await api('POST', '/api/account/delete-challenge', { token: A.token, json: { password: PASSWORD } });
   assert.equal(del.status, 200, del.text);
   world.deleteToken = del.body.challengeToken;
   const revokeChallenge = await api('POST', '/api/emergency/challenge', { token: A.token, json: { action: 'revoke' } });
   world.emergencyToken = revokeChallenge.body.challengeToken;
 
-  // A: Emergency Access, set up and with an open request from the contact
   const setupChallenge = await api('POST', '/api/emergency/challenge', { token: A.token, json: { action: 'setup' } });
   const setup = await api('POST', '/api/emergency/setup', {
     token: A.token,
@@ -188,7 +159,6 @@ async function buildWorld() {
   assert.equal(requested.status, 201, requested.text);
   world.requestId = String((await M.EmergencyRequest.findOne({ userId: A.userId }).lean())._id);
 
-  // B: some data of its own, so "B sees only B" is a real statement and not an empty list
   assert.equal((await api('POST', '/api/documents/folders', { token: B.token, json: { name: 'B-Folder', parentPath: '' } })).status, 201);
   const bDoc = await api('POST', '/api/documents', { token: B.token, form: textFile('B-note.txt', 'B note', 'B-Folder') });
   assert.equal(bDoc.status, 201, bDoc.text);
@@ -196,7 +166,6 @@ async function buildWorld() {
   assert.equal((await api('POST', `/api/documents/${world.bDocId}/share`, { token: B.token, json: { durationHours: 24 } })).status, 201);
 }
 
-/** Everything A's identifiers could appear as in a response to B. */
 function markers() {
   return [
     world.docId, world.docId2, world.trashedDocId, world.trashedFolderId, world.shareId, world.shareId2, world.shareKey, world.deviceId, world.trustedId,
@@ -204,7 +173,6 @@ function markers() {
   ];
 }
 
-/** A digest of every row of A's, so "nothing of A's changed" is one comparison. */
 async function snapshotOfA() {
   const M = live.mongoose.models;
   const userId = world.A.userId;
@@ -229,10 +197,6 @@ async function snapshotOfA() {
   return { digest: crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex'), counts };
 }
 
-// ---------- the plan: what B does to each owner route ----------
-// kind 'foreign': the request names an object of A's; the answer must be one of `expect`.
-// kind 'own':     there is nothing to name (or it is B's own), so the answer must be B's own data and none of A's.
-// `why` explains every status other than 403/404.
 const withFile = (name) => {
   const form = new FormData();
   form.append('thumb', new Blob([Buffer.from('not really an image')], { type: 'image/png' }), name);
@@ -245,9 +209,7 @@ function plan() {
   const w = world;
   const GONE = [403, 404];
   return {
-    // auth
     'GET /api/auth/me': { kind: 'own' },
-    // documents
     [`DELETE ${D}/folders`]: {
       kind: 'foreign', expect: [204], query: { path: A_FOLDER },
       why: 'folder delete is idempotent: a folder B does not have is a successful no-op. That it touched nothing of A’s is shown by the end-of-run comparison of A’s rows',
@@ -260,8 +222,6 @@ function plan() {
     [`GET ${D}/folders/children`]: { kind: 'own', query: { path: A_FOLDER } },
     [`GET ${D}/photos`]: { kind: 'own' },
     [`GET ${D}/storage`]: { kind: 'own' },
-    // Folders are named per account, so B naming "A-Private-Folder" creates / renames B's OWN folder of that name. These are
-    // 'own': what matters is that A's folder is untouched (the end-of-run comparison) and that nothing of A's is shown.
     [`POST ${D}/folders`]: { kind: 'own', json: { name: 'planted', parentPath: A_FOLDER } },
     [`PATCH ${D}/folders`]: { kind: 'own', json: { path: A_FOLDER, name: 'renamed-by-b' } },
     [`POST ${D}/move`]: {
@@ -278,7 +238,6 @@ function plan() {
     [`PATCH ${D}/:id`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { filename: 'pwned.txt', folder: '', expiryDate: null } },
     [`POST ${D}/:id/share`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { durationHours: 24 } },
     [`GET ${D}/:id/shares`]: { kind: 'foreign', expect: GONE, params: { id: w.docId } },
-    // stars, Recent, the details panel and the batch actions
     [`POST ${D}/star`]: {
       kind: 'foreign', expect: [200], json: { ids: [w.docId], starred: true },
       why: 'a star answers with how many of the CALLER own files it touched; for B that is none (and the file of A is unchanged: see the end-of-run comparison)',
@@ -296,13 +255,11 @@ function plan() {
       why: 'answers per id; every one is "not_found" for B',
       after: (res) => assert.ok(res.body.trashedCount === 0 && res.body.results.every((item) => item.status === 'not_found'), res.text),
     },
-    // private notes and version history
     [`PUT ${D}/:id/note`]: { kind: 'foreign', expect: GONE, params: { id: w.docId2 }, json: { note: 'planted by B' } },
     [`POST ${D}/:id/versions`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, form: () => textFile('x.txt', 'planted by B') },
     [`POST ${D}/:id/versions/:versionId/restore`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
     [`DELETE ${D}/:id/versions/:versionId`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
     [`GET ${D}/:id/versions/:versionId/download`]: { kind: 'foreign', expect: GONE, params: { id: w.docId, versionId: w.versionId } },
-    // shares (owner side)
     'POST /api/shares': { kind: 'foreign', expect: GONE, json: { documentIds: [w.docId, w.docId2] } },
     'GET /api/shares': { kind: 'own' },
     'DELETE /api/shares': { kind: 'own' },
@@ -313,7 +270,6 @@ function plan() {
     'PUT /api/shares/:shareId/password': { kind: 'foreign', expect: GONE, params: { shareId: w.shareId }, json: aPasswordBody() },
     'DELETE /api/shares/:shareId/password': { kind: 'foreign', expect: GONE, params: { shareId: w.shareId } },
     'DELETE /api/shares/:shareId': { kind: 'foreign', expect: GONE, params: { shareId: w.shareId } },
-    // account
     'GET /api/account/health': { kind: 'own' },
     'GET /api/account/preferences': { kind: 'own' },
     'PATCH /api/account/preferences': { kind: 'own', json: { expiryReminders: false } },
@@ -323,7 +279,6 @@ function plan() {
     'GET /api/account/trusted-devices': { kind: 'own' },
     'DELETE /api/account/trusted-devices': { kind: 'own' },
     'DELETE /api/account/trusted-devices/:id': { kind: 'foreign', expect: GONE, params: { id: w.trustedId } },
-    // emergency (owner side)
     'GET /api/emergency/status': { kind: 'own' },
     'GET /api/emergency/session-info': { kind: 'own' },
     'GET /api/emergency/folders': { kind: 'own' },
@@ -337,7 +292,6 @@ function plan() {
     'POST /api/emergency/revoke': { kind: 'foreign', expect: GONE, json: () => ({ challengeToken: w.emergencyToken, code: '000000' }) },
     'POST /api/emergency/requests/:id/deny': { kind: 'foreign', expect: [409], params: { id: w.requestId }, why: 'a deny that matches no request of B’s says "can no longer be denied", the same answer for an id that does not exist' },
     'POST /api/emergency/requests/:id/approve-now': { kind: 'foreign', expect: GONE, params: { id: w.requestId }, json: () => ({ challengeToken: w.emergencyToken, code: '000000' }) },
-    // security
     'GET /api/security/devices': { kind: 'own' },
     'POST /api/security/devices/sign-out-others': { kind: 'own' },
     'POST /api/security/devices/:id/sign-out': { kind: 'foreign', expect: GONE, params: { id: w.deviceId } },
@@ -345,19 +299,15 @@ function plan() {
     'GET /api/security/activity': { kind: 'own', query: { device: w.deviceId, limit: '200' } },
     'POST /api/security/verify-log': { kind: 'own' },
     'POST /api/security/client-event': { kind: 'own', json: { type: 'export' } },
-    // insights
     'GET /api/insights/overview': { kind: 'own' },
     'GET /api/insights/stale': { kind: 'own' },
     'GET /api/insights/frequent': { kind: 'own' },
-    // trash
     'GET /api/trash': { kind: 'own' },
-    // Quarantine: B's own (empty) list, and a release that names A's file is the same 404 as any other foreign id.
     'GET /api/quarantine': { kind: 'own' },
     [`POST ${D}/:id/quarantine/release`]: { kind: 'foreign', expect: GONE, params: { id: w.docId }, json: { confirm: 'RELEASE' } },
     'POST /api/trash/restore': { kind: 'foreign', expect: GONE, json: () => ({ kind: 'file', id: w.trashedDocId }) },
     'DELETE /api/trash': { kind: 'own' },
     'DELETE /api/trash/:kind/:id': { kind: 'foreign', expect: GONE, params: { kind: 'file', id: w.trashedDocId } },
-    // last: it ends B's session
     'POST /api/auth/logout': { kind: 'own' },
   };
 }
@@ -380,7 +330,6 @@ it('B cannot read, change, delete or even detect A’s data on any owner route',
   const routes = enumerateRoutes(live.app).filter((route) => route.guarded);
   const plans = plan();
 
-  // every owner route has a plan, and every plan is for a real route
   const keys = routes.map((route) => `${route.method} ${route.path}`);
   assert.deepEqual(keys.filter((key) => !plans[key]), [], 'owner routes without a cross-user plan (add one in plan())');
   assert.deepEqual(Object.keys(plans).filter((key) => !keys.includes(key)), [], 'plans for routes that no longer exist');
@@ -388,7 +337,6 @@ it('B cannot read, change, delete or even detect A’s data on any owner route',
   const scan = markers();
   const results = [];
   const problems = [];
-  // the logout route goes last: it ends B's session
   const ordered = [...routes].sort((a, b) => Number(a.path === '/api/auth/logout') - Number(b.path === '/api/auth/logout'));
   for (const route of ordered) {
     const key = `${route.method} ${route.path}`;
@@ -401,7 +349,6 @@ it('B cannot read, change, delete or even detect A’s data on any owner route',
     const res = await api(route.method, path, { token: world.B.token, json, form, query: entry.query });
     results.push({ key, status: res.status, kind: entry.kind });
 
-    // never a server error, and never any of A's identifiers or content in the answer
     if (res.status >= 500) problems.push(`${key} -> ${res.status} ${res.text.slice(0, 160)}`);
     const sent = `${path} ${JSON.stringify(entry.query || {})} ${JSON.stringify(json || {})}`;
     for (const marker of scan) if (!sent.includes(marker) && res.text.includes(marker)) problems.push(`${key} -> ${res.status} leaked A's "${marker}": ${res.text.slice(0, 200)}`);
@@ -421,19 +368,16 @@ it('B cannot read, change, delete or even detect A’s data on any owner route',
   }
   assert.deepEqual(problems, [], `cross-user problems: ${problems.join(' | ')}`);
 
-  // B's own listings are really B's: there was something to see, and it is B's
   const own = await api('GET', '/api/documents', { token: world.B.token });
   assert.equal(own.status, 401, 'B logged out at the end, as planned');
   const again = await signUpAndInAgain(B_EMAIL);
   const listing = await api('GET', '/api/documents', { token: again });
   assert.match(listing.text, /B-note\.txt/);
 
-  // A's rows are exactly what they were
   const after = await snapshotOfA();
   assert.deepEqual(after.counts, before.counts, 'row counts of A’s data');
   assert.equal(after.digest, before.digest, 'A’s rows changed while B was probing');
 
-  // and A can still use all of it
   const { token } = world.A;
   assert.equal((await api('GET', `/api/documents/${world.docId}/view`, { token })).status, 200);
   assert.equal((await api('GET', `/api/shares/${world.shareId}/protection`, { token })).status, 200);

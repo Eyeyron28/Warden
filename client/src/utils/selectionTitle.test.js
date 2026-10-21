@@ -15,7 +15,6 @@ test('the page title is rendered with and without a selection; only the controls
     const bar = text.indexOf('<SelectionBar', toolbar);
     assert.ok(toolbar > -1 && title > toolbar, `${page}: the toolbar holds the title`);
     assert.ok(title < bar, `${page}: the title comes before, and outside, the selection branch`);
-    // The selection branch is the only thing that swaps: exactly one SelectionBar, and no page-wide branch around the title.
     assert.equal((text.match(/<SelectionBar/g) || []).length, 1, page);
     assert.doesNotMatch(text.slice(0, toolbar).slice(-200), /selection\.count > 0 \? \(\s*$/, `${page}: the title is not inside the ternary`);
   }

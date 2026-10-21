@@ -1,7 +1,6 @@
 import { RETENTION } from './retention.js';
 import styles from './RetentionTable.module.css';
 
-/** The retention table shown on the privacy page (and in the read-before-you-agree dialog at sign-up). */
 function RetentionTable() {
   return (
     <div className={styles.wrap}>

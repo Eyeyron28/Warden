@@ -4,14 +4,6 @@ const requireSession = require('../middleware/requireSession');
 const createRateLimiter = require('../middleware/rateLimit');
 const c = require('../controllers/emergency.controller');
 
-/**
- * Emergency Access (security model: utils/emergency/config.js).
- *
- * Two routers, mounted in server.js: `publicRouter` at /api/emergency/public (a trusted contact has NO account: strict
- * limits per connection, every answer neutral) and `ownerRouter` at /api/emergency (a signed-in, normal session; an
- * emergency session is refused for every one of these by the guard in requireSession).
- */
-
 const publicRouter = express.Router();
 const byIp = createRateLimiter({ name: 'emergency-public-ip', max: 40, windowMs: 60 * 60 * 1000 });
 publicRouter.use(byIp);
@@ -27,9 +19,6 @@ const byAccount = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   keyFn: (req) => (req.userId ? String(req.userId) : null),
 });
-// The reads (the status the banner polls every minute and the Emergency page every 30 seconds, the session info and the
-// folder picker) have their OWN, larger budget. On the strict one an open tab alone used the whole hour (60 polls) and
-// a 429 then also blocked the owner's real actions - denying a request. They only ever read the caller's own data.
 const readsByAccount = createRateLimiter({
   name: 'emergency-owner-read',
   max: 600,

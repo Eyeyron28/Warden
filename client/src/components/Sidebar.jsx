@@ -24,7 +24,6 @@ import styles from './Sidebar.module.css';
 
 const ICON = 22;
 
-/** A small shield with a mark, drawn here (a library icon would add more to the main bundle than the whole item needs). */
 function QuarantineIcon() {
   return (
     <svg width={ICON} height={ICON} viewBox="0 0 256 256" className={styles.shield} aria-hidden="true">
@@ -34,10 +33,6 @@ function QuarantineIcon() {
   );
 }
 
-/**
- * One labelled group of links (Main, Management, System). In the icon rail the small uppercase label becomes a thin divider, but it
- * stays in the page for screen readers, so the group keeps its name.
- */
 function NavGroup({ id, title, rail, children }) {
   return (
     <div role="group" aria-labelledby={id} className={styles.navGroup} data-group={title}>
@@ -50,18 +45,6 @@ function NavGroup({ id, title, rail, children }) {
 }
 const navClass = ({ isActive }) => `${styles.item} ${isActive ? styles.itemActive : ''}`;
 
-/**
- * Persistent left navigation in three labelled groups - Main (My files with its lazily loaded folder tree, Photos, Recent, Starred,
- * Shared), Management (Overview, Devices & activity, Export / Import) and System (Emergency Access, Trash) - that scroll in the
- * middle, and an Account footer pinned at the bottom.
- *
- * On desktop a button at the top collapses it to an icon rail (about 64px):
- * every icon gets a tooltip with its label, the active item stays
- * highlighted, the folder tree hides and the group labels become thin dividers
- * (same order, same names for screen readers). The state lives in AppLayout's memory only. Under 768px it is a slide-in
- * drawer instead (never collapsed): it closes on navigation and Esc and keeps
- * keyboard focus inside while open.
- */
 function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCollapsed }) {
   const location = useLocation();
   const [params] = useSearchParams();
@@ -85,15 +68,11 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawer, open, onClose]);
 
-  // (The held-files count rides on the top level of the folder tree, which is asked for before the rail can be chosen.)
-
   const hidden = drawer && !open;
-  // Following a link closes the drawer even when it points at the page you are already on.
   const closeDrawer = () => {
     if (drawer) onClose();
   };
 
-  // In the icon rail an icon is named (and, on hover or keyboard focus, explained) by the shared tooltips: aria-label and data-tip.
   const tipFor = (text) => (rail ? { 'aria-label': text, 'data-tip': text } : {});
   const label = (text) => <span className={rail ? styles.srOnly : styles.itemLabel}>{text}</span>;
 
@@ -121,7 +100,6 @@ function Sidebar({ drawer, open, onClose, version, collapsed = false, onToggleCo
           </button>
         )}
 
-        {/* The groups scroll in the middle; the Account footer stays pinned at the bottom. */}
         <div className={styles.scroll}>
           <NavGroup id={`${ids}-main`} title="Main" rail={rail}>
             <div className={styles.group}>

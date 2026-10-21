@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Per-account upload limits on the REAL app against a LOCAL throwaway MongoDB (skipped, with the reason, without one): how fast
-// (per minute and per hour, counted in the database), and how many documents. Mail is captured, no .env is read.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -45,7 +41,6 @@ async function account(email) {
   return { token: verified.body.sessionToken, userId: user._id, email };
 }
 const D = '/api/documents';
-// The test helper clears the rate-limit counters before every request; these tests are about those counters, so they keep them.
 const call = (method, path, options = {}) => live.api(method, path, { ...options, keepLimits: true });
 const send = (user, name = 'note.txt', buffer = Buffer.from('hello'), { uploadKey } = {}) => {
   const form = new FormData();
@@ -56,7 +51,6 @@ const send = (user, name = 'note.txt', buffer = Buffer.from('hello'), { uploadKe
 const docCount = () => live.mongoose.models.Document.countDocuments({});
 const bucketRow = (bucket, user) => live.mongoose.models.RateLimit.findOne({ bucket, key: String(user.userId) }).lean();
 
-/** Captures the security log lines written while `fn` runs. */
 async function logged(fn) {
   const lines = [];
   const original = console.warn;
@@ -68,8 +62,6 @@ async function logged(fn) {
   }
   return lines;
 }
-
-// ---------------- speed ----------------
 
 it('defaults: 600 an hour and 120 a minute; env overrides work and anything that is not a positive whole number is ignored', () => {
   assert.equal(limits.hourlyLimit(), 600);
@@ -178,8 +170,6 @@ it('only uploads to POST /api/documents are limited: listing and other routes ar
   assert.equal((await call('GET', `${D}/storage`, { token: a.token })).status, 200);
 });
 
-// ---------------- the document cap ----------------
-
 it('the document cap blocks at the limit with 409 DOCUMENT_LIMIT and its plain sentence; Trash and held files count; new versions are not new documents', async () => {
   const a = await account('lim.cap@example.com');
   process.env.MAX_DOCUMENTS_PER_ACCOUNT = '4';
@@ -195,19 +185,16 @@ it('the document cap blocks at the limit with 409 DOCUMENT_LIMIT and its plain s
   assert.equal(refused.body.error.code, 'DOCUMENT_LIMIT');
   assert.equal(refused.body.error.message, 'You have reached the limit of 4 files. Delete some files or empty the Trash.');
   assert.equal(await docCount(), 4, 'nothing stored');
-  // a new version of an existing file is fine at the cap
   const form = new FormData();
   form.append('file', new Blob([Buffer.from('second contents')], { type: 'text/plain' }), 'a.txt');
   const version = await call('POST', `${D}/${ids[0]}/versions`, { token: a.token, form });
   assert.equal(version.status, 201, version.text);
   assert.equal(await docCount(), 4);
-  // the same upload sent again (a retry) is answered with the first one even at the cap
   const key = crypto.randomUUID();
   process.env.MAX_DOCUMENTS_PER_ACCOUNT = '5';
   assert.equal((await send(a, 'keyed.txt', Buffer.from('k'), { uploadKey: key })).status, 201);
   process.env.MAX_DOCUMENTS_PER_ACCOUNT = '5';
   assert.equal((await send(a, 'keyed.txt', Buffer.from('k'), { uploadKey: key })).status, 200);
-  // another account is not affected
   const b = await account('lim.cap.b@example.com');
   assert.equal((await send(b, 'mine.txt')).status, 201);
 });
@@ -219,8 +206,6 @@ it('the count query is covered by an index (no collection scan)', async () => {
   assert.match(text, /IXSCAN/);
   assert.doesNotMatch(text, /COLLSCAN/);
 });
-
-// ---------------- the log ----------------
 
 it('each limit hit writes one security line: the event, a keyed hash, no email, token, address or file name', async () => {
   const a = await account('lim.log@example.com');

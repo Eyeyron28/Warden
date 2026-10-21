@@ -8,10 +8,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (relative) =>
   fs.readFileSync(path.join(here, '..', relative), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-// [id, autoComplete] for every <Tag ... id="..." ...> in a source file.
 const attrs = (source, tag) => {
   const found = [];
-  // Each element runs from "<Tag" to its self-closing "/>".
   for (const chunk of source.split('<' + tag).slice(1)) {
     const element = chunk.slice(0, chunk.indexOf('/>'));
     const id = /id="([^"]+)"/.exec(element)?.[1];
@@ -33,7 +31,6 @@ test('login and re-authentication fields are "off", so no generated-password pro
   assert.deepEqual(attrs(read('pages/auth/LoginPage.jsx'), 'PasswordInput'), [['login-password', 'off']]);
   assert.deepEqual(attrs(read('pages/AccountPage.jsx'), 'PasswordInput'), [['delete-password', 'off']]);
   assert.deepEqual(attrs(read('pages/SharedDocumentPage.jsx'), 'PasswordInput'), [['share-view-password', 'off']]);
-  // The shared field defaults to "off" and gives it a non-standard name.
   const input = read('pages/auth/PasswordInput.jsx');
   assert.match(input, /autoComplete = 'off'/);
   assert.match(input, /name=\{autoComplete === 'new-password' \? undefined : `wd-/);

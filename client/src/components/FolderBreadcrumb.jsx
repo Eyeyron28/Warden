@@ -5,13 +5,6 @@ import { useFolderStyles } from '../services/folderStyles.js';
 import { splitPath, joinPath } from '../utils/folderPath.js';
 import styles from './FolderBreadcrumb.module.css';
 
-/**
- * Drive-style breadcrumb replacing the old flat All/folder-name tab bar
- * (FolderFilter) - `path` is the same slash-delimited string VaultShell
- * tracks as `currentPath`. Every crumb before the last is a link back up
- * to that point in the tree; the last one is the current location and
- * isn't clickable, matching how Drive's own breadcrumb behaves.
- */
 function FolderBreadcrumb({ path, onNavigate, rootLabel = 'My files' }) {
   const segments = splitPath(path);
   const looks = useFolderStyles();

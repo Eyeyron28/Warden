@@ -1,10 +1,6 @@
 import site from './site.module.css';
 import styles from './LegalPage.module.css';
 
-/**
- * Long-form page with a table of contents: a sticky sidebar on desktop,
- * a plain list above the text on smaller screens.
- */
 function LegalPage({ title, updated, intro, sections }) {
   return (
     <div className={`${site.container} ${styles.layout}`}>

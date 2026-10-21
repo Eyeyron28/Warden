@@ -1,10 +1,3 @@
-// node scripts/check-tooltips.mjs   (from client, after "npm run build"; DIST_DIR, SHOTS and THEME=dark as for check-responsive)
-//
-// Tooltips and names in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099; no .env is read), served with
-// the production CSP. PART 1 crawls every page, dialog and the tray (sidebar expanded and collapsed, 360 and 1366 px) and FAILS for
-// every visible button, link or role="button" control that has no visible text and no accessible name. PART 2 hovers samples and
-// checks the shared tooltip (text, one at a time, inside the viewport, never blocks a click, keyboard focus, disabled reasons).
-// LIST=1 prints the unnamed controls and does not fail on them (the recon).
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -78,7 +71,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -103,7 +96,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'warden-tooltips-'));
 const LIST = Boolean(process.env.LIST);
 const THEME = process.env.THEME === 'dark' ? 'dark' : 'light';
 
-/** Runs in the page: every visible button, link or role="button" control with no visible text and no accessible name. */
 function findUnnamed() {
   const selector = 'button, a[href], [role="button"], [role="menuitem"], [role="tab"], summary, input[type="checkbox"], input[type="radio"]';
   const visible = (el) => {
@@ -111,10 +103,8 @@ function findUnnamed() {
     const cs = getComputedStyle(el);
     if (r.width <= 0 || r.height <= 0 || cs.visibility === 'hidden' || cs.display === 'none') return false;
     if (r.right < 0 || r.bottom < 0 || r.left > innerWidth || r.top > innerHeight + 4000) return false;
-    // hidden file inputs and the like
     if (el.closest('[aria-hidden="true"]') && !el.closest('[role="dialog"]')) return false;
     if (el.matches('input[type="file"]')) return false;
-    // clipped away visually (the screen-reader-only trick)
     if (r.width <= 1 && r.height <= 1) return false;
     return true;
   };
@@ -145,7 +135,6 @@ function findUnnamed() {
   };
   const all = [...document.querySelectorAll(selector)].filter(visible);
   const ownName = (el) => {
-    // everything except the title attribute
     const keep = el.getAttribute('title');
     el.removeAttribute('title');
     const name = nameOf(el);
@@ -154,15 +143,13 @@ function findUnnamed() {
   };
   return {
     unnamed: all.filter((el) => !nameOf(el)).map(describe),
-    // named only by a title attribute: a hover hint, but nothing a screen reader is sure to read
     titleOnly: all.filter((el) => nameOf(el) && !ownName(el)).map(describe),
     total: all.length,
-    // icon-only controls (no text of their own) and what names them, for the report
     iconOnly: all.filter((el) => !(el.innerText || '').trim()).map((el) => `${describe(el)} => "${(el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 40)}" ${el.getAttribute('aria-label') ? '[aria-label]' : el.getAttribute('title') ? '[title]' : el.getAttribute('aria-labelledby') ? '[labelledby]' : '[other]'}`),
   };
 }
 
-const unnamedSeen = new Map(); // description -> where it was first seen
+const unnamedSeen = new Map();
 const titleOnlySeen = new Map();
 const iconOnlySeen = new Map();
 let checkedTotal = 0;
@@ -197,7 +184,6 @@ try {
   await api('POST', '/api/auth/signup/start', { json: { email, password, termsAccepted: true } });
   const code = /(?<![\d-])(\d{6})(?![\d-])/.exec(mails.at(-1).text)[1];
   const token = (await api('POST', '/api/auth/signup/verify', { json: { email, password, code } })).body.sessionToken;
-  // something to look at on every page: folders, a few files (one starred), one held file
   for (const name of ['Taxes', 'Health records']) await api('POST', '/api/documents/folders', { token, json: { name, parentPath: '', color: 'blue', icon: 'folder' } });
   const ids = [];
   for (const [name, text, folder] of [['report.pdf', '%PDF-1.4\n%%EOF\n', undefined], ['notes.txt', 'some notes', undefined], ['receipt.txt', 'a receipt', 'Taxes']]) {
@@ -206,13 +192,13 @@ try {
   }
   await postFile(token, 'risky-form.pdf', Buffer.from('%PDF-1.4 /JavaScript\n%%EOF'));
   await api('POST', '/api/documents/star', { token, json: { ids: [ids[0]], starred: true } });
-  await api('DELETE', `/api/documents/${ids[1]}`, { token }); // one file in Trash
+  await api('DELETE', `/api/documents/${ids[1]}`, { token });
 
   browser = await launch();
   const newContext = async (size, extra = {}) => {
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'no-preference', colorScheme: THEME, ...extra });
     await context.addInitScript((value) => {
-      try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+      try { window.sessionStorage.setItem('warden.session', value); } catch {  }
       window.__csp = [];
       document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
     }, token);
@@ -220,7 +206,6 @@ try {
   };
   const consoleProblems = [];
 
-  // ================= PART 1: every control has a name =================
   for (const size of SIZES) {
     const context = await newContext(size);
     const page = await context.newPage();
@@ -250,7 +235,6 @@ try {
       }
     }
 
-    // dialogs, menus and the tray, on My files
     await page.goto(base + '/files', { waitUntil: 'domcontentloaded' });
     await settle();
     const step = async (label, work) => {
@@ -273,7 +257,6 @@ try {
     await step('context menu (file)', async () => { await page.getByText('report.pdf').first().click({ button: 'right' }); });
     await step('file selected (selection bar)', async () => { await page.locator('input[type=checkbox][aria-label^="Select "]').first().check(); });
     await step('grid view', async () => { await page.getByRole('button', { name: /grid/i }).first().click(); });
-    // the tray, with a running and a finished row
     await step('transfer tray', async () => {
       await page.getByRole('button', { name: 'New' }).click();
       await page.getByRole('menuitem', { name: /Upload file/ }).click();
@@ -300,7 +283,6 @@ try {
   for (const p of perState.filter((q) => q.examples[0]?.startsWith('(could not'))) console.log(`  NOT OPENED: ${p.label} ${p.examples[0]}`);
   if (!LIST) check(unnamedSeen.size === 0, `no visible icon-only control is without an accessible name (${unnamedSeen.size} found)`);
   if (LIST) process.exitCode = 0;
-  // ================= PART 2: the tooltips themselves =================
   const context = await newContext({ name: '1366', width: 1366, height: 768 });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
@@ -309,7 +291,6 @@ try {
   const visibleTips = () => page.evaluate(() => [...document.querySelectorAll('[role="tooltip"]')].filter((t) => !t.hidden && getComputedStyle(t).display !== 'none').length);
   const view = { w: 1366, h: 768 };
   const inside = (box) => box && box.x >= 8 - 0.5 && box.y >= 0 && box.x + box.width <= view.w - 8 + 0.5 && box.y + box.height <= view.h;
-  /** Hovers a control and returns what the tooltip said (null when none showed). */
   async function hoverTip(locator, label, expected, { edge = true } = {}) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(150);
@@ -330,7 +311,6 @@ try {
   }
   const goto = async (route) => { await page.goto(base + route, { waitUntil: 'domcontentloaded' }); await page.waitForLoadState('networkidle').catch(() => {}); await page.waitForTimeout(400); };
 
-  // ---- My files: star, details, three dots, chevron, text button tips ----
   await goto('/files');
   await hoverTip(page.locator('button[aria-label^="Star "], button[aria-label^="Remove star "]').first(), 'star', /^(Star|Remove star) /);
   await hoverTip(page.locator('button[aria-label^="Details for "]').first(), 'details', /^Details for /);
@@ -339,18 +319,15 @@ try {
   await hoverTip(page.getByRole('button', { name: 'Lock vault' }), 'Lock vault (near the right edge)', 'Lock now and require your password again');
   await hoverTip(page.getByRole('button', { name: /^Scan/ }).first(), 'Scan', 'Scan a paper document with the camera into a PDF');
   await hoverTip(page.getByRole('button', { name: 'List view' }), 'List view', 'List view');
-  // a control with its own text and no data-tip shows nothing
   await page.mouse.move(2, 2);
   await page.getByRole('button', { name: 'New' }).hover();
   await page.waitForTimeout(700);
   check((await visibleTips()) === 0, 'a button with visible text and no data-tip (New) shows no tooltip');
-  // switching is instant between neighbours; only one tooltip at a time
   await hoverTip(page.locator('button[aria-label^="Details for "]').first(), 'neighbour 1', /^Details for /);
   const startedSwitch = Date.now();
   await page.locator('button[aria-label^="More actions for "]').first().hover();
   await tip.filter({ hasText: /^More actions/ }).waitFor({ state: 'visible', timeout: 1500 });
   check(Date.now() - startedSwitch < 350 && (await visibleTips()) === 1, `moving to a neighbour shows its tooltip at once (${Date.now() - startedSwitch} ms), still only one`);
-  // it hides on click, and the click still works through it
   await page.locator('button[aria-label^="Star "], button[aria-label^="Remove star "]').first().hover();
   await tip.waitFor({ state: 'visible' });
   const starName = await page.locator('button[aria-label^="Star "], button[aria-label^="Remove star "]').first().getAttribute('aria-label');
@@ -358,13 +335,11 @@ try {
   await page.waitForTimeout(300);
   check((await visibleTips()) === 0, 'a click hides the tooltip');
   check((await page.locator(`button[aria-label^="${starName.startsWith('Star') ? 'Remove star' : 'Star'} "]`).count()) >= 1, 'and the click went through to the button');
-  // Escape and scroll hide it
   await hoverTip(page.locator('button[aria-label^="Details for "]').first(), 'for Escape', /^Details for /);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   check((await visibleTips()) === 0, 'Escape hides it');
 
-  // ---- keyboard focus shows it at once, blur hides it ----
   await page.mouse.move(2, 2);
   await page.getByRole('button', { name: 'Grid view' }).focus();
   await tip.waitFor({ state: 'visible', timeout: 1000 });
@@ -373,14 +348,12 @@ try {
   await page.waitForTimeout(100);
   check((await visibleTips()) === 0, 'and blur hides it');
 
-  // ---- the collapsed sidebar shows the page names, one near the bottom (flips) ----
   await page.getByRole('button', { name: 'Collapse sidebar' }).click();
   await page.waitForTimeout(300);
   for (const [href, text] of [['/photos', 'Photos'], ['/quarantine', 'Quarantine'], ['/account', 'Account']]) await hoverTip(page.locator(`#app-sidebar a[href="${href}"]`), `collapsed sidebar: ${text}`, text);
   await hoverTip(page.getByRole('button', { name: 'Expand sidebar' }), 'Expand sidebar', 'Expand sidebar');
   await page.getByRole('button', { name: 'Expand sidebar' }).click();
 
-  // ---- dialogs: the close X, a disabled button with its reason, and the Upload button's own tip ----
   await page.getByRole('button', { name: 'New' }).click();
   await page.getByRole('menuitem', { name: /Upload file/ }).click();
   const uploadDialog = page.getByRole('dialog', { name: 'Upload file' });
@@ -396,7 +369,6 @@ try {
   await uploadDialog.getByRole('button', { name: /^Encrypt/ }).click();
   await uploadDialog.waitFor({ state: 'detached', timeout: 5000 });
 
-  // ---- the transfer tray ----
   await page.getByTestId('transfer-tray').waitFor();
   await page.getByText(/sealed|Held/i).first().waitFor({ timeout: 10000 });
   await hoverTip(page.getByRole('button', { name: 'Minimize the transfers' }), 'tray: minimize', 'Minimize the transfers');
@@ -404,12 +376,10 @@ try {
   await hoverTip(page.getByTestId('status-icon').first(), 'tray: the status icon', /^Sealed: encrypted with your vault key/);
   await page.getByRole('button', { name: 'Close the transfers' }).click();
 
-  // ---- Export / Import: a disabled Import with its reason, Download with its tip ----
   await goto('/export');
   await hoverTip(page.getByRole('button', { name: 'Import', exact: true }), 'Import with no zip chosen', 'Choose a .zip first');
   await hoverTip(page.getByRole('button', { name: /^Download all my files/ }), 'Download all my files (.zip)', 'The zip is not encrypted');
 
-  // ---- Quarantine: Release (row) and the dialog's button with its reason ----
   await goto('/quarantine');
   await hoverTip(page.getByRole('button', { name: /^Release / }).first(), 'Release', 'Move this file out of quarantine');
   await page.getByRole('button', { name: /^Release / }).first().click();
@@ -418,7 +388,6 @@ try {
   await hoverTip(releaseDialog.getByRole('button', { name: 'Release file' }), 'Release before the word matches', 'Type RELEASE to enable');
   await page.keyboard.press('Escape');
 
-  // ---- touch: ignored (the visible label, or the tap popover of the tray, is used instead) ----
   const phone = await newContext({ name: '360', width: 360, height: 800 }, { hasTouch: true, isMobile: true });
   const mobile = await phone.newPage();
   await mobile.goto(`${base}/files`, { waitUntil: 'domcontentloaded' });

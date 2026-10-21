@@ -42,7 +42,6 @@ test('no click, with any modifier or item kind, ever downloads', () => {
 test('the click surface of the file views has no download or open-in-new-tab code at all', () => {
   const browser = strip(fs.readFileSync(path.join(src, 'components', 'FileBrowser.jsx'), 'utf8'));
   assert.doesNotMatch(browser, /download|openBlob|window\.open|createObjectURL/i);
-  // The old "open the decrypted file in a new tab" helper is gone everywhere.
   for (const dir of ['components', 'pages', 'services', 'utils']) {
     for (const name of fs.readdirSync(path.join(src, dir))) {
       if (!/\.jsx?$/.test(name) || name.endsWith('.test.js')) continue;
@@ -61,7 +60,6 @@ test('downloading is reachable only from explicit Download controls', () => {
     }
   }
   assert.deepEqual(callers.sort(), ['components/DetailsVersions.jsx', 'components/FilePreview.jsx', 'pages/EmergencyFilesPage.jsx', 'pages/ExpiredPage.jsx', 'pages/FilesPage.jsx', 'pages/PhotosPage.jsx']);
-  // ...and in each one only inside a function named like a download action.
   for (const file of callers) {
     const text = strip(fs.readFileSync(path.join(src, file), 'utf8'));
     for (const match of text.matchAll(/downloadBytes\(/g)) {

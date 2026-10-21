@@ -1,14 +1,5 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-// Loads synthetic shell accounts into a SEPARATE database ("warden_seed") for a size and load test.
-// The accounts can never be logged into: every secret field is random bytes in the right shape.
-//
-//   WARDEN_SEED_URI="mongodb+srv://..." node scripts/seed-users.js --limit 1000
-//   node scripts/seed-users.js --dry-run --limit 5      (no connection at all)
-//   node scripts/seed-users.js --drop-seed              (removes only the seeded documents)
-//   node scripts/seed-users.js --drop-db                (drops the whole warden_seed database, asks first)
-//
-// Documents go in through the raw collection, so the User model and app code are not touched.
 
 const crypto = require('crypto');
 const { mkdirSync, readFileSync, writeFileSync } = require('fs');
@@ -22,7 +13,6 @@ const CSV_PATH = path.join(__dirname, 'data', 'SocialMediaUsersDataset.csv');
 const REPORT_PATH = path.join(__dirname, 'out', 'seed-report.md');
 const TARGET_ACCOUNTS = 40000;
 
-// Small CSV reader: quoted fields may hold commas, doubled quotes and line breaks.
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -60,7 +50,6 @@ function parseCsv(text) {
   return rows;
 }
 
-// Turns CSV text into objects keyed by the header names.
 function readUsers(text) {
   const [header, ...rest] = parseCsv(text);
   if (!header) return [];
@@ -71,14 +60,11 @@ function readUsers(text) {
 const hex = (bytes) => crypto.randomBytes(bytes).toString('hex');
 const b64 = (bytes) => crypto.randomBytes(bytes).toString('base64');
 
-// One CSV row to one User document. Only the user id is used: the User model has no display
-// name field, and gender, birth date, interests and place are never stored.
 function mapRow(csvRow, rowNumber, now = new Date()) {
   const userId = String(csvRow.UserID ?? '').trim();
   return {
     email: `u${userId}@seed.invalid`,
     emailVerified: false,
-    // Random bytes, same shapes as utils/crypto.js: no password or recovery key can ever match.
     passwordHash: hex(64),
     salt: hex(16),
     recoveryKeyHash: `${hex(16)}:${hex(64)}`,
@@ -183,7 +169,6 @@ async function seed(opts) {
         const result = await collection.insertMany(batch, { ordered: false });
         inserted += result.insertedCount;
       } catch (error) {
-        // Duplicates from an earlier run are skipped; anything else stops the script.
         const errors = error.writeErrors || [];
         if (errors.length === 0 || !errors.every((e) => e.code === 11000)) throw error;
         inserted += batch.length - errors.length;

@@ -61,8 +61,6 @@ function saveBlobAs(url, filename) {
 function openInNewTab(url) {
   const opened = window.open(url, '_blank', 'noopener');
   if (!opened) {
-    // Popup blocked - fall back to a real (user-gesture-driven) anchor
-    // click, which browsers don't block the way they block window.open.
     const link = document.createElement('a');
     link.href = url;
     link.target = '_blank';
@@ -73,28 +71,14 @@ function openInNewTab(url) {
   }
 }
 
-/**
- * Fetches one encrypted file and decrypts it HERE, in the browser. Everything
- * about the result is treated as untrusted (the owner chose the name and the
- * declared type, and the bytes are whatever they uploaded):
- *   - only png/jpeg/gif/webp/pdf whose own first bytes match their label may
- *     be previewed inline, from a blob URL typed as that exact type;
- *   - everything else - html, svg, scripts, unknown - is typed as opaque
- *     bytes and can only be downloaded, never rendered by this page.
- */
 async function openSharedFile({ shareId, key, entry, accessToken }) {
   const encrypted = await fetchSharedFile(shareId, entry.id, accessToken);
   const plain = await decryptBlob(key, shareId, entry.id, encrypted);
   const kind = previewKind(entry.mime, new Uint8Array(plain, 0, Math.min(16, plain.byteLength)));
   const blob = new Blob([plain], { type: kind ? entry.mime : 'application/octet-stream' });
-  // Named exactly as the vault names a download: sanitised, extension recovered from the bytes.
   return { blob, kind, mime: entry.mime, bytes: new Uint8Array(plain), url: URL.createObjectURL(blob), fileName: downloadName(entry.name, new Uint8Array(plain)) };
 }
 
-/**
- * What a download saves. With a watermark, png/jpeg/webp images are stamped (canvas) with the same text as the
- * preview; PDFs and everything else are the original bytes. Returns { url, revoke }.
- */
 async function downloadTarget(opened, watermark) {
   if (watermark && opened.kind === 'image' && isStampable(opened.mime)) {
     const stamped = await stampImageBlob(opened.blob, opened.mime, watermark);
@@ -106,16 +90,8 @@ async function downloadTarget(opened, watermark) {
   return { url: opened.url, revoke: () => {} };
 }
 
-/**
- * One file from a share link. A link with a single entry is `eager`: it
- * decrypts on load and shows an image preview. With several entries each file
- * is fetched and decrypted on demand, so opening a folder link doesn't pull
- * every file at once.
- */
 function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = null }) {
-  // Named sharedFile, not "document" - this component needs the real global
-  // `document` (document.createElement) for the click fallbacks above.
-  const [sharedFile, setSharedFile] = useState(null); // { url, kind, size, fileName }
+  const [sharedFile, setSharedFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -151,15 +127,12 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = 
     };
   }, [eager, load]);
 
-  // Whether a View button is offered depends on the declared type being one
-  // we may preview; whether the bytes really match is confirmed on load.
   const maybePreviewable = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'].includes(
     entry.mime
   );
 
   const handleView = async () => {
     const loaded = await load();
-    // A watermarked share previews inside this page (a blob in a new tab could not carry the overlay).
     if (loaded?.kind && watermark) setViewing(true);
     else if (loaded?.kind) openInNewTab(loaded.url);
     else if (loaded) setFailed(true);
@@ -180,8 +153,6 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = 
     const target = await downloadTarget(loaded, watermark);
     saveBlobAs(target.url, loaded.fileName);
     setTimeout(target.revoke, 60_000);
-    // In-memory only, on purpose: a share page is a public view with no
-    // account behind it.
     setDownloaded(true);
   };
 
@@ -194,7 +165,6 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = 
         <div className={styles.fileCard}>
           <FileText size={28} weight="light" className={styles.fileIcon} />
           <div className={styles.fileInfo}>
-            {/* Plain text children only: React escapes the name. */}
             <span className={styles.filename} title={entry.name}>
               {entry.name}
             </span>
@@ -261,32 +231,11 @@ function SharedFile({ shareId, shareKey, accessToken, entry, eager, watermark = 
   );
 }
 
-/**
- * The recipient-facing page for a share link (/shared/:shareId[#k=...]).
- * Deliberately NOT nested under App's authenticated routing in any way - it
- * never reads the session token and never redirects to /login.
- *
- * What the visitor goes through depends on what the owner chose:
- *   1. an emailed 6-digit code, if the link is restricted to an address;
- *   2. the link's password, if it has one (the key is then NOT in the link:
- *      it comes back wrapped, and only the password opens it);
- *   3. otherwise the key is the one after the # in the address.
- * Each step is checked by the server before it releases anything, but none of
- * them is a key: the files are always decrypted here, in the browser.
- *
- * The #k key is read once, from the address the page was opened with, then
- * removed from the address bar and history with replaceState and kept only in
- * memory. It is never sent to any API. (Because it is removed, reloading the
- * page cannot decrypt anything: open the full link again.)
- */
 function SharedDocumentPage() {
   const { shareId } = useParams();
 
-  // Read once, during the first render, so a remount (React StrictMode in
-  // development) still sees it after the effect below has cleared it.
   const [keyText] = useState(() => readKeyFromHash(window.location.hash));
 
-  // loading | invalid | incomplete | email | password | ready
   const [phase, setPhase] = useState('loading');
   const [access, setAccess] = useState(null);
   const [shareKey, setShareKey] = useState(null);
@@ -294,24 +243,19 @@ function SharedDocumentPage() {
   const [purposeInfo, setPurposeInfo] = useState({ purpose: null, sharedAt: '' });
   const [downloadingAll, setDownloadingAll] = useState(false);
 
-  // email step
-  const [emailStage, setEmailStage] = useState('send'); // send | code
+  const [emailStage, setEmailStage] = useState('send');
   const [codeChallenge, setCodeChallenge] = useState(null);
   const [emailNote, setEmailNote] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
 
-  // password step
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordBusy, setPasswordBusy] = useState(false);
 
   useEffect(() => {
-    // Take the key out of the address bar and the history entry.
     if (window.location.hash) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-    // Belt and braces alongside the Referrer-Policy response header
-    // (vercel.json): this page never leaks its address to anything it opens.
     const meta = document.createElement('meta');
     meta.name = 'referrer';
     meta.content = 'no-referrer';
@@ -319,12 +263,10 @@ function SharedDocumentPage() {
     return () => meta.remove();
   }, []);
 
-  /** Opens the manifest with a key and shows the files; any failure is the one generic page. */
   const loadFiles = async (key, token) => {
     try {
       const manifest = await fetchSharedManifest(shareId, token);
       const { files, purpose, sharedAt } = await decryptManifestInfo(key, shareId, manifest.manifest);
-      // Only files the server actually holds, in manifest order.
       const held = new Set(manifest.files.map((file) => file.id));
       const usable = files.filter((file) => held.has(file.id));
       if (usable.length === 0) throw new Error('empty');
@@ -337,7 +279,6 @@ function SharedDocumentPage() {
     }
   };
 
-  /** Called when the gates that come before the key are done. */
   const afterGates = async (current, extra = {}) => {
     if (current.needsPassword && !extra.keyFromPassword) {
       setPhase('password');
@@ -348,7 +289,6 @@ function SharedDocumentPage() {
       return;
     }
     if (!keyText) {
-      // The share exists and its gates are passed, but the address has no key: the link was cut off.
       setPhase('incomplete');
       return;
     }
@@ -372,7 +312,6 @@ function SharedDocumentPage() {
         }
         await afterGates(opened);
       } catch {
-        // Missing, expired, revoked, limit reached: one answer for all.
         if (!cancelled) setPhase('invalid');
       }
     })();
@@ -382,7 +321,6 @@ function SharedDocumentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareId]);
 
-  // ---- email step ----
   const sendCode = async () => {
     setEmailBusy(true);
     setEmailNote('');
@@ -405,15 +343,12 @@ function SharedDocumentPage() {
     else await afterGates(access);
   };
 
-  // ---- password step ----
   const submitPassword = async (event) => {
     event.preventDefault();
     if (passwordBusy || !password) return;
     setPasswordBusy(true);
     setPasswordError('');
     try {
-      // The password never leaves this browser: it is turned into a verifier
-      // (for the server to check) and a separate wrap key (to open the key).
       const salt = base64ToBytes(access.password.salt);
       const { wrapKey, verifier } = await deriveShareSecrets(password, salt, access.password.kdf);
       const released = await unlockShare(shareId, access.accessToken, verifier);
@@ -444,16 +379,12 @@ function SharedDocumentPage() {
         }, 60_000);
       }
     } catch {
-      // A failure partway just stops; files already saved stay saved.
     } finally {
       setDownloadingAll(false);
     }
   };
 
-  // A single-file link opens its preview straight away - unless the share has a
-  // download limit, where merely opening the page must not use one up.
   const eagerSingle = entries.length === 1 && !access?.limited;
-  // No purpose = no watermark and everything exactly as before.
   const watermark = watermarkText(purposeInfo);
 
   return (

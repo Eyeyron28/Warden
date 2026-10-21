@@ -14,15 +14,6 @@ import { canShrink } from '../utils/shrinkPlan.js';
 import styles from './UploadForm.module.css';
 import { shortName } from '../utils/ellipsis.js';
 
-/**
- * The Upload dialog's form: choose up to 10 files (the Choose button, or drop them on the dashed zone), see each one with its size
- * and any problem, remove what you do not want, then "Encrypt & upload". Files with a problem stay in the list with the reason and
- * are skipped. One expiry date applies to the whole batch. Nothing is sent from here: `onSubmit({ files, expiryDate })` hands the
- * valid files over, and the page gives them to the transfer tray and closes the dialog.
- *
- * Pressing the button locks the form in the same instant (a ref, before any await), so Enter twice or a double click send ONE batch.
- * `initialFiles`, `initialUsage` and `initialOverflow` exist so each state can be rendered on its own.
- */
 function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel, footerEl = null, initialFiles = [], initialUsage = null, initialOverflow = 0 }) {
   const [items, setItems] = useState(() => addFiles([], initialFiles).items);
   const [overflow, setOverflow] = useState(initialOverflow);
@@ -31,14 +22,12 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
   const [locked, setLocked] = useState(false);
   const { active: dragOver, reset: clearDrag, handlers: dragHandlers } = useFileDrag(hasFiles);
   const [announce, setAnnounce] = useState('');
-  // "Make it smaller" per row: { status: 'working' } | { status: 'ready', result } | { status: 'failed', message }
   const [shrink, setShrink] = useState({});
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const chooseRef = useRef(null);
   const lock = useRef(false);
 
-  // The room left in the account, asked once when the dialog opens (the page checks again on submit, and the server again).
   useEffect(() => {
     let live = true;
     getStorage().then((data) => live && setUsage(data), () => {});
@@ -67,7 +56,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
     setItems((current) => removeItem(current, row.id));
     setOverflow(0);
     setAnnounce(`${row.file.name} removed.`);
-    // Keep the place: focus goes to the next row's remove button, or the previous one, or the Choose button. Never anywhere new.
     requestAnimationFrame(() => {
       const buttons = listRef.current?.querySelectorAll('[data-remove]');
       (buttons?.[index] || buttons?.[index - 1] || chooseRef.current)?.focus?.();
@@ -79,7 +67,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
     return dropped ? rest : current;
   });
 
-  // The photo is re-encoded in this tab (the code loads only now). Nothing replaces the original until the person agrees.
   const startShrink = async (row) => {
     setShrink((current) => ({ ...current, [row.id]: { status: 'working' } }));
     let outcome;
@@ -90,7 +77,7 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
       outcome = { ok: false, message: 'Could not make this image smaller.' };
     }
     setShrink((current) => {
-      if (current[row.id]?.status !== 'working') return current; // cancelled meanwhile
+      if (current[row.id]?.status !== 'working') return current;
       return { ...current, [row.id]: outcome.ok ? { status: 'ready', result: outcome, before: row.file.size } : { status: 'failed', message: outcome.message } };
     });
   };
@@ -122,7 +109,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
         <X size={16} />
         <span>Cancel</span>
       </button>
-      {/* aria-disabled (not disabled) while there is nothing to send, so the reason can show on hover; handleSubmit refuses it too. */}
       <button
         type="submit"
         form="upload-form"
@@ -161,7 +147,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
         onDrop={(event) => {
           if (!hasFiles(event)) return;
           event.preventDefault();
-          // The Files page behind the dialog also takes dropped files: this drop belongs to the dialog alone (one copy, not two).
           event.stopPropagation();
           clearDrag();
           take(Array.from(event.dataTransfer.files));
@@ -180,7 +165,7 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
           onChange={(event) => {
             take(Array.from(event.target.files || []));
             // eslint-disable-next-line no-param-reassign
-            event.target.value = ''; // the same file can be chosen again after it was removed
+            event.target.value = '';
           }}
           disabled={locked}
           tabIndex={-1}
@@ -290,8 +275,6 @@ function UploadForm({ onSubmit, onCancel, onOpenImport, error, destinationLabel,
         {error || ' '}
       </p>
 
-      {/* The buttons live in the dialog's own footer (fixed under the scrolling body) when the page gives one; the submit button
-          still belongs to this form (form="upload-form"). Without one (a render on its own) they sit at the end of the form. */}
       {footerEl ? createPortal(buttons, footerEl) : <div className={styles.buttonRow}>{buttons}</div>}
     </form>
   );

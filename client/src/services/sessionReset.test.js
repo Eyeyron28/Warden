@@ -13,12 +13,9 @@ const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-// ---------- where a sign-in lands ----------
-
 test('a fresh sign-in lands on My Files, whatever page was left and whatever is left over in memory', () => {
   const memory = createVisitMemory();
   assert.equal(memory.landingAfterLogin('a@example.com'), HOME_PATH);
-  // a visit and an account are known, but nothing says the server ended the session: still My Files
   memory.trackVisit('/devices');
   memory.rememberAccount('a@example.com');
   assert.equal(memory.landingAfterLogin('a@example.com'), '/files');
@@ -32,7 +29,7 @@ test('a session the SERVER ended returns the same account to an allowed page, on
   memory.trackVisit('/overview');
   memory.rememberAccount('Ana@Example.com');
   memory.noteExpired();
-  memory.clear({ keepReturn: true }); // what the reset does for an expiry
+  memory.clear({ keepReturn: true });
   assert.equal(memory.landingAfterLogin(' ana@example.com '), '/overview');
   assert.equal(memory.landingAfterLogin('ana@example.com'), '/files', 'spent: the next sign-in is a fresh one');
 });
@@ -55,7 +52,6 @@ test('a different account, a stale expiry, or a page that is not on the list lan
     expireOn(page);
     assert.equal(memory.landingAfterLogin('ana@example.com'), '/files', `${page} is never restored`);
   }
-  // no account known (never asked the server who it was): nothing to compare, so nothing is restored
   memory.clear();
   memory.trackVisit('/trash');
   memory.noteExpired();
@@ -78,8 +74,6 @@ test('the allowlist is short and holds only ordinary file pages; a full URL, a p
   assert.equal(memory.landingAfterLogin('a@example.com'), '/files');
 });
 
-// ---------- the one helper that forgets ----------
-
 function fakeStorage(entries) {
   const map = new Map(Object.entries(entries));
   return {
@@ -99,7 +93,7 @@ function rig() {
     'warden.signup.email': 'someone@example.com',
     'warden.expiryBannerDismissed': '1',
     'warden.emergencyBannerDismissed.123': '1',
-    'warden-theme': 'dark', // a preference (and not a `warden.` key): never part of a visit
+    'warden-theme': 'dark',
   });
   const forget = createSessionReset({
     visitMemory: memory,
@@ -136,7 +130,6 @@ test('an expiry keeps ONLY the one return page, the "access ended" flag and the 
   assert.ok(r.storage.keys().includes('warden.emergencyMode'));
   assert.ok(!r.storage.keys().includes('warden.signup.email'));
   assert.ok(!r.storage.keys().includes('warden.expiryBannerDismissed'));
-  // and a sign-out afterwards (or any other end) takes even that
   r.forget({ reason: 'signout' });
   assert.equal(r.memory.snapshot().pending, null);
 });
@@ -149,8 +142,6 @@ test('it works when storage is blocked', () => {
   });
   assert.doesNotThrow(() => forget({ reason: 'signout' }));
 });
-
-// ---------- wired to the session: every way a session ends ----------
 
 function sessionRig() {
   const listeners = new Set();
@@ -211,8 +202,6 @@ test('after logout the browser Back/forward cache cannot bring the old page back
   assert.equal(calls[1], 'popstate');
 });
 
-// ---------- the code: nothing carries a page across a sign-out ----------
-
 test('no router state, query parameter or storage carries the previous page: the guard sends a plain /login, the login page reads nothing from the URL', () => {
   const app = strip(read('App.jsx'));
   assert.match(app, /<Navigate to="\/login" replace \/>/);
@@ -220,7 +209,6 @@ test('no router state, query parameter or storage carries the previous page: the
   const login = strip(read('pages/auth/LoginPage.jsx'));
   assert.doesNotMatch(login, /location\.state\?\.from|returnPathFrom|from\.pathname/);
   assert.doesNotMatch(strip(read('services/visitMemory.js')), /sessionStorage|localStorage|indexedDB|history\.state/);
-  // every sign-in route that is not a code-checked expiry goes to /files, with replace
   assert.match(login, /navigate\(landing, \{ replace: true \}\)/);
   assert.match(login, /<Navigate to="\/files" replace \/>/);
   const signup = strip(read('pages/auth/SignupPage.jsx'));

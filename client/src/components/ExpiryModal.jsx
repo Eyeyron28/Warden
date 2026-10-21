@@ -7,10 +7,6 @@ import { EXPIRY_STORAGE_NOTE, expiryDayValue } from '../utils/expiry.js';
 import { getTodayDateInputValue } from '../utils/dateInputs.js';
 import styles from './EditDocumentModal.module.css';
 
-/**
- * Set, change or clear a file's "Expires on" date (passport, licence, ...). Opened from a file's menu and from
- * the preview's Details panel. Warden emails a reminder 60, 30 and 7 days before and on the day.
- */
 function ExpiryModal({ document, onClose, onSaved }) {
   const original = expiryDayValue(document.docExpiresAt || document.expiryDate);
   const [day, setDay] = useState(original);

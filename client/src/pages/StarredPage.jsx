@@ -9,10 +9,6 @@ import { DOCUMENTS_CHANGED } from '../utils/dragMove.js';
 import { usePageMeta } from '../utils/usePageMeta.js';
 import styles from './FilePages.module.css';
 
-/**
- * Starred: the files the owner starred, from the list My files already loads (the stars come with it, so this page asks for
- * nothing new). Files in Trash are not in that list, so they are never here.
- */
 function StarredPage() {
   usePageMeta('Starred', 'The files you starred.');
   const [documents, setDocuments] = useState(() => peekDocuments() ?? []);
@@ -39,7 +35,6 @@ function StarredPage() {
   const starred = useMemo(() => documents.filter((doc) => doc.starred).sort((a, b) => a.filename.localeCompare(b.filename)), [documents]);
 
   const setStar = async (id, value) => {
-    // At once; put back if the server says no.
     setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, starred: value } : doc)));
     try {
       await starDocuments([id], value);

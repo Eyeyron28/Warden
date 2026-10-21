@@ -7,37 +7,21 @@ import { extractErrorMessage } from '../services/api.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './NewFolderModal.module.css';
 
-// A thrown Error from a local (non-HTTP) createFolderFn - the phone's own
-// IndexedDB-backed version - has no response body for extractErrorMessage
-// to read, so its own message is used instead.
 function errorMessageFor(err) {
   if (!err?.response && err?.message) return err.message;
   return extractErrorMessage(err, 'Could not create this folder.');
 }
 
-/**
- * "New folder" from the "+ New" menu. Always creates a single new segment
- * inside `currentPath` (wherever the vault is currently showing), matching
- * Drive's own "New folder" dialog - typing a name with "/" in it would
- * silently create nested folders instead of one, so that's rejected
- * outright rather than silently reinterpreted.
- *
- * A failed create - most often 409 FOLDER_EXISTS, "Josh" already being
- * there in any casing - never closes the dialog: the server's message is
- * shown under the input, the typed name stays, and focus returns to the
- * input so it can be fixed straight away.
- */
 function NewFolderModal({ onClose, onCreated, currentPath, createFolderFn = createFolder }) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [style, setStyle] = useState({ color: null, icon: null });
   const inputRef = useRef(null);
-  const run = useSingleFlight(); // one create per press, even for two events in the same tick
+  const run = useSingleFlight();
 
   const showError = (message) => {
     setError(message);
-    // After the re-render that re-enables the input.
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 

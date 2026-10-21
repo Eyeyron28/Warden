@@ -24,26 +24,11 @@ import styles from './auth.module.css';
 
 const STEP_NOTICE = 'For your security each code works once. Request a new code to continue.';
 
-/**
- * Forgot password, in three steps (and one side door):
- *
- *   1. Email         - the same answer for every address; a code is emailed only if there is a verified account.
- *   2. Code          - six boxes, countdown, resend; "Try another way" for people who cannot use their email.
- *   3. New password  - choose HOW: with the recovery key (the vault is kept) or without it (the vault is erased).
- *   side door: "Try another way" - the recovery key alone, no emailed code, nothing erased.
- *
- * Nothing is logged in by a reset: every path ends at the login page.
- *
- * Secrets (the code challenge, the reset ticket, the recovery key, passwords, a new
- * recovery key) live ONLY in this component's state - never in storage, the URL or
- * router state - and are cleared on Back, on failure, on success and when the page
- * goes away. Esc is Back.
- */
 function ForgotPasswordPage() {
   usePageMeta('Reset your password', 'Reset your Warden password with an emailed code and your recovery key.');
   const navigate = useNavigate();
 
-  const [step, setStep] = useState('email'); // email | code | choose | keep | wipeWarn | wipeForm | newKey | keyOnly
+  const [step, setStep] = useState('email');
   const [email, setEmail] = useState('');
   const [challenge, setChallenge] = useState(null);
   const [ticket, setTicket] = useState(null);
@@ -57,7 +42,6 @@ function ForgotPasswordPage() {
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
-  // Screens with no text field (the two choices, the warning) put focus on their first button.
   const firstButtonRef = useRef(null);
   useEffect(() => {
     if (step === 'choose' || step === 'wipeWarn') firstButtonRef.current?.focus();
@@ -69,7 +53,6 @@ function ForgotPasswordPage() {
     setConfirm('');
   }, []);
 
-  // Whatever is still in memory goes when the page does.
   useEffect(
     () => () => {
       setChallenge(null);
@@ -104,7 +87,6 @@ function ForgotPasswordPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, submitting, clearSecrets]);
 
-  // Esc is Back.
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape' && !event.defaultPrevented) goBack();
@@ -122,7 +104,6 @@ function ForgotPasswordPage() {
     setStep('email');
   };
 
-  /** One place for what a failed reset request does to the screen. */
   const handleFailure = (err, { keyId, confirmId } = {}) => {
     const failure = describeResetFailure(err);
     clearSecrets();
@@ -154,7 +135,6 @@ function ForgotPasswordPage() {
     navigate('/login', { replace: true, state: { passwordReset: kind } });
   };
 
-  // ---- step 1 ----
   const handleStart = async (event) => {
     event.preventDefault();
     if (submitting) return;
@@ -169,8 +149,6 @@ function ForgotPasswordPage() {
       setChallenge(await requestPasswordReset(email.trim()));
       setStep('code');
     } catch (err) {
-      // The server answers the same way for every address, so a failure here is
-      // a limit or the network - never "no such account".
       setFormError(
         err?.response?.status === 429
           ? 'Too many requests. Please wait a while and try again.'
@@ -189,7 +167,6 @@ function ForgotPasswordPage() {
     setStep('keyOnly');
   };
 
-  // ---- step 3: with the recovery key ----
   const passwordOk = passwordIsValid(password);
   const confirmOk = confirm.length > 0 && confirm === password;
   const keyOk = recoveryKeyProblem(recoveryKey) === '';
@@ -211,7 +188,6 @@ function ForgotPasswordPage() {
     }
   };
 
-  // ---- step 3: without it (start over) ----
   const confirmEmailOk = confirmEmail.trim().toLowerCase() === email.trim().toLowerCase() && confirmEmail.trim() !== '';
 
   const handleWipe = async (event) => {
@@ -235,7 +211,6 @@ function ForgotPasswordPage() {
     }
   };
 
-  // ---- side door: the recovery key alone ----
   const handleKeyOnly = async (event) => {
     event.preventDefault();
     setTouched({ email: true, key: true, password: true, confirm: true });
@@ -249,7 +224,6 @@ function ForgotPasswordPage() {
     } catch (err) {
       const failure = describeResetFailure(err);
       clearSecrets();
-      // One generic message for every failure; never "no such account".
       setFormError(failure.kind === 'rate' ? failure.message : failure.kind === 'policy' ? failure.message : 'The email or recovery key is incorrect.');
       focusLater('keyonly-key');
     } finally {
@@ -281,8 +255,6 @@ function ForgotPasswordPage() {
       </Link>
     </span>
   );
-
-  // ---- screens ----
 
   if (step === 'newKey') {
     return (
@@ -559,7 +531,6 @@ function ForgotPasswordPage() {
     );
   }
 
-  // ---- step 1: email ----
   return (
     <AuthLayout resetPage
       title="Reset your password"

@@ -1,19 +1,5 @@
 const config = require('../config/suspicious');
 
-/**
- * Flags for events that look unusual, worked out from the events themselves when the timeline is read
- * (nothing extra is stored). Thresholds live in config/suspicious.js.
- *
- *   new_country              a login from a country this account has not logged in from before
- *   download_burst           10+ downloads within 5 minutes
- *   failed_then_success      a login that followed 3+ failed attempts within 15 minutes
- *   signed_out_device_active a login from a device the owner had signed out
- *   emergency_session        an Emergency Access contact started a session (always flagged)
- *
- * @param {Array<{ seq: number, type: string, at: Date | string, country?: string | null, deviceId?: any, targetId?: any }>} events
- *   every known event of ONE account (any order)
- * @returns {Map<number, string[]>} flags by event seq
- */
 function computeFlags(events) {
   const flags = new Map();
   const add = (seq, flag) => {
@@ -24,7 +10,6 @@ function computeFlags(events) {
   const ordered = [...events].sort((a, b) => a.seq - b.seq);
   const time = (event) => new Date(event.at).getTime();
 
-  // New country: only meaningful once there is an earlier login to compare against.
   if (config.newCountry.enabled) {
     const seenCountries = new Set();
     let sawLogin = false;
@@ -36,7 +21,6 @@ function computeFlags(events) {
     }
   }
 
-  // Download burst.
   {
     const { count, windowMs } = config.downloadBurst;
     const downloads = ordered.filter((event) => event.type === 'download');
@@ -47,7 +31,6 @@ function computeFlags(events) {
     }
   }
 
-  // Failed attempts, then a success.
   {
     const { failures, windowMs } = config.failedThenSuccess;
     let recent = [];
@@ -65,7 +48,6 @@ function computeFlags(events) {
     }
   }
 
-  // A device the owner signed out, signing in again.
   if (config.signedOutDeviceActive.enabled) {
     const signedOut = new Set();
     for (const event of ordered) {
@@ -77,7 +59,6 @@ function computeFlags(events) {
     }
   }
 
-  // An emergency session starting is always worth the owner's attention, whatever else is going on.
   for (const event of ordered) {
     if (event.type === 'emergency_session_started') add(event.seq, 'emergency_session');
   }

@@ -25,21 +25,14 @@ const {
 const requireSession = require('../middleware/requireSession');
 const createRateLimiter = require('../middleware/rateLimit');
 
-// Per-email key for the two limiters that also count by email (signup,
-// forgot-password) - a missing/non-string email just means "no extra
-// per-email limiting for this request," the controller's own validation
-// rejects it on different grounds right after.
 const byEmail = (req) => {
   const email = req.body?.email;
   return typeof email === 'string' ? email.trim().toLowerCase() : null;
 };
 
-// Sign-up: a code is mailed first and the account only exists once it is entered (controllers/signup.controller.js).
 router.post(
   '/signup/start',
   createRateLimiter({ name: 'signup-ip', max: 10, windowMs: 60 * 60 * 1000 }),
-  // Before the per-email limiter, so a request with no valid code can never
-  // use up someone else's per-email allowance.
   inviteGate,
   createRateLimiter({ name: 'signup-email', max: 5, windowMs: 60 * 60 * 1000, keyFn: byEmail }),
   signupStart
@@ -48,11 +41,9 @@ router.post('/signup/verify', createRateLimiter({ name: 'signup-verify-ip', max:
 router.post(
   '/signup/resend',
   createRateLimiter({ name: 'signup-resend-ip', max: 10, windowMs: 60 * 60 * 1000 }),
-  // One per address per 60 seconds, counted whether or not anything is pending, so a 429 says nothing about the address.
   createRateLimiter({ name: 'signup-resend-email', max: 1, windowMs: 60 * 1000, keyFn: byEmail }),
   signupResend
 );
-// The old one-step sign-up made the account first. It is gone.
 router.post('/signup', goneSignup);
 router.post(
   '/verify-email',
@@ -62,8 +53,6 @@ router.post(
 router.post(
   '/resend-verification',
   createRateLimiter({ name: 'resend-verification-ip', max: 10, windowMs: 60 * 60 * 1000 }),
-  // One send per email per 60 seconds. Keyed by the email whether or not
-  // an account exists, so the 429 itself never hints at which emails do.
   createRateLimiter({ name: 'resend-verification-email', max: 1, windowMs: 60 * 1000, keyFn: byEmail }),
   resendVerification
 );
@@ -73,8 +62,6 @@ router.post(
   createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),
   unlock
 );
-// The code step shares the SAME per-IP bucket as the password step ("login"),
-// so every code guess - right or wrong - counts toward the per-IP limit.
 router.post(
   '/verify-otp',
   createRateLimiter({ name: 'login', max: 20, windowMs: 15 * 60 * 1000 }),
@@ -86,10 +73,6 @@ router.post(
   resendOtp
 );
 router.get('/me', requireSession, getMe);
-// Forgot password: an emailed 6-digit code, then a single-use ticket, then a
-// choice (recovery key, or start over). See controllers/passwordReset.controller.js.
-// The start step is limited per IP and per email, and counted the same way for
-// addresses that have no account.
 router.post(
   '/password-reset/start',
   createRateLimiter({ name: 'password-reset-ip', max: 10, windowMs: 60 * 60 * 1000 }),
@@ -116,10 +99,7 @@ router.post(
   createRateLimiter({ name: 'password-reset-ticket-ip', max: 20, windowMs: 15 * 60 * 1000 }),
   resetWithWipe
 );
-// "Try another way": the recovery key alone, no email. Its own strict failure
-// limits live in the controller (per email and per IP, with growing delays).
 router.post('/password-reset/recovery-key-only', resetWithRecoveryKeyOnly);
-// The old emailed-link flow is gone; anything still calling it gets a plain 410.
 router.post('/forgot-password', goneResetLink);
 router.post('/reset-password', goneResetLink);
 

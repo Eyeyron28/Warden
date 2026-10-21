@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// Sign-up proves the email BEFORE an account exists (controllers/signup.controller.js), against a REAL local MongoDB
-// (test/helpers/realMongo.js; skipped, with the reason, when none answers). Mail is captured, DNS is stood in for, and
-// nothing reads an .env file.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -92,7 +87,6 @@ it('start creates NO user, vault, key or session - only a pending code - and the
   assert.equal(mails.length, 1);
   assert.match(mails[0].subject, /sign-up code/i);
 
-  // the pending record: the code only as a salted hash, the address only as an HMAC, and no password anywhere
   const pending = await OtpChallenge.findOne({}).lean();
   const stored = JSON.stringify(pending);
   assert.equal(pending.purpose, 'signup');
@@ -105,7 +99,7 @@ it('a mailbox nobody owns leaves no account: the code is never entered, and once
   await start('nobody.owns.this@example.com');
   assert.equal(await User.countDocuments({}), 0);
   const code = lastCodeTo('nobody.owns.this@example.com');
-  await OtpChallenge.updateMany({}, { $set: { expiresAt: new Date(Date.now() - 1000) } }); // the time has passed
+  await OtpChallenge.updateMany({}, { $set: { expiresAt: new Date(Date.now() - 1000) } });
   const late = await verify('nobody.owns.this@example.com', code);
   assert.equal(late.error?.status, 401);
   assert.equal(late.error.message, VERIFY_FAILED);
@@ -140,7 +134,6 @@ it('the right code creates the account, returns the recovery key ONCE and signs 
   assert.equal(String(session.userId), String(user._id));
   assert.equal(session.dek.length, 32, 'the vault key was unwrapped from the token: the account really opens');
 
-  // the key never comes back: not from a second verify, not from the pending record, not from any later response
   const again = await verify('new.person@example.com', code);
   assert.equal(again.error?.status, 401);
   assert.ok(!JSON.stringify(again).includes(out.json.recoveryKey));
@@ -163,13 +156,11 @@ it('wrong, reused and cross-purpose codes are refused with one generic message; 
     assert.equal(out.error?.status, 401);
     assert.equal(out.error.message, VERIFY_FAILED);
   }
-  // the 5th guess is the last: even the right code afterwards is useless
   assert.equal((await verify('a@example.com', wrong)).error.status, 401);
   assert.equal((await verify('a@example.com', code)).error.message, VERIFY_FAILED);
   assert.equal(await User.countDocuments({}), 0);
   assert.equal(await OtpChallenge.countDocuments({ purpose: 'signup' }), 0, 'the dead challenge is gone');
 
-  // the same message for an address that never asked, a malformed code and a malformed address
   for (const attempt of [verify('never.asked@example.com', '123456'), verify('a@example.com', 'abc'), verify('not-an-email', '123456')]) {
     const out = await attempt;
     assert.equal(out.error.status, 401);
@@ -187,7 +178,6 @@ it('the guess is counted before it is checked: 12 parallel wrong guesses use at 
 
 it('a login code cannot complete sign-up, and a sign-up code cannot complete a login', async () => {
   const owner = await makeUser(User, 'owner@example.com', PASSWORD);
-  // a login code for an existing account
   const { startChallenge, PURPOSES } = require('../utils/otpChallenge');
   await startChallenge({ user: owner, secret: Buffer.alloc(32, 1), purpose: PURPOSES.login });
   const loginCode = codeIn(mails.at(-1));
@@ -196,7 +186,6 @@ it('a login code cannot complete sign-up, and a sign-up code cannot complete a l
   assert.equal((await verify('owner@example.com', loginCode)).error?.status, 401, 'nor for the owner’s own address');
   assert.equal(await User.countDocuments({}), 1);
 
-  // a sign-up code in the login step: there is no challenge token for it, and a forged one finds nothing
   const forged = `${(await OtpChallenge.findOne({ purpose: 'signup' }))._id}.${'ab'.repeat(32)}`;
   const out = await call(verifyOtp, { body: { challengeToken: forged, code: lastCodeTo('someone.new@example.com') }, headers: {} });
   assert.equal(out.error?.status, 401);
@@ -208,7 +197,6 @@ it('resend: neutral answer, 60-second gap, three resends, five code emails an ho
   assert.equal(mails.length, 1);
   const first = lastCodeTo('r@example.com');
 
-  // too soon: the same answer, nothing sent
   const tooSoon = await resend('r@example.com');
   assert.equal(tooSoon.status, 200);
   assert.equal(mails.length, 1, 'inside the gap nothing is sent');
@@ -223,12 +211,10 @@ it('resend: neutral answer, 60-second gap, three resends, five code emails an ho
   await resend('r@example.com');
   assert.equal(mails.length, 4, 'a fourth resend is not sent');
 
-  // the newest code works; the first one no longer does
   const newest = lastCodeTo('r@example.com');
   assert.notEqual(newest, first);
   assert.equal((await verify('r@example.com', first)).error?.status, 401);
 
-  // no pending code, and an existing account: the same answer, nothing sent
   const before = mails.length;
   const noPending = await resend('stranger@example.com');
   await makeUser(User, 'has.account@example.com', PASSWORD);
@@ -259,7 +245,6 @@ it('an existing address gets the heads-up and NO code, and the answer has the sa
   assert.match(toTaken[0].subject, /Someone tried to sign up/);
   assert.ok(!/\b\d{6}\b/.test(toTaken[0].text.replace(/\d{1,2}:\d{2}/g, '')), 'no code in the owner notice');
   assert.equal(await OtpChallenge.countDocuments({}), 1, 'only the new address has a pending code');
-  // and the unused code of the new address cannot be used against the existing one
   const code = lastCodeTo('brand.new@example.com');
   assert.equal((await verify('taken@example.com', code)).error?.status, 401);
 });
@@ -321,11 +306,11 @@ it('a domain that cannot receive mail is refused with a clear message; a DNS tim
   assert.equal(await OtpChallenge.countDocuments({}), 0);
 
   forgetDomains();
-  dnsSays({ mx: [{ exchange: '.', priority: 0 }] }); // a "null MX": the domain says it takes no mail
+  dnsSays({ mx: [{ exchange: '.', priority: 0 }] });
   assert.equal((await start('x@nullmx.example')).error?.message, NO_MAIL_DOMAIN);
 
   forgetDomains();
-  dnsSays({ mx: dnsError('ENODATA'), a: ['203.0.113.7'] }); // no MX, but an address: the mail standard falls back to it
+  dnsSays({ mx: dnsError('ENODATA'), a: ['203.0.113.7'] });
   assert.equal((await start('x@fallback.example')).error, null);
 
   forgetDomains();
@@ -339,7 +324,6 @@ it('a domain that cannot receive mail is refused with a clear message; a DNS tim
   dnsSays({ mx: dnsError('ESERVFAIL') });
   assert.equal((await start('y@broken-resolver.example')).error, null, 'so does a server failure');
 
-  // a lookup that simply never answers is cut off by the short timeout
   forgetDomains();
   dns.resolveMx = () => new Promise(() => {});
   const { domainCanReceiveMail } = require('../utils/emailDomain');
@@ -363,7 +347,6 @@ it('the single place that makes a login session is issueLoginSession: no other p
     }
   };
   walk(root);
-  // the definition, the one login/sign-up issuer, and Emergency Access's own read-only session
   assert.deepEqual(hits.sort(), ['controllers/auth.controller.js', 'utils/emergency/service.js', 'utils/sessionStore.js']);
   const signupSource = fs.readFileSync(path.join(root, 'controllers', 'signup.controller.js'), 'utf8');
   assert.match(signupSource, /issueLoginSession\(req, res, user, dek, \{ trust: false \}\)/);
@@ -389,7 +372,6 @@ it('the route runs the invite gate before anything else about the request', asyn
   assert.ok(gate >= 0, 'the invite gate is on the route');
   assert.equal(chain.at(-1), signupStart);
   assert.ok(gate < chain.indexOf(signupStart));
-  // only the per-connection limiter may come before it
   assert.ok(gate <= 1);
 });
 
@@ -413,7 +395,7 @@ it('legacy clean-up removes only unverified accounts older than 24 hours that ho
   const day = 24 * 60 * 60 * 1000;
   const make = async (email, { verified, ageMs, withDocument = false }) => {
     const user = await makeUser(User, email, PASSWORD, { emailVerified: verified });
-    await User.collection.updateOne({ _id: user._id }, { $set: { createdAt: new Date(Date.now() - ageMs) } }); // createdAt is immutable through the model
+    await User.collection.updateOne({ _id: user._id }, { $set: { createdAt: new Date(Date.now() - ageMs) } });
     if (withDocument) {
       await Document.create({ userId: user._id, filename: 'x.pdf', mimeType: 'application/pdf', encryptedBlob: Buffer.from('x'), iv: 'a', authTag: 'b', checksum: 'c', folder: 'root', originDevice: 'pc' });
     }

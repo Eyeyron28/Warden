@@ -14,36 +14,26 @@ import { EMERGENCY_NAV, emergencyRedirect, sessionBannerText } from '../../utils
 import { formatManila } from '../../utils/activityText.js';
 import styles from './EmergencyShell.module.css';
 
-/** Subscribes to the emergency-mode store (mode, end time, scope). */
 function useEmergencyState() {
   const [state, setState] = useState(getEmergencyMode());
   useEffect(() => subscribeEmergencyMode(() => setState(getEmergencyMode())), []);
   return state;
 }
 
-/**
- * The contact's read-only vault. A deliberately small shell: the header has the logo, the theme switch and Sign out;
- * the sidebar has only "Files"; a banner says it is read-only and when it ends. Every other client route goes
- * to Files. There is no search box, upload, Trash, account, devices, sharing or Overview here at all (see
- * utils/emergencyMode.js, which lists them): the server would refuse them with 403 anyway.
- */
 function EmergencyShell() {
   const location = useLocation();
   const mode = useEmergencyState();
 
-  // The authoritative end time and scope names come from the server (never the owner's name or address).
   useEffect(() => {
     getSessionInfo().then(applySessionInfo).catch(() => {});
   }, []);
 
-  // When the 4 hours are up the session is ended here too (the server has already stopped honouring it).
   useEffect(() => {
     if (!mode.endsAt) return undefined;
     const wait = new Date(mode.endsAt).getTime() - Date.now();
     if (wait <= 0 || wait > 2 ** 31 - 1) return undefined;
     const timer = setTimeout(() => {
       leaveEmergencyMode({ keepFlag: true });
-      // The server's 4 hours are over: an ended session (the contact's page says so), not a sign-out.
       expireSession('Emergency access has ended.');
     }, wait);
     return () => clearTimeout(timer);
@@ -56,9 +46,7 @@ function EmergencyShell() {
     try {
       await logoutVault();
     } catch {
-      // the session expires on its own
     } finally {
-      // Signing out of an emergency session removes its token and state and goes to the sign-in page (not an "ended" screen).
       forgetPreviousVisit({ reason: 'signout' });
       clearToken();
     }

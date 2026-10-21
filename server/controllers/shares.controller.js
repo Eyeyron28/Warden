@@ -21,15 +21,11 @@ const { removeShares } = require('../utils/shareCleanup');
 const { sha256 } = require('../utils/shareGate');
 const { quarantinedError } = require('../utils/quarantine');
 
-// Routes are async, but Express doesn't forward rejected promises to
-// error-handling middleware on its own - this small wrapper does that so
-// every handler below can just `throw` instead of repeating try/catch.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
-  // An app-authored 5xx message is written for the user; any other 5xx is replaced by the error handler.
   if (status >= 500) error.expose = true;
   return error;
 }
@@ -45,7 +41,6 @@ function assertValidId(id, label = 'document') {
 
 const mb = (bytes) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)}MB`;
 
-/** What this owner has used so far, from their still-active shares. */
 async function usageFor(userId) {
   const [row] = await Share.aggregate([
     { $match: { ownerUserId: userId, expiresAt: { $gt: new Date() } } },
@@ -64,20 +59,11 @@ async function usageFor(userId) {
   };
 }
 
-// ---------- input checks shared by create and edit ----------
-
-/** undefined / null / '' -> null (no limit); otherwise a whole number 1..100. */
 const PURPOSE_MAX = 60;
 
-/**
- * The optional "Purpose" (e.g. "For BDO account opening"). Plain text, at most 60 characters. It is only ever
- * put INSIDE the encrypted manifest (under the share key) and the owner's encrypted label (under the vault key):
- * never stored in the clear, never in an audit event, a log, an email or a link preview. Returns null for none.
- */
 function parsePurpose(value) {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') throw badRequest('Purpose must be text.');
-  // Control characters and bidi overrides out; whitespace collapsed.
   const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
   if (cleaned === '') return null;
   if ([...cleaned].length > PURPOSE_MAX) throw badRequest(`Purpose can be at most ${PURPOSE_MAX} characters.`);
@@ -93,7 +79,6 @@ function parseMaxDownloads(value) {
   return number;
 }
 
-/** undefined / null / '' -> null (no restriction); otherwise ONE plain address. */
 function parseRecipient(value) {
   if (value === undefined || value === null || value === '') return null;
   const address = normalizeRecipient(value);
@@ -109,14 +94,6 @@ function decodeB64(value, label, exactBytes, minBytes = exactBytes, maxBytes = e
   return bytes;
 }
 
-/**
- * What the owner's browser sends to protect a share with a password. The
- * password itself never arrives: only the salt and scrypt cost it used, the
- * share key WRAPPED under a key derived from the password (iv || ciphertext ||
- * tag = 60 bytes), and a verifier - a value derived from the same scrypt
- * output under a different label, so it reveals nothing about the wrap key.
- * Only SHA-256 of the verifier is kept. Weak scrypt costs are refused.
- */
 function parsePasswordBody(body) {
   const { salt, kdf, wrappedKey, verifier } = body || {};
   decodeB64(salt, 'password salt', 16, 16, 64);
@@ -154,7 +131,6 @@ const OWNER_FIELDS = (share, label) => ({
   emailRestricted: Boolean(share.recipientEmail),
 });
 
-/** Decrypts a share's name (its file names, under the owner's vault key) for the owner. */
 function readLabel(share, dek) {
   try {
     const parsed = JSON.parse(decryptFile(share.labelCipher, dek, share.labelIv, share.labelAuthTag).toString('utf8'));
@@ -168,22 +144,6 @@ function readLabel(share, dek) {
   }
 }
 
-/**
- * The one place a share is issued - POST /api/documents/:id/share (one file)
- * and POST /api/shares (a set, e.g. a folder's contents) both call this.
- *
- * Owner-only (requireSession). The server holds the vault key for this one
- * request, so it decrypts each selected file and re-encrypts a COPY under a
- * brand-new random share key. That key goes back in the response, inside the
- * link's #fragment, and is never stored: the database gets ciphertext, the
- * encrypted manifest (names, types, folders) and ownership/timing only.
- * Nothing about a share involves the vault key after this function returns.
- *
- * Options (all optional): maxDownloads (1-100), recipientEmail (one address,
- * the viewer must enter an emailed code), passwordProtected (the share is
- * created HIDDEN and short-lived until the owner's browser has wrapped the key
- * under the password and called PUT /api/shares/:id/password).
- */
 async function issueShare(req, res, documentIds) {
   const rawHours = req.body.durationHours;
   let hours = limits.DEFAULT_DURATION_HOURS;
@@ -224,7 +184,6 @@ async function issueShare(req, res, documentIds) {
     );
   }
 
-  // Limits first, before any decryption work.
   const usage = await usageFor(req.userId);
   if (usage.activeShares >= limits.MAX_ACTIVE_SHARES) {
     throw httpError(
@@ -234,7 +193,6 @@ async function issueShare(req, res, documentIds) {
   }
 
   const objectIds = uniqueIds.map((id) => new mongoose.Types.ObjectId(id));
-  // A file held in Quarantine cannot be shared (released ones can).
   if (await Document.exists({ _id: { $in: objectIds }, userId: req.userId, ...{ 'quarantine.state': 'held' } })) throw quarantinedError();
   const sizes = await Document.aggregate([
     { $match: { _id: { $in: objectIds }, userId: req.userId, deletedAt: null } },
@@ -257,7 +215,6 @@ async function issueShare(req, res, documentIds) {
     );
   }
 
-  // At most 20MB of blobs from here on.
   const documents = await Document.find({ _id: { $in: objectIds }, userId: req.userId, deletedAt: null }).select(
     'filename mimeType folder encryptedBlob iv authTag checksum'
   );
@@ -268,7 +225,6 @@ async function issueShare(req, res, documentIds) {
   const shareId = newShareId();
   const shareKey = generateShareKey();
   const finalExpiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
-  // A password share is hidden and short-lived until finalised.
   const expiresAt = passwordProtected
     ? new Date(Date.now() + limits.PENDING_MINUTES * 60 * 1000)
     : finalExpiresAt;
@@ -302,8 +258,6 @@ async function issueShare(req, res, documentIds) {
   }
 
   const manifest = encryptForShare(
-    // No purpose = the manifest exactly as before (v1). With one: v2 adds the purpose and the day the link was made,
-    // which the viewer needs for the watermark text; both stay inside this encrypted blob.
     Buffer.from(
       JSON.stringify(
         purpose ? { v: 2, sharedAt: new Date().toISOString().slice(0, 10), purpose, files: manifestFiles } : { v: 1, files: manifestFiles }
@@ -314,7 +268,6 @@ async function issueShare(req, res, documentIds) {
     shareId,
     'manifest'
   );
-  // The share's name for the owner's manager: the file names under the VAULT key.
   const label = encryptFile(
     Buffer.from(JSON.stringify({ names: documents.slice(0, 20).map((doc) => doc.filename), ...(purpose ? { purpose } : {}) }), 'utf8'),
     req.dek
@@ -346,10 +299,6 @@ async function issueShare(req, res, documentIds) {
     throw err;
   }
 
-  // The key is returned exactly once, in the fragment, and not stored or
-  // logged anywhere. no-store keeps it out of any HTTP cache. (For a password
-  // share the browser uses it to wrap the key under the password, then shows a
-  // link WITHOUT it.)
   await recordEvent(req, 'share_created', { targetId: shareId });
   res.setHeader('Cache-Control', 'no-store');
   res.status(201).json({
@@ -365,21 +314,11 @@ async function issueShare(req, res, documentIds) {
   });
 }
 
-/**
- * POST /api/documents/:id/share
- * Body: { durationHours, maxDownloads?, recipientEmail?, passwordProtected? }
- */
 const createShare = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
   await issueShare(req, res, [req.params.id]);
 });
 
-/**
- * POST /api/shares
- * Body: { documentIds: string[], durationHours, ...same options }
- * One link covering many documents (the client resolves a folder selection
- * to its nested documents before calling this).
- */
 const createBulkShare = asyncHandler(async (req, res) => {
   const { documentIds } = req.body;
   if (!Array.isArray(documentIds)) {
@@ -388,12 +327,6 @@ const createBulkShare = asyncHandler(async (req, res) => {
   await issueShare(req, res, documentIds);
 });
 
-/**
- * GET /api/documents/:id/shares
- * This document's currently-active shares, so the owner can see what is out
- * there before deciding to revoke anything. Owner-only; sourceDocumentIds
- * is used to find them but never returned.
- */
 const listShares = asyncHandler(async (req, res) => {
   assertValidId(req.params.id);
 
@@ -426,12 +359,6 @@ const listShares = asyncHandler(async (req, res) => {
   );
 });
 
-/**
- * GET /api/shares
- * The share manager's list: every active share of this account, with its
- * name (the file names, decrypted by the server for this owner's session only),
- * counts, expiry and which protections are on.
- */
 const listAllShares = asyncHandler(async (req, res) => {
   const shares = await Share.find({ ownerUserId: req.userId, ready: true, expiresAt: { $gt: new Date() } })
     .select(
@@ -444,10 +371,6 @@ const listAllShares = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/shares/usage
- * How much shared storage this owner has used, for the share dialog.
- */
 const getUsage = asyncHandler(async (req, res) => {
   res.status(200).json(await usageFor(req.userId));
 });
@@ -460,12 +383,6 @@ async function ownedShare(req, { requireReady = true } = {}) {
   return share;
 }
 
-/**
- * PATCH /api/shares/:shareId
- * Body: any of { durationHours, maxDownloads, recipientEmail } (null clears a
- * limit or the restriction). Nothing is re-uploaded or re-encrypted; these are
- * rules about who the server will serve the existing encrypted copies to.
- */
 const updateShare = asyncHandler(async (req, res) => {
   const share = await ownedShare(req);
   const body = req.body || {};
@@ -500,20 +417,12 @@ const updateShare = asyncHandler(async (req, res) => {
   res.status(200).json(OWNER_FIELDS(fresh, readLabel(fresh, req.dek)));
 });
 
-/**
- * PUT /api/shares/:shareId/password
- * Body: { salt, kdf: { N, r, p }, wrappedKey, verifier } - see parsePasswordBody.
- * Sets or replaces the link password; for a share created as password-
- * protected this is also what takes it live. The server never sees the
- * password or the plain share key.
- */
 const setPassword = asyncHandler(async (req, res) => {
   const share = await ownedShare(req, { requireReady: false });
   const fields = parsePasswordBody(req.body);
   const set = { ...fields };
 
   if (share.ready === false) {
-    // Finalise: go live with the expiry the owner asked for.
     set.ready = true;
     set.expiresAt = share.pendingFinalExpiresAt || new Date(Date.now() + limits.DEFAULT_DURATION_HOURS * 3600 * 1000);
     set.pendingFinalExpiresAt = null;
@@ -523,12 +432,6 @@ const setPassword = asyncHandler(async (req, res) => {
   res.status(200).json({ id: share.shareId, passwordProtected: true, expiresAt: set.expiresAt || share.expiresAt });
 });
 
-/**
- * GET /api/shares/:shareId/protection
- * Owner-only: the salt, cost and WRAPPED key of a password share, so the
- * owner's browser can unlock it with the current password (to change or remove
- * the password). Useless without that password.
- */
 const getProtection = asyncHandler(async (req, res) => {
   const share = await ownedShare(req);
   if (!share.passwordVerifierHash) {
@@ -543,11 +446,6 @@ const getProtection = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * GET /api/shares/:shareId/manifest
- * Owner-only: the encrypted manifest, so the owner's browser can check that a
- * pasted link's key really opens this share before re-locking it.
- */
 const getOwnerManifest = asyncHandler(async (req, res) => {
   const share = await ownedShare(req);
   res.status(200).json({
@@ -555,12 +453,6 @@ const getOwnerManifest = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * DELETE /api/shares/:shareId/password
- * Removes the password: the share goes back to a plain key-in-the-link share.
- * (The owner's browser unlocked the key with the current password first and
- * shows the new link; the server never learns it.)
- */
 const removePassword = asyncHandler(async (req, res) => {
   const share = await ownedShare(req);
   if (!share.passwordVerifierHash) throw httpError(409, 'This share has no password.');
@@ -580,12 +472,6 @@ const removePassword = asyncHandler(async (req, res) => {
   res.status(200).json({ id: share.shareId, passwordProtected: false });
 });
 
-/**
- * DELETE /api/shares/:shareId
- * Stops sharing: deletes the share and every encrypted copy at once. 404 for a
- * share that does not exist or belongs to someone else (the two are
- * indistinguishable on purpose).
- */
 const revokeShare = asyncHandler(async (req, res) => {
   if (!SHARE_ID_RE.test(req.params.shareId)) {
     throw shareNotFound();
@@ -598,10 +484,6 @@ const revokeShare = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, usage: await usageFor(req.userId) });
 });
 
-/**
- * DELETE /api/shares
- * "Stop all sharing": every share of this account and all their copies.
- */
 const stopAllShares = asyncHandler(async (req, res) => {
   const counts = await removeShares({ ownerUserId: req.userId });
   await recordEvent(req, 'shares_stopped_all');

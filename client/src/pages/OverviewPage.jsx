@@ -14,7 +14,6 @@ import styles from './OverviewPage.module.css';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const folderLabel = (folder) => (!folder || folder === 'root' ? 'My files' : folder);
-// How each card words its row (the dialog uses the same functions).
 const viewedCount = (d) => plural(d.viewCount, 'view');
 const downloadedCount = (d) => plural(d.downloadCount, 'download');
 const lastOpened = (d) => `last ${formatDateTime(d.lastOpenedAt)}`;
@@ -22,7 +21,6 @@ const openedAt = (d) => formatDateTime(d.lastOpenedAt);
 const inFolder = (d) => folderLabel(d.folder);
 const openLink = (doc) => `/files?path=${encodeURIComponent(doc.folder && doc.folder !== 'root' ? doc.folder : '')}&open=${encodeURIComponent(doc.id)}`;
 
-// The rows of a list: the same in a card and in its "View all" dialog. onPick runs when a file is clicked.
 function FileRows({ items, count, extra, onPick }) {
   return (
     <ol className={styles.list}>
@@ -39,7 +37,6 @@ function FileRows({ items, count, extra, onPick }) {
   );
 }
 
-// At most five rows; with more, "View all (n)" opens the whole list (the page already has it, so no request).
 function FileList({ items, count, empty, extra, onViewAll }) {
   if (!items.length) return <p className={styles.empty}>{empty}</p>;
   const { shown, more, total } = firstFive(items);
@@ -55,17 +52,13 @@ function FileList({ items, count, empty, extra, onViewAll }) {
   );
 }
 
-/**
- * Overview: how the vault is used, from this account's own counters and activity. Nothing about other people.
- * Trashed files are never counted.
- */
 function OverviewPage() {
   usePageMeta('Overview', 'Which files you use most, which you have not touched in months, and how your share links are doing.');
   const [data, setData] = useState(() => peekOverview() ?? null);
   const [error, setError] = useState('');
-  const [cleanup, setCleanup] = useState(null); // { items, selected:Set, busy, message }
+  const [cleanup, setCleanup] = useState(null);
   const [expiring, setExpiring] = useState(null);
-  const [viewAll, setViewAll] = useState(null); // { title, items, count, extra }
+  const [viewAll, setViewAll] = useState(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -83,7 +76,6 @@ function OverviewPage() {
       .catch(() => setExpiring([]));
   }, [load]);
 
-  // /overview#expiring (from the banner and the health card) scrolls to the expiring-documents card.
   useEffect(() => {
     if (data && window.location.hash === '#expiring') document.getElementById('expiring')?.scrollIntoView?.({ block: 'start' });
   }, [data]);

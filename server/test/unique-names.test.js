@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Same-name files get a counter, and an upload sent twice stores one file. The REAL app on a LOCAL throwaway MongoDB (skipped,
-// with the reason, without one); mail is captured, no .env is read.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -54,14 +50,11 @@ const upload = (user, name, options) => live.api('POST', D, { token: user.token,
 const names = async (user, folder) => (await M().Document.find({ userId: user.userId, deletedAt: null, ...(folder ? { folder } : {}) }).sort({ createdAt: 1 }).lean()).map((doc) => doc.filename);
 const usedBytes = async (user) => (await live.api('GET', `${D}/storage`, { token: user.token })).body.usedBytes;
 
-// ---------------------------------------------------------------- the helper, without a database
-
 test('the counter: report.pdf, report (1).pdf, report (2).pdf; a free name is left alone', () => {
   assert.deepEqual(pickFreeName('report.pdf', []), { name: 'report.pdf', changed: false });
   assert.deepEqual(pickFreeName('report.pdf', ['other.pdf']), { name: 'report.pdf', changed: false });
   assert.deepEqual(pickFreeName('report.pdf', ['report.pdf']), { name: 'report (1).pdf', changed: true });
   assert.deepEqual(pickFreeName('report.pdf', ['report.pdf', 'report (1).pdf']), { name: 'report (2).pdf', changed: true });
-  // a gap is filled: the FIRST free number
   assert.equal(pickFreeName('report.pdf', ['report.pdf', 'report (2).pdf']).name, 'report (1).pdf');
 });
 
@@ -76,14 +69,12 @@ test('only the last extension is kept apart; no extension and dotfiles get the c
 test('names are compared without regard to capital letters, and by Unicode composition', () => {
   assert.equal(pickFreeName('Report.PDF', ['report.pdf']).name, 'Report (1).PDF', 'the new name keeps its own spelling');
   assert.equal(pickFreeName('report.pdf', ['REPORT.pdf']).name, 'report (1).pdf');
-  // "é" as one character and as "e" + a combining accent are the same name
   const composed = 'café.txt';
   const decomposed = 'café.txt';
   assert.equal(pickFreeName(decomposed, [composed]).changed, true);
   assert.equal(pickFreeName(composed, [decomposed]).changed, true);
   assert.equal(pickFreeName('履歴書.pdf', ['履歴書.pdf']).name, '履歴書 (1).pdf');
   assert.equal(pickFreeName('Über.txt', ['über.txt']).changed, true, 'a capital with a diaeresis matches its small form');
-  // an emoji outside the basic plane counts as one character
   assert.equal(pickFreeName('\u{1F4C4}.txt', ['\u{1F4C4}.txt']).name, '\u{1F4C4} (1).txt');
   assert.equal(pickFreeName('  spaced.txt ', ['spaced.txt']).changed, true, 'spaces round a name do not make it different');
 });
@@ -98,7 +89,6 @@ test('the whole name stays within the limit: the BASE is shortened, never the co
   assert.ok(next.startsWith('xxxx'));
   const many = pickFreeName(wanted, [wanted, next]).name;
   assert.ok(many.endsWith(' (2).pdf') && [...many].length <= MAX_STORED_NAME);
-  // a big counter and a long Unicode name
   const long = `${'履'.repeat(MAX_STORED_NAME - 4)}.txt`;
   const taken = [long];
   const name = withCounter('履'.repeat(MAX_STORED_NAME - 4), 'txt', 12345);
@@ -106,8 +96,6 @@ test('the whole name stays within the limit: the BASE is shortened, never the co
   assert.ok([...name].length <= MAX_STORED_NAME && name.endsWith(' (12345).txt'));
   assert.ok([...pickFreeName(long, taken).name].length <= MAX_STORED_NAME);
 });
-
-// ---------------------------------------------------------------- uploads
 
 it('the second upload of a name in a folder is saved with a counter, says so, and a different folder or a Trash file does not count', async () => {
   const a = await account('names.a@example.com');
@@ -125,12 +113,10 @@ it('the second upload of a name in a folder is saved with a counter, says so, an
   assert.equal(third.body.filename, 'REPORT (2).PDF', 'compared without regard to capitals');
   assert.deepEqual(await names(a), ['report.pdf', 'report (1).pdf', 'REPORT (2).PDF']);
 
-  // another folder: the name is free there
   const elsewhere = await upload(a, 'report.pdf', { folder: 'Taxes' });
   assert.equal(elsewhere.body.filename, 'report.pdf');
   assert.equal(elsewhere.body.nameChanged, false);
 
-  // a file in Trash is not in the folder: its name is free again
   await live.api('DELETE', `${D}/${first.body.id}`, { token: a.token });
   await live.api('DELETE', `${D}/${second.body.id}`, { token: a.token });
   await live.api('DELETE', `${D}/${third.body.id}`, { token: a.token });
@@ -170,7 +156,6 @@ it('a rename to a name already used in the folder gets a counter too (it was a s
   assert.equal(renamed.status, 200, renamed.text);
   assert.equal(renamed.body.filename, 'one (1).txt');
   assert.equal(renamed.body.nameChanged, true);
-  // the same name again, or only a different capital letter, on its own file: allowed as typed
   const same = await live.api('PATCH', `${D}/${one.body.id}`, { token: a.token, json: { filename: 'ONE.txt' } });
   assert.equal(same.body.filename, 'ONE.txt');
   assert.equal(same.body.nameChanged, undefined);
@@ -202,7 +187,6 @@ it('restoring from Trash into a taken name brings the file back with a counter (
 });
 
 it('a zip import uploads every file through the same route, so imported duplicates get counters too', async () => {
-  // The import (client/src/utils/zipImport.js) sends each file to POST /api/documents: the route is the one place that names files.
   const fs = require('node:fs');
   const path = require('node:path');
   const page = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'src', 'services', 'importRuntime.js'), 'utf8');
@@ -215,8 +199,6 @@ it('a zip import uploads every file through the same route, so imported duplicat
     assert.equal(res.body.filename, expected);
   }
 });
-
-// ---------------------------------------------------------------- the upload key
 
 const key = () => crypto.randomUUID();
 
@@ -261,7 +243,6 @@ it('the key belongs to one account: another user with the same key is a separate
   assert.equal(theirs.status, 201, 'not treated as A\'s upload');
   assert.notEqual(theirs.body.id, mine.body.id);
   assert.equal(await M().Document.countDocuments({}), 2);
-  // and B can never read A's document through the key
   const replay = await upload(b, 'shared-key.txt', { uploadKey });
   assert.equal(replay.body.id, theirs.body.id);
   assert.notEqual(replay.body.id, mine.body.id);
@@ -281,7 +262,6 @@ it('a key must be a UUID; none is fine; a different key is a different upload (a
   assert.equal(k2.status, 201);
   assert.equal(k2.body.filename, 'k (1).txt');
   assert.notEqual(k1.body.id, k2.body.id);
-  // an object smuggled in as the key (bracket syntax) is not a UUID
   const form = formOf('obj.txt');
   form.append('uploadKey[$ne]', 'x');
   assert.equal((await live.api('POST', D, { token: a.token, form })).status, 400);
@@ -296,7 +276,7 @@ it('a replay is answered even if the first upload was trashed meanwhile, and a r
   assert.equal(replay.status, 200);
   assert.equal(replay.body.id, first.body.id);
   assert.equal(await M().Document.countDocuments({ userId: a.userId }), 1);
-  process.env.STORAGE_QUOTA_MB = String(1 / 1024); // 1 KB: everything new is too big
+  process.env.STORAGE_QUOTA_MB = String(1 / 1024);
   assert.equal((await upload(a, 'gone.txt', { uploadKey, content: 'z'.repeat(2000) })).status, 200);
   assert.equal((await upload(a, 'new.txt', { uploadKey: key(), content: 'z'.repeat(2000) })).status, 413, 'the quota still refuses a new upload');
 });
@@ -309,7 +289,6 @@ it('the upload-key index is partial and unique on { userId, uploadKey }, and the
   assert.deepEqual(index.partialFilterExpression, { uploadKey: { $type: 'string' } });
   assert.ok(!indexes.some((entry) => Object.keys(entry.key).includes('filename') && entry.unique), 'no unique index on names');
 
-  // old data: two documents with the same name and no key, and several with no key at all: the index builds regardless
   const a = await account('key.migrate@example.com');
   const base = { userId: a.userId, filename: 'same.txt', folder: 'root', encryptedBlob: Buffer.from('x'), iv: 'a', authTag: 'b', checksum: 'c', mimeType: 'text/plain', originDevice: 'pc' };
   await M().Document.collection.insertMany([{ ...base }, { ...base }, { ...base, filename: 'other.txt' }]);

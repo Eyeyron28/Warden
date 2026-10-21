@@ -29,7 +29,6 @@ const src = path.join(here, '..', '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-// A real (tiny) JPEG: only its framing matters to the PDF.
 const JPEG = Uint8Array.from(
   Buffer.from(
     '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=',
@@ -38,8 +37,6 @@ const JPEG = Uint8Array.from(
 );
 const text = (bytes) => Buffer.from(bytes).toString('latin1');
 const near = (a, b) => Math.abs(a - b) < 1e-9;
-
-// ---------- sizes, rotation, crop ----------
 
 test('a photo is scaled so its longest side is at most about 2000 px, and never scaled up', () => {
   assert.deepEqual(fitWithin(4032, 3024), { width: 2000, height: 1500 });
@@ -76,7 +73,6 @@ test('a corner moves only itself: the opposite corner stays, and "move" keeps th
   assert.ok(near(nw.x + nw.w, 0.6) && near(nw.y + nw.h, 0.6));
   const moved = applyHandle(start, 'move', 0.1, -0.1);
   assert.ok(near(moved.w, 0.4) && near(moved.h, 0.4) && near(moved.x, 0.3));
-  // a keyboard nudge is the same call
   assert.ok(applyHandle(start, 'move', 0.01, 0).x > start.x);
 });
 
@@ -97,8 +93,6 @@ test('a crop in pixels is never empty and never outside the image', () => {
   const edge = cropToPixels({ x: 1, y: 1, w: 0.05, h: 0.05 }, 10, 10);
   assert.ok(edge.width >= 1 && edge.height >= 1 && edge.x + edge.width <= 10 && edge.y + edge.height <= 10);
 });
-
-// ---------- document mode ----------
 
 const imageOf = (grays) => ({ width: grays.length, height: 1, data: Uint8ClampedArray.from(grays.flatMap((g) => [g, g, g, 255])) });
 const channel = (image) => [...image.data].filter((_, index) => index % 4 === 0);
@@ -131,8 +125,6 @@ test('the default name is "Scan YYYY-MM-DD HH.MM" and a typed name is made safe'
   assert.equal(cleanScanName('///'), '');
   assert.equal(cleanScanName('x'.repeat(300)).length, 100);
 });
-
-// ---------- the PDF ----------
 
 test('the PDF starts with %PDF-, ends with %%EOF, and the apps own sniffing calls it a PDF', () => {
   const pdf = buildPdf([{ jpeg: JPEG, width: 1200, height: 1600 }]);
@@ -175,7 +167,6 @@ test('the cross-reference table is real: every offset points at its object, and 
     assert.equal(body.slice(Number(entry[1]), Number(entry[1]) + `${index + 1} 0 obj`.length), `${index + 1} 0 obj`, `object ${index + 1}`);
   });
   assert.match(body, /\/Size 9 \/Root 1 0 R/);
-  // every stream is exactly as long as it says
   for (const match of body.matchAll(/\/Length (\d+)[^>]*>>\nstream\n/g)) {
     const end = match.index + match[0].length + Number(match[1]);
     assert.ok(body.slice(end).startsWith('\nendstream') || body.slice(end).startsWith('endstream'), `stream at ${match.index}`);
@@ -198,8 +189,6 @@ test('pdf.js itself opens the PDF and finds every page, at the shape asked for',
   assert.ok(Math.abs(second.width / second.height - 4 / 3) < 0.01);
   await doc.destroy();
 });
-
-// ---------- fitting under the 4 MB cap ----------
 
 const fakeEncode = (sizes) => async (index, quality) => {
   const bytes = new Uint8Array(3 + Math.round(sizes[index] * quality));
@@ -245,8 +234,6 @@ test('separate images: one JPEG per page, each at its own best quality, named by
   assert.equal(single.files[0].suffix, '');
   await assert.rejects(() => planScan({ count: 0, format: 'pdf', encode: fakeEncode([]), sizeOf }), /no pages/);
 });
-
-// ---------- what the dialog is wired to (the browser run proves the rest) ----------
 
 test('the scanner uses a file input with the camera hint, never getUserMedia, and stores nothing', () => {
   const files = ['components/scan/ScanDialog.jsx', 'components/scan/CropOverlay.jsx', 'utils/scan/canvasOps.js', 'utils/scan/imageOps.js', 'utils/scan/pdfWriter.js', 'utils/scan/scanPlan.js'];

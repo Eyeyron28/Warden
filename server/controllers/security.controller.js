@@ -12,14 +12,11 @@ const { computeFlags, FLAG_LABELS } = require('../utils/suspicious');
 const suspiciousConfig = require('../config/suspicious');
 const { retentionDays } = require('../utils/auditConfig');
 
-// Routes are async, but Express doesn't forward rejected promises to
-// error-handling middleware on its own - this small wrapper does that.
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
-  // An app-authored 5xx message is written for the user; any other 5xx is replaced by the error handler.
   if (status >= 500) error.expose = true;
   return error;
 }
@@ -28,7 +25,6 @@ const deviceNotFound = () => httpError(404, 'Device not found.');
 const PAGE_SIZE = 50;
 const MAX_EVENTS_READ = 5000;
 
-/** Event types by group, for the timeline filter. */
 const GROUPS = Object.freeze({
   vault: ['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'trash_emptied', 'export', 'import', 'account_export', 'expiry_set', 'expiry_cleared', 'note_set', 'note_changed', 'note_cleared', 'version_created', 'version_restored', 'version_deleted', 'file_held', 'file_released', 'file_refused'],
   sharing: ['share_created', 'share_revoked', 'share_opened', 'share_downloaded', 'shares_stopped_all'],
@@ -42,7 +38,6 @@ const GROUPS = Object.freeze({
 const FILE_TARGET_TYPES = new Set(['upload', 'view', 'download', 'rename', 'move', 'delete', 'restore', 'expiry_set', 'expiry_cleared', 'note_set', 'note_changed', 'note_cleared', 'version_created', 'version_restored', 'version_deleted', 'file_held', 'file_released', 'emergency_file_viewed', 'emergency_file_downloaded']);
 const SHARE_TARGET_TYPES = new Set(['share_created', 'share_revoked', 'share_opened', 'share_downloaded']);
 
-/** A country's English name from its two-letter code ("PH" -> "Philippines"), or the code itself. */
 function countryName(code) {
   if (!code) return null;
   try {
@@ -65,11 +60,6 @@ const toDeviceSummary = (device, currentId) => ({
   signedOutAt: device.signedOutAt || null,
 });
 
-/**
- * GET /api/security/devices
- * The browsers that have signed in to this account: label, first seen, last active, place, whether it
- * skips the emailed code, and which one is THIS browser. No ids or hashes that could be replayed.
- */
 const listDevices = asyncHandler(async (req, res) => {
   const devices = await Device.find({ userId: req.userId });
   const rows = devices
@@ -78,11 +68,6 @@ const listDevices = asyncHandler(async (req, res) => {
   res.status(200).json({ devices: rows });
 });
 
-/**
- * POST /api/security/devices/:id/sign-out
- * Ends every session of ONE device and removes its trust, so it needs the password AND an emailed code
- * next time. Another account's device (or an unknown id) is a 404.
- */
 const signOutDevice = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw deviceNotFound();
   const device = await Device.findOne({ _id: req.params.id, userId: req.userId });
@@ -95,10 +80,6 @@ const signOutDevice = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, sessionsEnded, self: req.deviceId !== null && String(device._id) === String(req.deviceId) });
 });
 
-/**
- * POST /api/security/devices/:id/forget-trusted
- * Removes ONE browser's "skip the emailed code" trust. Its sessions stay; the next sign-in there asks for a code.
- */
 const forgetTrustedDevice = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw deviceNotFound();
   const device = await Device.findOne({ _id: req.params.id, userId: req.userId });
@@ -109,11 +90,6 @@ const forgetTrustedDevice = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true });
 });
 
-/**
- * POST /api/security/devices/sign-out-others    Body: { forgetTrusted?: boolean }
- * Signs out every session except the one making this request. With `forgetTrusted`, every other browser
- * also loses its trust. The caller's own session and trust are untouched.
- */
 const signOutOthers = asyncHandler(async (req, res) => {
   const { forgetTrusted } = req.body || {};
   if (forgetTrusted !== undefined && typeof forgetTrusted !== 'boolean') throw httpError(400, 'forgetTrusted must be true or false.');
@@ -143,7 +119,6 @@ const parseDate = (value, label) => {
   return date;
 };
 
-/** Names for the events on one page, looked up now (never stored in the log). */
 async function resolveTargets(userId, events) {
   const fileIds = [...new Set(events.filter((e) => FILE_TARGET_TYPES.has(e.type) && mongoose.Types.ObjectId.isValid(e.targetId)).map((e) => String(e.targetId)))];
   const shareIds = [...new Set(events.filter((e) => SHARE_TARGET_TYPES.has(e.type) && e.targetId).map((e) => String(e.targetId)))];
@@ -173,12 +148,6 @@ function describeTarget(event, lookup) {
   return { kind: 'none', name: null, gone: false };
 }
 
-/**
- * GET /api/security/activity?device=&group=vault|sharing|account&flagged=1&from=&to=&before=<seq>&limit=
- * Newest first, 50 a page (`before` is the seq of the last row of the previous page). Each row has what
- * happened, which device, from which country, when, and any suspicious flags. File and share names are
- * looked up now; a deleted file shows as "deleted file". Only this account's events are ever read.
- */
 const listActivity = asyncHandler(async (req, res) => {
   const { device, group, before, flagged } = req.query;
   if (group !== undefined && group !== '' && !GROUPS[group]) throw httpError(400, 'group must be vault, sharing, account or emergency.');
@@ -218,7 +187,6 @@ const listActivity = asyncHandler(async (req, res) => {
       at: event.at,
       country: event.country || null,
       countryName: countryName(event.country),
-      // 'emergency' when an Emergency Access contact did it (not the owner's own session).
       actor: event.actor || null,
       device: dev ? { id: String(dev._id), label: dev.label, current: req.deviceId !== null && String(dev._id) === String(req.deviceId) } : null,
       target: describeTarget(event, lookup),
@@ -237,21 +205,13 @@ const listActivity = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * POST /api/security/verify-log
- * Walks this account's remaining events and checks the hash chain. Says "no edits or gaps found" or where it is
- * broken. It detects edits and gaps; it cannot detect the removal of the newest entries by someone who can write to the
- * database, nor protect against someone who also holds the server's signing key.
- */
 const verifyLog = asyncHandler(async (req, res) => {
   const result = await verifyChain(req.userId);
   res.status(200).json({ ...result, retentionDays: retentionDays() });
 });
 
-// What the browser itself may report: a zip export or import happens entirely in the page, so the page says so.
 const CLIENT_EVENTS = new Set(['export', 'import', 'account_export']);
 
-/** POST /api/security/client-event    Body: { type: 'export' | 'import' | 'account_export' } */
 const clientEvent = asyncHandler(async (req, res) => {
   const { type } = req.body || {};
   if (typeof type !== 'string' || !CLIENT_EVENTS.has(type) || !EVENT_TYPES.includes(type)) throw httpError(400, 'Unknown event.');

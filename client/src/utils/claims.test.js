@@ -4,14 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// The words on the site must not promise more than the code does (security review, Prompt 29/30). These checks read the
-// user-facing source files and fail if an overstated sentence comes back, or a corrected one is lost.
-
 const here = path.dirname(fileURLToPath(import.meta.url));
 const src = path.join(here, '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 
-// The landing page's words live in several files (the hero, the sections below it, the FAQ, the demo and the tabs).
 const HOME_FILES = [
   'pages/public/HomePage.jsx',
   'pages/public/HomeBelow.jsx',
@@ -37,9 +33,7 @@ const PAGES = [
   'utils/usePageMeta.js',
 ];
 
-// Words only, with line breaks, JSX entities and indentation folded into single spaces; comment lines dropped.
 function words(file) {
-  // 'pages/public/HomePage.jsx' stands for the whole landing page.
   if (file === 'pages/public/HomePage.jsx') return HOME_FILES.map(wordsOf).join(' ');
   return wordsOf(file);
 }
@@ -98,7 +92,6 @@ test('nobody is promised an owner notification that the code does not guarantee'
 test('sessions: 30 minutes idle and 12 hours at most, wherever sessions are described', () => {
   for (const [file, text] of all) {
     if (!/\b30 minutes\b/.test(text) || !/session/i.test(text)) continue;
-    // the 30-minute mentions that are about sessions (not Trusted browsers' 30 days etc.)
     assert.match(text, /12 hours/, `${file} mentions the 30-minute session limit but not the 12-hour one`);
   }
   assert.doesNotMatch(words('pages/public/PrivacyPage.jsx'), /expire after 30 minutes of inactivity/);

@@ -1,36 +1,18 @@
 import { downloadName, sanitizeDownloadName, splitName } from './fileNames.js';
 
-/**
- * "Export my files": every live file in the vault as a .zip, built in the browser.
- *
- * Files come through the normal authenticated download path one at a time (two at a time, to be
- * exact), each at most 4 MB, and go into the zip with their folder structure and original name.
- * Names are sanitised for the zip (and a missing extension is recovered from the file's bytes,
- * exactly as a normal download does); two files with the same name in one folder become
- * "name (2).ext". Empty folders are included. Trash, shares and thumbnails are not.
- *
- * The zip is NOT encrypted - the UI says so.
- */
-
 export const EXPORT_MAX_FILE_BYTES = 4 * 1024 * 1024;
 export const EXPORT_CONCURRENCY = 2;
 
-/** warden-export-YYYY-MM-DD.zip (the local date). */
 export function exportFileName(date = new Date()) {
   const two = (n) => String(n).padStart(2, '0');
   return `warden-export-${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}.zip`;
 }
 
-/** One safe path segment (no separators, no reserved characters, never "." or ".."). */
 export function zipSegment(name) {
   const clean = sanitizeDownloadName(name);
   return clean === '.' || clean === '..' ? 'file' : clean;
 }
 
-/**
- * `name` made unique among `used` (a Set of lower-cased names already taken in one folder), keeping
- * the extension: "a.pdf" -> "a (2).pdf" -> "a (3).pdf". Adds the winner to `used`.
- */
 export function uniqueName(name, used) {
   const key = (value) => value.toLowerCase();
   if (!used.has(key(name))) {
@@ -47,13 +29,6 @@ export function uniqueName(name, used) {
   }
 }
 
-/**
- * Maps every vault folder path ("Taxes/2024") to its path inside the zip, sanitising each segment and
- * keeping siblings distinct. '' (the top level) maps to ''. Parents come before children.
- *
- * @param {string[]} folderPaths all folder paths, including empty ones ("root" and "" are the top level)
- * @returns {Map<string, string>}
- */
 export function planFolders(folderPaths) {
   const wanted = new Set();
   for (const raw of folderPaths) {
@@ -79,10 +54,6 @@ export function planFolders(folderPaths) {
 
 const topLevel = (folder) => (!folder || folder === 'root' ? '' : String(folder).replace(/^\/+|\/+$/g, ''));
 
-/**
- * Decides what goes where, before anything is downloaded.
- * @returns {{ folders: Map<string,string>, files: Array<{ doc: object, dir: string }>, tooLarge: object[] }}
- */
 export function planExport(documents, folderPaths) {
   const folders = planFolders([...folderPaths, ...documents.map((doc) => topLevel(doc.folder))]);
   const files = [];
@@ -97,23 +68,13 @@ export function planExport(documents, folderPaths) {
   return { folders, files, tooLarge };
 }
 
-/**
- * Builds the zip. Dependencies are passed in: `JSZip` (the library), `fetchBytes(id, { signal })`
- * (the authenticated download), and `onProgress({ phase, done, total, bytes, current })`.
- *
- * A file that cannot be fetched (or is over 4 MB) is skipped and LISTED in `failures` - never dropped
- * silently - and, when there are failures, a "warden-export-report.txt" is added to the zip too.
- * Cancelling (via `signal`) stops after the files already started and resolves { cancelled: true }.
- *
- * @returns {Promise<{ cancelled: true } | { cancelled: false, blob: Blob, added: number, bytes: number, failures: Array<{ path: string, reason: string }> }>}
- */
 export async function buildExportZip({ documents, folderPaths, fetchBytes, JSZip, onProgress = () => {}, signal, concurrency = EXPORT_CONCURRENCY }) {
   const { folders, files, tooLarge } = planExport(documents, folderPaths);
   const zip = new JSZip();
   for (const zipPath of folders.values()) if (zipPath) zip.folder(zipPath);
 
   const failures = tooLarge.map((doc) => ({ path: doc.filename, reason: 'Larger than 4 MB (the limit for a file in Warden)' }));
-  const usedNames = new Map(); // dir -> Set of taken names (lower-case)
+  const usedNames = new Map();
   let added = 0;
   let bytesTotal = 0;
   let done = 0;

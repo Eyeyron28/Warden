@@ -13,7 +13,6 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 const DAY = 24 * 60 * 60 * 1000;
 const MAX_EVENTS_READ = 2000;
 
-/** The facts the score is made of, for ONE account. Counts only; nothing about other accounts is read. */
 async function gatherFacts(userId, now = new Date()) {
   const activeShare = { ownerUserId: userId, ready: true, expiresAt: { $gt: now } };
   const [openShares, oldShares, trusted, events, dated, trashNearPurge, user] = await Promise.all([
@@ -45,19 +44,16 @@ async function gatherFacts(userId, now = new Date()) {
   };
 }
 
-/** GET /api/account/health - the caller's own score and checklist. */
 const getHealth = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json(computeVaultHealth(await gatherFacts(req.userId)));
 });
 
-/** GET /api/account/preferences */
 const getPreferences = asyncHandler(async (req, res) => {
   const user = await User.findById(req.userId).select('expiryReminders');
   res.status(200).json({ expiryReminders: user?.expiryReminders !== false });
 });
 
-/** PATCH /api/account/preferences  { expiryReminders: boolean } */
 const updatePreferences = asyncHandler(async (req, res) => {
   const { expiryReminders } = req.body || {};
   if (typeof expiryReminders !== 'boolean') {

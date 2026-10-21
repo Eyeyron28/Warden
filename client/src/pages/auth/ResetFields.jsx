@@ -5,10 +5,6 @@ import { formatRecoveryKeyInput, recoveryKeyProblem } from '../../utils/password
 import PasswordInput from './PasswordInput.jsx';
 import forms from '../../components/site/forms.module.css';
 
-/**
- * The recovery-key box: paste-friendly (spaces, dashes and case are sorted out as
- * it is typed), monospace, no autofill (autocomplete="off"), no spell-check.
- */
 export function RecoveryKeyField({ id, value, onChange, onBlur, error, touched, autoFocus = false, label = 'Recovery key' }) {
   const problem = touched ? recoveryKeyProblem(value) : '';
   const shown = error || problem;
@@ -41,13 +37,11 @@ export function RecoveryKeyField({ id, value, onChange, onBlur, error, touched, 
   );
 }
 
-/** New password + confirmation, with the strength rules. `idPrefix` keeps ids unique per screen. */
 export function NewPasswordFields({ idPrefix, password, confirm, onPassword, onConfirm, touched, onTouch, passwordError }) {
   const passwordOk = passwordIsValid(password);
   const confirmOk = confirm.length > 0 && confirm === password;
   return (
     <>
-      {/* Side by side on a desktop landscape window; the rules sit under both. */}
       <div className={forms.row2}>
         <PasswordInput
           id={`${idPrefix}-password`}

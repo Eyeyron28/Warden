@@ -17,14 +17,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const rate = (seconds = 150) => ({ response: { status: 429, headers: { 'retry-after': String(seconds) }, data: { error: { code: 'UPLOAD_RATE_LIMITED', message: 'Too many uploads at once. Please try again shortly.', retryAfterSeconds: seconds } } } });
 const full = () => ({ response: { status: 409, headers: {}, data: { error: { code: 'DOCUMENT_LIMIT', message: 'You have reached the limit of 2000 files. Delete some files or empty the Trash.' } } } });
-// what services/transferRuntime.js does to a failed upload request
 const withDescribed = (error) => {
   const code = limitCodeOf(error);
   error.described = limitedError(code, retrySeconds(error), error.response.data.error.message);
   return error;
 };
-
-// ---------- the words ----------
 
 test('the two codes are recognised; Retry-After (else retryAfterSeconds, else a minute) says how long', () => {
   assert.equal(limitCodeOf(rate()), 'UPLOAD_RATE_LIMITED');
@@ -42,8 +39,6 @@ test('"Too many uploads at once. Try again in N minutes." rounds up and says "1 
   assert.equal(limitMessage('UPLOAD_RATE_LIMITED', { seconds: 0 }), 'Too many uploads at once. Try again in 1 minute.');
   assert.equal(limitMessage('DOCUMENT_LIMIT', { message: 'You have reached the limit of 2000 files. Delete some files or empty the Trash.' }), 'You have reached the limit of 2000 files. Delete some files or empty the Trash.');
 });
-
-// ---------- the tray rows ----------
 
 const trayRow = (error) => {
   const described = describeTransferError(withDescribed(error));
@@ -67,8 +62,6 @@ test('the document cap is a "Not saved" row with the server sentence and no Retr
   assert.equal(row.actions.retry, false);
   assert.equal(row.tip, row.line);
 });
-
-// ---------- the manager: the rest of the batch ----------
 
 function rig() {
   const calls = [];
@@ -164,8 +157,6 @@ test('a plain network error is still a plain failure (not a limit)', () => {
   assert.equal(describeTransferError(new Error('boom')).notSaved, undefined);
 });
 
-// ---------- the Upload dialog ----------
-
 test('the Upload dialog says before sending when a batch would pass the document cap (only when the meter told us both numbers)', () => {
   const items = [1, 2, 3].map((n) => ({ file: { name: `f${n}.txt`, size: 10 }, error: null }));
   const usage = { availableBytes: 10_000_000, documentCount: 1999, documentLimit: 2000 };
@@ -177,8 +168,6 @@ test('the Upload dialog says before sending when a batch would pass the document
   assert.equal(summarize(items, { availableBytes: 10_000_000 }).canUpload, true, 'unknown count: the tray handles it');
   assert.equal(summarize(items, null).canUpload, true);
 });
-
-// ---------- the zip import ----------
 
 const makeZip = async (entries) => {
   const zip = new JSZip();
@@ -234,12 +223,10 @@ test('the document cap stops the import the same way, with the server sentence',
 
 test('the stop line: "Stopped: <why>. N files were imported" with the held, not-saved and not-imported counts', async () => {
   const { runtime } = await import('../services/importRuntime.js').catch(() => ({ runtime: null }));
-  if (!runtime) return; // (the runtime pulls in browser-only modules; the wording is also checked in the source below)
+  if (!runtime) return;
   const state = { uploaded: 2, results: [{ status: 'imported' }, { status: 'imported' }, { status: 'held' }, { status: 'refused' }, { status: 'failed' }, { status: 'failed' }] };
   assert.equal(runtime.stoppedLine(state, 'Too many uploads at once. Try again in 4 minutes.'), 'Stopped: Too many uploads at once. Try again in 4 minutes. 2 files were imported, 1 held for review, 1 not saved, 2 not imported.');
 });
-
-// ---------- what is where ----------
 
 test('the new wording lives only in lazy modules; the main files carry just a few lines', () => {
   const read = (file) => fs.readFileSync(path.join(here, '..', file), 'utf8');

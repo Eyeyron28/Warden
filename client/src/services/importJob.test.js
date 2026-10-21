@@ -15,7 +15,6 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const file = (name, size = 100, dir = '') => ({ entry: name, name, dir, size });
 const planOf = (files, extra = {}) => ({ ok: true, files, folders: [], ignored: [], skipped: [], totalBytes: 0, ...extra });
 
-/** A manager wired to fakes: the zip code, the clock, the timers, the session and the window. */
 function rig({ token = 'token-A' } = {}) {
   const runs = [];
   const timers = [];
@@ -70,8 +69,6 @@ const begin = async (r, files = [file('a.txt'), file('b.txt'), file('c.txt')], n
   return started;
 };
 
-// ---------- start, progress, finish ----------
-
 test('start: a running job with the file name, totals and destination; reading, then validating, then uploading', async () => {
   const r = rig();
   const started = r.manager.start({ name: 'backup.zip', bytes: new Uint8Array(3), plan: planOf([file('a.txt', 10, 'Taxes'), file('b.txt', 30, 'Taxes/2024')]) });
@@ -111,12 +108,10 @@ test('progress is throttled: many files finishing in a burst reach the screen a 
   const during = r.changes.length - before;
   assert.ok(during <= 3, `200 updates produced ${during} renders (the first, and one scheduled for later)`);
   assert.equal(PROGRESS_THROTTLE_MS, 250);
-  // the scheduled one carries the newest numbers
   r.clock.t += 300;
   r.fireTimers();
   assert.equal(r.manager.getState().done, 200);
   assert.equal(r.manager.getState().bytesDone, 20000);
-  // and a later burst waits for the interval again
   assert.equal(r.timers.filter((t) => !t.cancelled).length, 0);
 });
 
@@ -210,8 +205,6 @@ test('the zip is checked again before anything is uploaded: a zip that no longer
   assert.match(manager.getState().message, /decompression bomb/);
 });
 
-// ---------- one at a time ----------
-
 test('a second import while one runs is refused with the reason, and changes nothing', async () => {
   const r = rig();
   await begin(r);
@@ -221,15 +214,12 @@ test('a second import while one runs is refused with the reason, and changes not
   assert.equal(r.manager.getState(), before);
   assert.equal(r.runs.length, 1);
   assert.match(BLOCKED_MESSAGE, /already running/);
-  // when the first is over, another may start, and the old report is replaced
   r.runs[0].resolve(r.result({ uploaded: 3 }));
   await flush();
   assert.deepEqual(r.manager.start({ name: 'other.zip', bytes: new Uint8Array(1), plan: planOf([file('x')]) }), { ok: true });
   assert.equal(r.manager.getState().fileName, 'other.zip');
   assert.equal(r.manager.getState().results.length, 0);
 });
-
-// ---------- cancel ----------
 
 test('cancel: the signal is aborted, the job ends as cancelled after the current file, and what was imported stays counted', async () => {
   const r = rig();
@@ -249,8 +239,6 @@ test('cancel: the signal is aborted, the job ends as cancelled after the current
   assert.equal(state.cardVisible, true);
 });
 
-// ---------- the session ----------
-
 test('signing out or locking the vault (the token goes, no expiry notice) cancels the job and leaves no name or result behind', async () => {
   const r = rig();
   await begin(r, [file('secret-name.pdf'), file('b.pdf')], 'my-private-backup.zip');
@@ -265,7 +253,6 @@ test('signing out or locking the vault (the token goes, no expiry notice) cancel
   assert.deepEqual(state.results, []);
   assert.equal(state.cardVisible, false);
   assert.equal(r.windowEvents.removed.filter((e) => e.type === 'beforeunload').length, 1);
-  // the run finishing afterwards does not bring anything back
   r.runs[0].resolve(r.result({ uploaded: 1 }));
   await flush();
   assert.equal(r.manager.getState().status, 'idle');
@@ -330,8 +317,6 @@ test('a 401 on an upload (the server says the session is over) stops the job at 
   assert.deepEqual(state.results, []);
 });
 
-// ---------- asking before sign-out ----------
-
 test('Lock vault with nothing running just runs; with an import running it asks, and answering "keep importing" changes nothing', async () => {
   const r = rig();
   let locked = 0;
@@ -362,8 +347,6 @@ test('answering "stop and sign out" stops the import, clears the job, then signs
   assert.match(strip(read('services/importJob.js')), /Files already imported stay imported|files already imported stay imported|NOT atomic/i);
 });
 
-// ---------- announcements ----------
-
 test('screen readers are told at the start, at every quarter, and at the end - not for every file', async () => {
   const r = rig();
   await begin(r, Array.from({ length: 40 }, (_, i) => file(`f${i}.txt`)));
@@ -371,7 +354,7 @@ test('screen readers are told at the start, at every quarter, and at the end - n
   const { options } = r.runs[0];
   for (let i = 1; i <= 40; i += 1) {
     options.onProgress({ done: i, total: 40, uploaded: i, current: '' });
-    r.clock.t += 300; // past the throttle: every file is published
+    r.clock.t += 300;
     r.fireTimers();
     heard.add(r.manager.getState().announce);
   }
@@ -384,8 +367,6 @@ test('screen readers are told at the start, at every quarter, and at the end - n
   assert.ok(lines.some((line) => /Import finished\. 40 files imported\./.test(line)), 'the end');
   assert.ok(lines.length <= 6, `${lines.length} announcements for 40 files`);
 });
-
-// ---------- the job lives above the pages, and keeps nothing on disk ----------
 
 test('the job is a module of its own: no page owns it, and nothing of it is written to any browser storage', () => {
   const job = strip(read('services/importJob.js'));
@@ -403,7 +384,6 @@ test('the job is a module of its own: no page owns it, and nothing of it is writ
 });
 
 test('every way of leaving the session goes through the job: Lock vault and signing this device out ask first', () => {
-  // the transfers manager asks for the whole tray (an import is one of its rows)
   assert.match(strip(read('App.jsx')), /transfers\.requestSignOut\(/);
   assert.match(strip(read('pages/DevicesPage.jsx')), /transfers\.requestSignOut\(/);
   assert.match(strip(read('services/transfers.js')), /An import is running\. Stop it and sign out\?/);
@@ -411,8 +391,6 @@ test('every way of leaving the session goes through the job: Lock vault and sign
   assert.match(strip(read('services/importJob.js')), /An import is running\. Stop it and sign out\?/);
   assert.match(strip(read('services/importJob.js')), /beforeunload/);
 });
-
-// ---------- a chosen zip is kept while the person looks at other pages ----------
 
 const zipArgs = (name = 'chosen.zip') => ({ name, bytes: new Uint8Array([9, 9, 9]), plan: planOf([file('a.txt', 10, 'Top'), file('b.txt', 20, 'Top')]) });
 
@@ -424,7 +402,6 @@ test('prepare: the chosen zip (name and checked plan) lives in the job module, s
   assert.equal(kept.name, 'chosen.zip');
   assert.equal(kept.plan.files.length, 2);
   assert.equal(JSON.stringify(r.manager.getState()).includes('"9,9,9"'), false, 'the bytes are not in the published state');
-  // a page unmounts and another mounts: nothing in the module changes, and a new subscriber reads it at once
   let seen = null;
   r.manager.subscribe(() => {});
   seen = r.manager.getState().prepared;
@@ -455,7 +432,6 @@ test('Clear removes it; Import starts the job with it and the job takes over (no
   assert.equal(state.prepared, null);
   assert.equal(r.runs.length, 1, 'the job really started with the prepared bytes');
   assert.deepEqual([...r.runs[0].options.bytes], [9, 9, 9]);
-  // while a job runs a new zip cannot be prepared
   r.manager.prepare(zipArgs('later.zip'));
   assert.equal(r.manager.getState().prepared, null);
 });
@@ -473,7 +449,6 @@ test('a chosen zip never outlives its session: sign-out, lock, a 401, an expiry 
   same.signIn('token-A');
   await flush();
   assert.notEqual(same.manager.getState().prepared, null, 'the same session: it stays');
-  // the app-wide reset (sessionReset.js) calls clear(): nothing of a chosen zip is left
   const reset = rig();
   reset.manager.prepare(zipArgs());
   reset.manager.clear();

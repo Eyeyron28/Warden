@@ -1,4 +1,3 @@
-
 const {
   generateSalt,
   hashPassword,
@@ -11,14 +10,6 @@ const {
 } = require('./crypto');
 const { extractRecoverySalt } = require('./accountReset');
 
-/**
- * Everything a brand-new account is made of: the vault key (DEK), locked once under the password and once under a fresh
- * recovery key, and the password hash. Pure computation - nothing is written and nothing is sent. The crypto here is exactly
- * what signup has always done (same key sizes, same scrypt parameters, same recovery key format).
- *
- * @returns {{ fields: object, recoveryKey: string, dek: Buffer }} `fields` goes into User.create (with email and
- *   emailVerified); `recoveryKey` is shown to the person once and never stored; `dek` signs them in.
- */
 function buildAccountFields(password) {
   const salt = generateSalt();
   const passwordHash = hashPassword(password, salt);
@@ -49,7 +40,6 @@ function buildAccountFields(password) {
   };
 }
 
-// MongoDB's unique-index violation (also what the in-memory test fakes throw).
 const isDuplicateKey = (error) => Boolean(error && (error.code === 11000 || /E11000/.test(String(error.message))));
 
 module.exports = { buildAccountFields, isDuplicateKey };

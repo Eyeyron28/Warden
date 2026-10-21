@@ -1,27 +1,7 @@
-/**
- * Quarantine's scanner: a handful of simple rules over the bytes of an upload. It is NOT an antivirus.
- *
- * Pure code. It reads the bytes it is given (the plaintext, before encryption) and nothing else: it never runs, opens, renders or
- * decompresses file content, makes no network call, writes nothing and keeps nothing. A zip is read through its central directory
- * (the list of names and sizes at the end of the file) only. Searches are capped (SEARCH_CAP) so a 4 MB file takes a few
- * milliseconds.
- *
- * Verdicts:
- *   'blocked'    - only for the standard test signature and for program files (executables) in disguise. Refused, nothing is stored.
- *   'suspicious' - the score reached SUSPICIOUS_THRESHOLD. Stored encrypted as usual, but held in Quarantine until the owner decides.
- *   'clean'      - below the threshold.
- * (The caller adds 'unchecked' when the scanner itself fails: a scanner bug never fails an upload.)
- *
- * Every rule has a code, a weight and a plain sentence, kept in REASONS below. That table is the one place the wording lives; the
- * server sends the sentences with the codes so the browser never needs its own copy.
- */
-
 const SCANNER_VERSION = 1;
 
-/** A score at or above this holds the file. One suspicious rule alone (weights below) is enough; TYPE_MISMATCH alone is not. */
 const SUSPICIOUS_THRESHOLD = 40;
 
-/** At most this many bytes from the start and the same from the end of a file are searched. */
 const SEARCH_CAP = 1024 * 1024;
 
 const REASONS = Object.freeze({
@@ -32,26 +12,21 @@ const REASONS = Object.freeze({
   ACTIVE_MARKUP: { weight: 45, severity: 'medium', text: 'This file contains script code that a browser would run.' },
   ARCHIVE_ABUSE: { weight: 50, severity: 'medium', text: 'This archive looks unsafe: too many entries, an unusual size ratio, archives inside it, odd paths, or entries that cannot be inspected.' },
   ARCHIVE_UNINSPECTABLE: { weight: 45, severity: 'medium', text: 'Warden cannot look inside this kind of archive.' },
-  // Not a score: a plain zip is refused before scanning (see isPlainZip). The sentence is the one the refusal shows.
   PLAIN_ZIP: { weight: 0, severity: 'low', text: 'Zip files go through Export / Import, so every file inside is checked.' },
   EXECUTABLE_CONTENT: { weight: 100, severity: 'high', text: 'This file is a program (executable), whatever its name says.' },
   KNOWN_TEST_SIGNATURE: { weight: 100, severity: 'high', text: 'This file carries the standard antivirus test signature.' },
   SCAN_ERROR: { weight: 0, severity: 'low', text: 'The check could not be completed, so the file was saved without one.' },
 });
 
-/** Codes that refuse an upload outright. */
 const BLOCKING = new Set(['KNOWN_TEST_SIGNATURE', 'EXECUTABLE_CONTENT']);
 
 const EXECUTABLE_EXTENSIONS = new Set(['exe', 'dll', 'scr', 'bat', 'cmd', 'com', 'msi', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'ps1', 'lnk', 'jar', 'hta', 'apk']);
-/** Endings that look like ordinary documents: "invoice.pdf.exe" hides behind one of these. */
 const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'zip']);
 const TEXT_EXTENSIONS = new Set(['txt', 'csv', 'md', 'json', 'log', 'xml', 'html', 'htm', 'xhtml', 'svg']);
 const MARKUP_EXTENSIONS = new Set(['svg', 'html', 'htm', 'xhtml', 'xml', 'shtml']);
 const ARCHIVE_NAME = /\.(zip|jar|7z|rar|gz|tgz|tar|bz2|xz|cab)$/i;
-/** Archive formats Warden cannot look inside (by ending or by the first bytes). Zip is handled apart: see isPlainZip. */
 const UNINSPECTABLE_NAME = /\.(rar|7z|tar|gz|tgz|bz2|xz)$/i;
 
-/** What each ending is expected to look like (only endings with an unmistakable signature are checked). */
 const EXPECTED = Object.freeze({
   png: 'png', jpg: 'jpeg', jpeg: 'jpeg', gif: 'gif', webp: 'webp', pdf: 'pdf',
   docx: 'zip', xlsx: 'zip', pptx: 'zip', zip: 'zip', doc: 'ole', xls: 'ole', ppt: 'ole',
@@ -61,18 +36,15 @@ const DECLARED = Object.freeze({
 });
 const BINARY_KINDS = new Set(['png', 'jpeg', 'gif', 'webp', 'pdf', 'zip', 'ole', 'exe', 'elf', 'macho']);
 
-// The standard antivirus test string, assembled at run time so that no file of this project holds it whole.
 const TEST_SIGNATURE = Buffer.from(['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-', 'ANTIVIRUS-TEST-FILE!', '$H+H*'].join(''), 'latin1');
 
 const lower = (value) => String(value || '').toLowerCase();
 
-/** The bytes a search may look at: the start and the end of a big file, all of a small one. */
 function searchWindow(buffer) {
   if (buffer.length <= SEARCH_CAP * 2) return buffer;
   return Buffer.concat([buffer.subarray(0, SEARCH_CAP), buffer.subarray(buffer.length - SEARCH_CAP)]);
 }
 
-/** What the first bytes say the file is: png, jpeg, gif, webp, pdf, zip, ole, exe, elf, macho, text or other. */
 function detectKind(buffer) {
   const b = buffer;
   if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
@@ -89,7 +61,6 @@ function detectKind(buffer) {
   return head.includes(0) ? 'other' : 'text';
 }
 
-/** "MZ", and a "PE\0\0" header where the header says it is. (Plain "MZ" text is not enough.) */
 function isPortableExecutable(b) {
   if (b.length < 64 || b[0] !== 0x4d || b[1] !== 0x5a) return false;
   const offset = b.readUInt32LE(0x3c);
@@ -106,25 +77,21 @@ function splitName(name) {
 function isUninspectableArchive(name, buffer) {
   if (UNINSPECTABLE_NAME.test(String(name || '').trim())) return true;
   const b = buffer;
-  if (b.length >= 6 && b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21 && b[4] === 0x1a && b[5] === 0x07) return true; // rar
-  if (b.length >= 6 && b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf && b[4] === 0x27 && b[5] === 0x1c) return true; // 7z
-  if (b.length >= 3 && b[0] === 0x1f && b[1] === 0x8b && b[2] === 0x08) return true; // gzip
-  if (b.length >= 3 && b[0] === 0x42 && b[1] === 0x5a && b[2] === 0x68) return true; // bzip2 ("BZh")
-  if (b.length >= 6 && b[0] === 0xfd && b[1] === 0x37 && b[2] === 0x7a && b[3] === 0x58 && b[4] === 0x5a && b[5] === 0x00) return true; // xz
-  return b.length >= 262 && b.toString('latin1', 257, 262) === 'ustar'; // tar
+  if (b.length >= 6 && b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21 && b[4] === 0x1a && b[5] === 0x07) return true;
+  if (b.length >= 6 && b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf && b[4] === 0x27 && b[5] === 0x1c) return true;
+  if (b.length >= 3 && b[0] === 0x1f && b[1] === 0x8b && b[2] === 0x08) return true;
+  if (b.length >= 3 && b[0] === 0x42 && b[1] === 0x5a && b[2] === 0x68) return true;
+  if (b.length >= 6 && b[0] === 0xfd && b[1] === 0x37 && b[2] === 0x7a && b[3] === 0x58 && b[4] === 0x5a && b[5] === 0x00) return true;
+  return b.length >= 262 && b.toString('latin1', 257, 262) === 'ustar';
 }
-
-// ---------- the checks ----------
 
 function checkName(name) {
   const raw = String(name || '');
-  // A right-to-left override or similar control makes "txt.exe" read as "exe.txt".
   if (/[‪-‮⁦-⁩]/.test(raw)) return true;
   const { extensions } = splitName(raw);
   if (extensions.length === 0) return false;
   const last = extensions[extensions.length - 1];
   if (EXECUTABLE_EXTENSIONS.has(last)) return true;
-  // report.exe.txt is odd too: a program ending in the middle of a name.
   return extensions.length >= 2 && extensions.slice(0, -1).some((ext) => EXECUTABLE_EXTENSIONS.has(ext)) && DOCUMENT_EXTENSIONS.has(last);
 }
 
@@ -138,7 +105,6 @@ function checkTypeMismatch(name, type, kind) {
   return Boolean(declared) && kind !== declared;
 }
 
-/** Reads a zip's central directory only: names, flags and the sizes it declares. Never inflates anything. */
 function readZipDirectory(buffer) {
   const minEocd = 22;
   const from = buffer.length - minEocd;
@@ -157,7 +123,7 @@ function readZipDirectory(buffer) {
   if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff) return { zip64: true, entries: [], count: 0 };
   const entries = [];
   let at = offset;
-  const limit = Math.min(count, 5000); // reading more names than the importer would ever accept is pointless
+  const limit = Math.min(count, 5000);
   for (let n = 0; n < limit; n += 1) {
     if (at + 46 > buffer.length || buffer.readUInt32LE(at) !== 0x02014b50) break;
     const flags = buffer.readUInt16LE(at + 8);
@@ -173,7 +139,6 @@ function readZipDirectory(buffer) {
   return { zip64: false, entries, count };
 }
 
-// The same limits the zip importer applies (client/src/utils/zipImport.js IMPORT_LIMITS).
 const ZIP_LIMITS = Object.freeze({ maxEntries: 1000, maxTotalBytes: 64 * 1024 * 1024, maxRatio: 100, ratioFloor: 1024 * 1024 });
 
 function checkArchive(directory, archiveLength) {
@@ -204,7 +169,6 @@ function checkOleMacro(window) {
 
 const PDF_MARKERS = ['/JavaScript', '/JS', '/OpenAction', '/AA', '/Launch', '/RichMedia', '/EmbeddedFile'].map((marker) => Buffer.from(marker, 'latin1'));
 const isNameChar = (byte) => (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x5a) || (byte >= 0x61 && byte <= 0x7a) || byte === 0x5f || byte === 0x2d;
-/** A PDF name followed by a character that cannot be part of a longer name ("/JS" yes, "/JSON" no). */
 function hasPdfName(window, marker) {
   let at = window.indexOf(marker);
   while (at !== -1) {
@@ -226,12 +190,6 @@ function checkMarkup(window, name, kind) {
   return markup && /[\s"'/]on[a-z]{3,20}\s*=/.test(text);
 }
 
-/**
- * Looks at one upload.
- *
- * @param {{ name: string, type?: string, buffer: Buffer }} file
- * @returns {{ verdict: 'clean' | 'suspicious' | 'blocked', reasons: string[], score: number, version: number }}
- */
 function scanBuffer({ name, type = '', buffer }) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError('scanBuffer needs a Buffer.');
   const found = new Set();
@@ -259,20 +217,11 @@ function scanBuffer({ name, type = '', buffer }) {
   return { verdict, reasons, score, version: SCANNER_VERSION };
 }
 
-/**
- * Whether an upload is a plain zip archive, which is only accepted through Export / Import (that opens it and checks every file
- * inside; a stored zip would hide them). Two ways, neither of which trusts the name alone:
- *   (a) the name ends in .zip; or
- *   (b) the bytes start with a zip signature and the central directory shows no sign of a zip-based document format: no
- *       [Content_Types].xml (Word, Excel, PowerPoint), no first entry named "mimetype" (OpenDocument, EPUB), no META-INF/ entry
- *       (jar and similar). So renaming archive.zip to archive.bin changes nothing, and Office, OpenDocument and EPUB files pass.
- * Reads the directory only (names), never the contents.
- */
 function isPlainZip(name, buffer) {
   if (/\.zip$/i.test(String(name || '').trim())) return true;
   if (!Buffer.isBuffer(buffer) || buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b || (buffer[2] !== 0x03 && buffer[2] !== 0x05) || (buffer[3] !== 0x04 && buffer[3] !== 0x06)) return false;
   const directory = readZipDirectory(buffer);
-  if (!directory || directory.zip64) return true; // a zip whose names cannot be read is not shown to be anything else
+  if (!directory || directory.zip64) return true;
   const names = directory.entries.map((entry) => entry.name);
   if (names.includes('[Content_Types].xml')) return false;
   if (names[0] === 'mimetype') return false;
@@ -280,14 +229,12 @@ function isPlainZip(name, buffer) {
   return true;
 }
 
-/** The codes with their plain sentences and severity, for answers the browser shows. Unknown codes are dropped. */
 function describeReasons(codes) {
   return (Array.isArray(codes) ? codes : [])
     .filter((code) => Object.prototype.hasOwnProperty.call(REASONS, code))
     .map((code) => ({ code, text: REASONS[code].text, severity: REASONS[code].severity }));
 }
 
-/** The worst severity among codes: 'high' | 'medium' | 'low'. */
 function severityOf(codes) {
   const order = ['low', 'medium', 'high'];
   return (Array.isArray(codes) ? codes : []).reduce((worst, code) => {

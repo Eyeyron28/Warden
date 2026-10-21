@@ -1,7 +1,3 @@
-// Small REAL sample files, generated in memory (nothing is committed as a binary).
-// Each entry says what its bytes are (`sniff`: the extension utils/fileNames.js
-// should recover, or null when the bytes are not unmistakably a known type) and
-// whether Photos should treat it as an image (`photo`).
 const zlib = require('node:zlib');
 
 const text = (value) => Buffer.from(value, 'utf8');
@@ -74,9 +70,7 @@ const ftyp = (brand) => Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('
 const riff = (tag, pad = 24) => Buffer.concat([Buffer.from('RIFF', 'latin1'), Buffer.from([40, 0, 0, 0]), Buffer.from(tag, 'latin1'), Buffer.alloc(pad, 3)]);
 const OFFICE_CT = '<Types/>';
 
-/** [{ ext, bytes, sniff: expected extension | null, photo: boolean }] */
 const SAMPLES = [
-  // documents
   { ext: 'pdf', bytes: pdf(), sniff: 'pdf' },
   { ext: 'doc', bytes: ole(), sniff: null },
   { ext: 'docx', bytes: zip({ '[Content_Types].xml': OFFICE_CT, 'word/document.xml': '<w/>' }), sniff: 'docx' },
@@ -85,14 +79,12 @@ const SAMPLES = [
   { ext: 'txt', bytes: text('plain text\nsecond line\n'), sniff: null },
   { ext: 'md', bytes: text('# Heading\n\nSome *markdown*.\n'), sniff: null },
   { ext: 'csv', bytes: text('a,b,c\n1,2,3\n'), sniff: null },
-  // spreadsheets and slides
   { ext: 'xls', bytes: ole(), sniff: null },
   { ext: 'xlsx', bytes: zip({ '[Content_Types].xml': OFFICE_CT, 'xl/workbook.xml': '<w/>' }), sniff: null },
   { ext: 'ods', bytes: zip({ mimetype: 'application/vnd.oasis.opendocument.spreadsheet', 'content.xml': '<c/>' }), sniff: null },
   { ext: 'ppt', bytes: ole(), sniff: null },
   { ext: 'pptx', bytes: zip({ '[Content_Types].xml': OFFICE_CT, 'ppt/presentation.xml': '<p/>' }), sniff: null },
   { ext: 'odp', bytes: zip({ mimetype: 'application/vnd.oasis.opendocument.presentation', 'content.xml': '<c/>' }), sniff: null },
-  // images
   { ext: 'png', bytes: png(), sniff: 'png', photo: true },
   { ext: 'jpg', bytes: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]), Buffer.from('JFIF', 'latin1'), Buffer.alloc(30, 9), Buffer.from([0xff, 0xd9])]), sniff: 'jpg', photo: true },
   { ext: 'jpeg', bytes: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xdb]), Buffer.alloc(30, 5), Buffer.from([0xff, 0xd9])]), sniff: 'jpg', photo: true },
@@ -102,14 +94,12 @@ const SAMPLES = [
   { ext: 'svg', bytes: text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>'), sniff: null },
   { ext: 'heic', bytes: ftyp('heic'), sniff: 'heic' },
   { ext: 'ico', bytes: Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0, 16, 16, 0, 0, 1, 0, 32, 0]), Buffer.alloc(40, 2)]), sniff: null },
-  // audio and video
   { ext: 'mp3', bytes: Buffer.concat([Buffer.from('ID3', 'latin1'), Buffer.from([3, 0, 0, 0, 0, 0, 0]), Buffer.alloc(30, 4)]), sniff: 'mp3' },
   { ext: 'wav', bytes: riff('WAVEfmt '), sniff: 'wav' },
   { ext: 'm4a', bytes: ftyp('M4A '), sniff: 'm4a' },
   { ext: 'mp4', bytes: ftyp('isom'), sniff: 'mp4' },
   { ext: 'webm', bytes: Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x82, 0x84]), Buffer.from('webm', 'latin1'), Buffer.alloc(24, 6)]), sniff: 'webm' },
   { ext: 'mov', bytes: ftyp('qt  '), sniff: 'mov' },
-  // archives and other
   { ext: 'zip', bytes: zip({ 'a.txt': 'hello' }), sniff: null },
   { ext: '7z', bytes: Buffer.concat([Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0, 4]), Buffer.alloc(30, 8)]), sniff: null },
   { ext: 'rar', bytes: Buffer.concat([Buffer.from('Rar!', 'latin1'), Buffer.from([0x1a, 0x07, 0x00]), Buffer.alloc(30, 8)]), sniff: null },
@@ -120,7 +110,6 @@ const SAMPLES = [
   { ext: 'exe', bytes: Buffer.concat([Buffer.from('MZ', 'latin1'), Buffer.alloc(62, 0), Buffer.from('This is a harmless dummy, not a program.', 'latin1')]), sniff: null },
 ].map((sample) => ({ photo: false, ...sample }));
 
-/** Names that exercise the naming rules. `expectDownload` is the expected download name (null = same as the input). */
 const NAMES = [
   { name: 'report.final.v2.docx', note: 'several dots' },
   { name: 'PHOTO.JPG', note: 'uppercase extension' },

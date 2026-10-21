@@ -6,8 +6,6 @@ import SiteFooter from './SiteFooter.jsx';
 import RouteErrorBoundary from '../RouteErrorBoundary.jsx';
 import styles from './PublicLayout.module.css';
 
-// Screens built on AuthLayout: on a desktop landscape window they fill the viewport,
-// so the tall footer gives way to a one-line bar there (phones and tablets keep it).
 const AUTH_PATHS = new Set(['/login', '/signup', '/forgot-password', '/reset-password', '/verify-email']);
 
 function scrollToHash(hash) {
@@ -15,31 +13,20 @@ function scrollToHash(hash) {
   try {
     id = decodeURIComponent(hash.slice(1));
   } catch {
-    // A malformed escape (e.g. "/#%") would otherwise throw out of the
-    // effect and blank the page - treat it as "no such section".
     return false;
   }
   const target = id ? document.getElementById(id) : null;
   if (!target) return false;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // scroll-margin-top (styles/global.css) keeps it clear of the sticky header.
   target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
   return true;
 }
 
-/**
- * Shell for every public page: skip link, sticky header, page, footer.
- *
- * React Router doesn't scroll on navigation by itself: a new page starts
- * at the top, and a "/#section" link (e.g. from another page's footer)
- * scrolls to that section once the lazily-loaded page has rendered it.
- */
 function PublicLayout() {
   const { pathname, hash } = useLocation();
 
   useEffect(() => {
     if (hash) {
-      // The target may live in a route chunk that's still loading.
       let attempts = 0;
       const tryScroll = () => {
         if (scrollToHash(hash) || attempts > 120) return;

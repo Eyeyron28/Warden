@@ -50,7 +50,6 @@ test('starting a session enters the mode; the server’s session-info refines it
   applySessionInfo({ readOnly: true, expiresAt: '2026-10-09T11:30:00Z', scopeSummary: { mode: 'folders', folders: ['2024'] } });
   assert.equal(getEmergencyMode().endsAt, '2026-10-09T11:30:00Z');
 
-  // the only thing stored is a flag, never a token, kit or name
   assert.deepEqual([...win.store.entries()], [['warden.emergencyMode', '1']]);
 
   leaveEmergencyMode({ keepFlag: true });

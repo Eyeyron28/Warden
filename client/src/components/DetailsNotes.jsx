@@ -4,11 +4,6 @@ import { MAX_NOTE_CHARS, setDocumentNote } from '../services/documentsService.js
 import { extractErrorMessage } from '../services/api.js';
 import styles from './DetailsPanel.module.css';
 
-/**
- * The private note on one file, in the details panel. Plain text only: it is a text box, and what is saved is shown back as
- * text (never as HTML or markdown). It saves when the box loses focus or on Save, and is sent to the server, which encrypts it
- * with the vault key; the file lists carry only that a note exists. Whatever is typed and not yet saved is saved when the panel closes.
- */
 function DetailsNotes({ id, note, onSaved }) {
   const [text, setText] = useState(note ?? '');
   const [saved, setSaved] = useState(note ?? '');
@@ -40,7 +35,6 @@ function DetailsNotes({ id, note, onSaved }) {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      // Closing the panel (Escape, the scrim, a different file) must not throw away what was typed.
       const { text: typed, saved: stored } = live.current;
       if (typed !== stored && !(typed.trim() === '' && stored === '')) save(typed);
     };
@@ -79,7 +73,6 @@ function DetailsNotes({ id, note, onSaved }) {
         <button
           type="button"
           className={styles.smallButton}
-          // A click on a button blurs the box first; the save from the blur is enough, so this is for when nothing changed focus.
           onClick={() => save(text)}
           disabled={!dirty || state.phase === 'saving'}
         >

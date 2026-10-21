@@ -1,10 +1,3 @@
-/**
- * Selection logic for the file views, kept free of React so it can be tested.
- * Items are identified by a string key ("file:<id>", "folder:<path>", ...).
- * A state is `{ selected: Set<string>, anchor: string | null }`; every
- * function returns a NEW state and never mutates the one it was given.
- */
-
 export const emptySelection = () => ({ selected: new Set(), anchor: null });
 
 export function toggleItem(state, key) {
@@ -14,7 +7,6 @@ export function toggleItem(state, key) {
   return { selected, anchor: key };
 }
 
-/** Adds every item between the anchor and `key` (inclusive). Without a usable anchor it just selects `key`. */
 export function selectRange(state, orderedKeys, key) {
   const to = orderedKeys.indexOf(key);
   if (to === -1) return state;
@@ -30,7 +22,6 @@ export function selectRange(state, orderedKeys, key) {
   return { selected, anchor: key };
 }
 
-/** Right-clicking an item that is not selected selects just that item (the usual file-manager rule). */
 export function selectOnly(key) {
   return { selected: new Set([key]), anchor: key };
 }
@@ -39,7 +30,6 @@ export function selectAll(orderedKeys) {
   return { selected: new Set(orderedKeys), anchor: orderedKeys.length ? orderedKeys[orderedKeys.length - 1] : null };
 }
 
-/** Drops anything that is no longer in the list (deleted, moved, filtered out). */
 export function pruneSelection(state, orderedKeys) {
   const valid = new Set(orderedKeys);
   const selected = new Set([...state.selected].filter((key) => valid.has(key)));
@@ -47,15 +37,10 @@ export function pruneSelection(state, orderedKeys) {
   return { selected, anchor: state.anchor !== null && valid.has(state.anchor) ? state.anchor : null };
 }
 
-/**
- * A click ON a checkbox, or a modified click on a row: Shift extends a
- * range, Ctrl/Cmd toggles one item, a plain checkbox click toggles too.
- */
 export function applyItemClick(state, orderedKeys, key, { shift = false } = {}) {
   return shift ? selectRange(state, orderedKeys, key) : toggleItem(state, key);
 }
 
-/** State of the "select all" checkbox: 'none' | 'some' (indeterminate) | 'all'. */
 export function headerState(selectedCount, total) {
   if (selectedCount === 0 || total === 0) return 'none';
   return selectedCount >= total ? 'all' : 'some';

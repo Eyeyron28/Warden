@@ -43,8 +43,6 @@ function fakeServer(answers = {}) {
   return seen;
 }
 
-// ---------- the service calls ----------
-
 test('a note is sent as text, or as null when it is empty or only spaces; the limit is the server\'s 2000', async () => {
   invalidateAll();
   setToken(TOKEN);
@@ -115,8 +113,6 @@ test('the activity page words every new event, and never has a note to show', ()
   }
 });
 
-// ---------- what the screens do ----------
-
 test('the note box is plain text: a text box with a limit, a counter, Save and Clear, saved on blur, and the plain statement under it', () => {
   const notes = read('components/DetailsNotes.jsx');
   const code = strip(notes);
@@ -127,7 +123,6 @@ test('the note box is plain text: a text box with a limit, a counter, Save and C
   assert.match(code, />\s*Save\s*</);
   assert.match(code, />\s*Clear\s*</);
   assert.match(code, /return \(\) => \{[\s\S]*save\(typed\)/, 'what was typed is saved when the panel closes');
-  // nothing here can turn the text into markup
   assert.doesNotMatch(code, /dangerouslySetInnerHTML|innerHTML|insertAdjacentHTML|marked|markdown|DOMPurify/i);
   assert.match(words('components/DetailsNotes.jsx'), /This note is encrypted with your vault key and is not searchable\./);
   assert.match(words('components/DetailsNotes.jsx'), /never added to a share link, and an emergency contact never sees it/);
@@ -140,7 +135,6 @@ test('the file list knows only that a note exists, never the note', () => {
   const browser = strip(read('components/FileBrowser.jsx'));
   assert.match(browser, /item\.document\?\.hasNote && <NoteMarker \/>/);
   assert.match(browser, /aria-label="Has a private note"/, 'the marker has a text alternative');
-  // and only the details panel takes the decrypted text
   assert.match(strip(read('components/DetailsPanel.jsx')), /note=\{details\.note\}/);
 });
 
@@ -152,7 +146,6 @@ test('Versions: listed with date, size and device; Restore, Download and Delete;
   for (const action of ['Restore', 'Download', 'Delete']) assert.match(code, new RegExp(`aria-label=\\{\`${action} version`), action);
   assert.match(code, /setAsk\(\{ id: version\.id, action: 'restore' \}\)/);
   assert.match(code, /setAsk\(\{ id: version\.id, action: 'delete' \}\)/);
-  // the calls to the server are made only from the confirm step (the part shown once something is being asked)
   const confirmStep = code.slice(code.indexOf('{asking ? ('), code.indexOf(') : ('));
   assert.match(confirmStep, /restoreDocumentVersion\(id, version\.id\)/);
   assert.match(confirmStep, /deleteDocumentVersion\(id, version\.id\)/);
@@ -160,7 +153,6 @@ test('Versions: listed with date, size and device; Restore, Download and Delete;
   assert.match(code, /formatManila\(version\.createdAt\)/);
   assert.match(code, /formatBytes\(version\.size\)/);
   assert.match(code, /version\.device/);
-  // the panel is still its own chunk, and its new parts are inside it
   assert.match(strip(read('components/useDetailsPanel.jsx')), /lazy\(\(\) => import\('\.\/DetailsPanel\.jsx'\)\)/);
   const panel = strip(read('components/DetailsPanel.jsx'));
   assert.match(panel, /import DetailsNotes from '\.\/DetailsNotes\.jsx'/);
@@ -171,7 +163,6 @@ test('Versions: listed with date, size and device; Restore, Download and Delete;
 test('"Upload new version" is in the file menu and the details panel, and notes and versions add no request to a page visit', () => {
   assert.match(strip(read('pages/FilesPage.jsx')), /label: 'Upload new version…'/);
   assert.match(strip(read('components/DetailsVersions.jsx')), /Upload new version/);
-  // notes and versions ride on the details answer: the only new calls are user actions (a write), none on a page load
   const service = strip(read('services/documentsService.js'));
   assert.doesNotMatch(service, /documents\/\$\{id\}\/(versions|note)`\)\)\.data/, 'no read of notes or versions on their own');
   const prefetch = strip(read('services/prefetch.js'));
@@ -180,7 +171,6 @@ test('"Upload new version" is in the file menu and the details panel, and notes 
 
 test('the export screen says notes and earlier versions are not in the zip', () => {
   assert.match(words('pages/ExportPage.jsx'), /Not included: Trash, share links, previews, private notes and earlier versions/);
-  // and the zip really is built from the current files only
   const zip = strip(read('utils/zipExport.js'));
   assert.doesNotMatch(zip, /note|version/i);
 });

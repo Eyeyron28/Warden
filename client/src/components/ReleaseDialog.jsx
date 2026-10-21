@@ -5,13 +5,8 @@ import FileNameLabel from './FileNameLabel.jsx';
 import { RELEASE_WORD } from '../services/quarantineService.js';
 import styles from './ReleaseDialog.module.css';
 
-/** Whether what was typed is the confirmation word. Exact: the word in capitals (spaces around it do not count). */
 export const matchesReleaseWord = (typed) => String(typed ?? '').trim() === RELEASE_WORD;
 
-/**
- * "Release this file?": says what it matched and what releasing means, and keeps the button off until the word RELEASE is typed.
- * `initialValue` is for rendering a state on its own. Uses the shared Modal, so Esc, focus and small screens behave like every dialog.
- */
 function ReleaseDialog({ item, busy = false, error = '', initialValue = '', onCancel, onConfirm }) {
   const [typed, setTyped] = useState(initialValue);
   const ready = matchesReleaseWord(typed) && !busy;

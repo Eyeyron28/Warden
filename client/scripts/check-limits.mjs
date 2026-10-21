@@ -1,11 +1,3 @@
-// node scripts/check-limits.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// The per-account upload limits in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a local
-// WARDEN_TEST_MONGO; no .env is read), served with the production CSP. The test server uses small limits from the environment
-// (UPLOAD_MINUTE_LIMIT=3, then MAX_DOCUMENTS_PER_ACCOUNT=5 more than the vault holds). It checks: 8 files with a limit of 3 a minute give
-// 3 sealed rows and 5 "Not saved" rows with "Too many uploads at once. Try again in 1 minute." and a Retry button, the queued files are
-// marked without extra requests, nothing retries by itself and Retry works once the minute is over; a zip import against a document
-// cap stops with "Stopped: ..." and the real counts, keeps what was imported; the Upload dialog says so before sending; no CSP violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -80,7 +72,7 @@ async function api(method, route, { token, json, keep = false } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -116,11 +108,10 @@ try {
   browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, reducedMotion: 'reduce' });
   await context.addInitScript((value) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, token);
-  // count the upload requests the browser really sends
   const posts = { n: 0, statuses: [] };
   await context.route('**/api/documents', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
@@ -147,7 +138,6 @@ try {
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
-  // ---------------- speed: 3 a minute ----------------
   process.env.UPLOAD_MINUTE_LIMIT = '3';
   await clearCounters();
   let dialog = await openDialog();
@@ -168,20 +158,16 @@ try {
   check((await notSaved.first().getByRole('button', { name: /^Retry/ }).count()) === 1, 'each Not saved row has a Retry button');
   check(posts.n < 8, `the queued files were marked without sending them: ${posts.n} requests for 8 files (${posts.statuses.join(',')})`);
   check(posts.statuses.filter((s) => s === 429).length >= 1 && posts.statuses.filter((s) => s === 201).length === 3, 'the server answered 201 three times and 429 for the rest');
-  // the row's tooltip carries the same words
   await notSaved.first().getByTestId('status-icon').hover();
   await page.getByTestId('tooltip').waitFor({ timeout: 2500 });
   check(/^Not saved: Too many uploads at once\. Try again in 1 minute\.$/.test((await page.getByTestId('tooltip').innerText()).trim()), 'the status icon tooltip says the same');
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'limits-tray-1280.png') });
-  // nothing retries by itself
   const before = posts.n;
   await page.waitForTimeout(1500);
   check(posts.n === before, 'nothing is sent again by itself');
-  // Retry while the limit still stands: refused again, no harm
   await notSaved.first().getByRole('button', { name: /^Retry/ }).click();
   await page.waitForTimeout(800);
   check(posts.n === before + 1 && (await notSaved.count()) === 5, 'Retry inside the same minute asks once and is refused again');
-  // after the minute is over, Retry works
   await clearCounters();
   await notSaved.first().getByRole('button', { name: /^Retry/ }).click();
   for (let i = 0; i < 60 && (await trayRows.filter({ hasText: 'Sealed' }).count()) < 4; i += 1) await page.waitForTimeout(150);
@@ -190,7 +176,6 @@ try {
   await tray.getByRole('button', { name: 'Close the transfers' }).click().catch(() => {});
   delete process.env.UPLOAD_MINUTE_LIMIT;
 
-  // ---------------- count: a zip import against a cap ----------------
   const have = (await docs()).length;
   process.env.MAX_DOCUMENTS_PER_ACCOUNT = String(have + 5);
   const zip = new JSZip();
@@ -211,7 +196,6 @@ try {
   check(after.length >= cap && after.length <= cap + 1, `what was imported is kept: ${after.length} files in the vault for a cap of ${cap}`);
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'limits-import-stopped-1280.png') });
 
-  // ---------------- the Upload dialog says so before sending ----------------
   await clearCounters();
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });

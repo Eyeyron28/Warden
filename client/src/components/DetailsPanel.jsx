@@ -14,7 +14,6 @@ import FileNameLabel from './FileNameLabel.jsx';
 import DetailsVersions, { UploadVersion } from './DetailsVersions.jsx';
 import styles from './DetailsPanel.module.css';
 
-// What each kind of activity is called in this short list (the full wording is on the Devices & activity page).
 const ACTIVITY = {
   upload: 'Uploaded',
   view: 'Opened',
@@ -38,7 +37,6 @@ const ACTIVITY = {
 const FINGERPRINT_HELP =
   'A short fingerprint of the file: the first 12 characters of its checksum. Two files with the same fingerprint have the same contents. It does not reveal anything about what is inside.';
 
-/** What the upload scan said, in a line: "Clean (rules v1, Oct 9, 2026)", "Not scanned", "Released after review". */
 export function scanLine(scan) {
   if (!scan) return 'Not scanned';
   const when = scan.at ? `, ${formatDate(scan.at)}` : '';
@@ -64,11 +62,6 @@ function Row({ label, children }) {
   );
 }
 
-/**
- * The details panel for one file: a drawer beside the page on a wide screen, a sheet rising from the bottom on a phone. One
- * request when it opens (kept in the page cache, which every write empties); nothing in it is a key, an IV or a storage path.
- * Loaded on demand, so it is not part of the main bundle.
- */
 function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onClose }) {
   const ref = useRef(null);
   const [details, setDetails] = useState(() => peekDocumentDetails(id) ?? null);
@@ -92,16 +85,14 @@ function DetailsPanel({ id, name, opener, starred, onToggleStar, onChanged, onCl
     return () => {
       cancelled = true;
     };
-  }, [id, starred, reload]); // a changed star or file is a write: the cached answer is gone, so ask again
+  }, [id, starred, reload]);
 
-  // A transfer finished (a new version sealed in the tray): the versions are read again.
   useEffect(() => {
     const again = () => setReload((value) => value + 1);
     window.addEventListener(DOCUMENTS_CHANGED, again);
     return () => window.removeEventListener(DOCUMENTS_CHANGED, again);
   }, []);
 
-  // The file's contents changed (a restore, a deleted version): ask again, and tell the page.
   const changed = (kind) => {
     if (kind === 'file') setReload((value) => value + 1);
     onChanged?.({ id, kind });

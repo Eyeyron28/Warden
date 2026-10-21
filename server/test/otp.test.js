@@ -1,8 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Email one-time code on login. The models, mailer, session store and the
-// per-account email budget are replaced with in-memory fakes BEFORE the
-// controller loads, so every security property can be asserted directly.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -15,14 +10,13 @@ delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
 
 const cryptoUtils = require('../utils/crypto');
-require('./helpers/fakeDb').installLoginFailures(); // the login-lockout counter (the models below are hand-made)
+require('./helpers/fakeDb').installLoginFailures();
 
 function stub(modulePath, exportsObject) {
   const resolved = require.resolve(modulePath);
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports: exportsObject };
 }
 
-// ---------- fakes ----------
 const world = { users: [], challenges: [], mails: [], sessions: [], budget: new Map() };
 const oid = () => new mongoose.Types.ObjectId();
 
@@ -96,7 +90,6 @@ stub('../utils/sessionStore', {
   destroyAllSessionsForUser: async () => {},
 });
 
-// Devices and the activity log are covered in devices-audit.test.js; here a login just needs a device.
 stub('../utils/deviceIdentity', {
   resolveDevice: async () => ({ device: { _id: oid() }, isNew: false, hadOtherDevices: false }),
   deviceFromCookie: async () => null,
@@ -110,7 +103,6 @@ stub('../utils/audit', {
 
 const { unlock, verifyOtp, resendOtp } = require('../controllers/auth.controller');
 
-// ---------- helpers ----------
 const PASSWORD = 'Tk9$Lantern-Orbit%57';
 
 function addUser(email, password = PASSWORD) {
@@ -173,7 +165,6 @@ async function login(email = 'ana@example.com') {
   return result.json;
 }
 
-// ---------- tests ----------
 test('password step: no session, a challenge is created and a code is emailed', async () => {
   reset();
   const user = addUser('ana@example.com');
@@ -207,7 +198,6 @@ test('the stored challenge has no plaintext code, no challengeKey and no usable 
     Object.keys(world.challenges[0]).sort(),
     ['_id', 'attempts', 'codeHash', 'decoy', 'expiresAt', 'lastSentAt', 'purpose', 'resendCount', 'salt', 'userId', 'wrappedDek', 'wrappedDekAuthTag', 'wrappedDekIv'].sort()
   );
-  // The wrapped key does not open with anything the database holds.
   const c = world.challenges[0];
   for (const guess of [Buffer.alloc(32), Buffer.from(c.salt, 'hex'), crypto.createHash('sha256').update(code).digest()]) {
     assert.throws(() => cryptoUtils.unwrapKey(c.wrappedDek, guess, c.wrappedDekIv, c.wrappedDekAuthTag));
@@ -338,7 +328,7 @@ test('resend: 60-second spacing, 3 per challenge, and the old code stops working
     const next = lastCode();
     const old = await call(verifyOtp, { challengeToken: challenge.challengeToken, code: previous });
     if (previous !== next) assert.equal(old.error.message, GENERIC, 'the previous code no longer works');
-    world.challenges[0].attempts = 0; // keep this assertion about resends, not attempts
+    world.challenges[0].attempts = 0;
     previous = next;
   }
   ageSend();
@@ -422,7 +412,6 @@ test('codes are uniform 6-digit strings and never logged in production', async (
   }
   assert.ok(seen.size >= 9, 'leading zeros and every leading digit occur');
 
-  // The real mailer, in production with no SMTP: nothing is printed or sent.
   const { sendEmail } = realEmail;
   const lines = [];
   const original = { log: console.log, error: console.error };

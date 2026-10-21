@@ -1,11 +1,3 @@
-// Run with: cd server && npm test
-//
-// Emergency Access after the security review (F5, F6, F12). Same in-memory world as the other emergency tests.
-//   F5  the owner is told, or there is no request: mail failure -> 503, nothing usable left behind; no session without
-//       ownerNotifiedAt; the wait counts from the moment the owner was told.
-//   F6  an attacker who only knows the owner's address cannot lock the real contact out.
-//   F12 revoke / deny against start-session: exactly one winner, and a revoked or denied request never yields a session
-//       that works.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -19,8 +11,6 @@ const liveEmergencySessions = () => W.world.tables.sessions.filter((row) => row.
 const ticks = async (n) => {
   for (let i = 0; i < n; i += 1) await new Promise((resolve) => setImmediate(resolve));
 };
-
-// ---------- F5 ----------
 
 test('F5: when the owner cannot be emailed the request is refused (503) and nothing usable is left behind', async () => {
   W.reset();
@@ -43,7 +33,6 @@ test('F5: when the owner cannot be emailed the request is refused (503) and noth
   assert.equal(status.json.request, null, 'the owner sees no request');
   assert.ok(!W.world.tables.auditevents.some((event) => event.type === 'emergency_requested'), 'nothing was recorded as requested');
 
-  // Try again later (a new code, as the old one was used up): it goes through.
   const retry = await W.contactRequests(made.kit);
   assert.equal(retry.status, 201);
   assert.equal(W.mailsTo(W.OWNER_EMAIL).length, ownerMailsBefore + 1, 'and the owner is told');
@@ -73,7 +62,7 @@ test('F5: no session without ownerNotifiedAt, even after the wait and with the r
   assert.ok(row.ownerNotifiedAt instanceof Date);
 
   const notified = row.ownerNotifiedAt;
-  row.ownerNotifiedAt = null; // a request the owner was never told about
+  row.ownerNotifiedAt = null;
   W.makeReleasable(row);
   const refused = await W.contactStarts(made.kit);
   assert.equal(refused.error?.status, 403);
@@ -81,13 +70,12 @@ test('F5: no session without ownerNotifiedAt, even after the wait and with the r
   assert.equal(liveEmergencySessions().length, 0);
   assert.equal(row.status, 'pending', 'nothing moved it forward');
 
-  // The daily job does not announce a release for it either.
   const mailsBefore = W.world.mails.length;
   const result = await service.runMaintenance({ now: new Date() });
   assert.equal(result.released, 0);
   assert.equal(W.world.mails.length, mailsBefore);
 
-  row.ownerNotifiedAt = notified; // once the owner was told, the very same request works
+  row.ownerNotifiedAt = notified;
   assert.ok((await W.contactStarts(made.kit)).json.sessionToken);
 });
 
@@ -95,7 +83,7 @@ test('F5: the wait is counted from the moment the owner was notified, not from w
   W.reset();
   W.seedVault();
   const made = await W.setupEmergency({ waitMinutes: 4320 });
-  W.world.sendDelayMs = 60; // a slow mail server
+  W.world.sendDelayMs = 60;
   try {
     const out = await W.contactRequests(made.kit);
     assert.equal(out.status, 201);
@@ -122,8 +110,6 @@ test('F5: an old request the owner was never told about is cleaned up and does n
   assert.ok(W.requestRows()[0].ownerNotifiedAt);
 });
 
-// ---------- F6 ----------
-
 test('F6: junk from many connections that only know the owner address does not lock out the real contact', async () => {
   W.reset();
   W.seedVault();
@@ -148,13 +134,10 @@ test('F6: the attacker’s own connection is still limited (per pair and per con
   assert.equal(seen[9], 429);
 });
 
-// ---------- F12 ----------
-
-/** Runs `during` at the moment start-session is about to write the session row (the window the review found). */
 function atSessionCreate(during) {
   const original = Session.create;
   Session.create = async (doc) => {
-    Session.create = original; // once
+    Session.create = original;
     await during();
     return original(doc);
   };
@@ -194,7 +177,6 @@ test('F12: a deny that lands between the checks and the move cannot be followed 
   W.makeReleasable();
   const id = String(W.requestRows()[0]._id);
   const code = await W.contactCode();
-  // deny first, then start with a code obtained before: the start must lose
   assert.equal((await call(E.denyRequest, W.owner({ params: { id } }))).error, null);
   const started = await W.publicCall(E.startSession, { ownerEmail: W.OWNER_EMAIL, contactEmail: W.CONTACT_EMAIL, code, kit: made.kit });
   assert.ok(started.error);
@@ -210,7 +192,6 @@ test('F12: revoke twice at once has exactly one winner', async () => {
   const ok = results.filter((out) => !out.error);
   assert.ok(ok.length >= 1);
   assert.equal(W.accessRow().status, 'revoked');
-  // The second one finds nothing active (404) or loses the conditional update (409); never a second "success" on a dead setup.
   for (const out of results.filter((r) => r.error)) assert.ok([404, 409].includes(out.error.status), String(out.error.status));
 });
 

@@ -1,12 +1,3 @@
-// Run with: cd server && npm test
-//
-// Server-side speed work that must not quietly regress (each item names what was measured before the change):
-//   - indexes are built once per set of declared indexes (a marker), not by Mongoose on every cold start (52 createIndex
-//     commands per start were measured); the vault list, Photos, the expiry list and "Frequently used" each have an index that
-//     serves them (explain showed an in-memory SORT and full scans of the account's documents / events);
-//   - an ordinary request reads the session once, then slides it and notes the device TOGETHER (two writes in a row before);
-//   - the startup checks of config/db.js ask together.
-// The index tests use a LOCAL throwaway MongoDB (test/helpers/realMongo.js) and are skipped, with the reason, without one.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -53,7 +44,6 @@ it('indexes are built once per set of declared indexes: the first start builds a
   const built = (await mongoose.connection.db.collection('users').indexes()).map((index) => index.name);
   assert.ok(built.includes('email_1'), 'the unique email index exists');
 
-  // a second start: one marker read, no createIndexes at all
   const spy = context.mock.method(mongoose.Model, 'createIndexes', async () => {});
   const second = await migrateIndexes();
   assert.equal(second.built, false);
@@ -78,7 +68,6 @@ it('Mongoose no longer builds indexes by itself at start (config/db turns autoIn
   assert.match(source('config/db.js'), /mongoose\.set\('autoIndex', false\)/);
   assert.match(source('config/db.js'), /migrateIndexes/);
   assert.match(source('config/db.js'), /Promise\.allSettled\(steps\.map/, 'the startup checks ask together');
-  // the settings really are in force once the file is loaded
   require('../config/db');
   assert.equal(mongoose.get('autoIndex'), false);
 });
@@ -125,9 +114,9 @@ it('"Frequently used" counts inside MongoDB and returns the same answer', async 
   await event(popular, 5);
   await event(middling, 2);
   await event(trashed, 9);
-  await event(new mongoose.Types.ObjectId(), 4); // a deleted file
-  await event(popular, 3, new Date(Date.now() - 40 * 864e5)); // outside the 30-day window
-  const alone = await frequentFor(userId, null); // the "Frequently used" endpoint: asks only for the documents it needs
+  await event(new mongoose.Types.ObjectId(), 4);
+  await event(popular, 3, new Date(Date.now() - 40 * 864e5));
+  const alone = await frequentFor(userId, null);
   assert.deepEqual(alone.map((row) => [row.filename, row.opens]), [['popular.pdf', 5], ['middling.pdf', 2]]);
   const all = await Document.find({ userId, deletedAt: null }).select('filename folder viewCount downloadCount lastOpenedAt createdAt');
   assert.deepEqual((await frequentFor(userId, all)).map((row) => [row.filename, row.opens]), [['popular.pdf', 5], ['middling.pdf', 2]], 'and Overview, which already holds the documents, agrees');

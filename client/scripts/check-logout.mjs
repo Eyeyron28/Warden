@@ -1,11 +1,3 @@
-// node scripts/check-logout.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// Signs in and out through the real login page in a real browser, against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099,
-// or a local WARDEN_TEST_MONGO; no .env is read; mail is captured), served with the production CSP. For each signed-in page it signs
-// in, opens the page, signs out, signs in again and expects to land on My Files - also after closing and reopening the tab, and with a
-// different account in the same browser. It checks that Back after sign-out shows no account data, that a session the server ends
-// returns the SAME account to an ordinary page only (never Devices, Settings, Import or Emergency Access), and that there are no CSP
-// violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -77,7 +69,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -141,7 +133,7 @@ try {
   const text = (page) => page.evaluate(() => document.body.innerText);
 
   async function fillAndSubmit(page, email) {
-    await mongoose.models.RateLimit.deleteMany({}); // a long run of sign-ins would otherwise meet the login rate limit
+    await mongoose.models.RateLimit.deleteMany({});
     await page.getByLabel(/^email/i).fill(email);
     await page.locator('input[type=password]').first().fill(PASSWORD);
     await page.getByRole('button', { name: /^continue$/i }).first().click();
@@ -157,7 +149,6 @@ try {
     await page.waitForURL((url) => url.pathname === '/login', { timeout: 10000 });
   }
 
-  // ---- every page: sign in, open it, sign out, sign in again -> My Files ----
   const page = await open();
   await signIn(page, A);
   check(landedOnFiles(page), `a first sign-in lands on My Files (${where(page).pathname})`);
@@ -173,7 +164,6 @@ try {
     check(landedOnFiles(page), `${name}: signing in again lands on My Files (${where(page).pathname}${where(page).search})`);
   }
 
-  // ---- closing the tab while on a page, then opening it again ----
   let current = page;
   for (const [name, route] of [['Devices', '/devices'], ['Import', '/export'], ['Emergency Access', '/emergency-access'], ['Trash', '/trash']]) {
     await current.goto(`${base}${route}`, { waitUntil: 'domcontentloaded' });
@@ -187,7 +177,6 @@ try {
   }
   const tab = current;
 
-  // ---- a different account in the same browser ----
   await tab.goto(`${base}/devices`, { waitUntil: 'domcontentloaded' });
   await tab.waitForTimeout(400);
   await lockVault(tab);
@@ -199,7 +188,6 @@ try {
   await signIn(tab, A);
   check(landedOnFiles(tab), `and A again lands on My Files, not B's last page (${where(tab).pathname})`);
 
-  // ---- Back after sign-out shows no account data ----
   await tab.goto(`${base}/overview`, { waitUntil: 'networkidle' });
   check(/Lock vault/.test(await text(tab)), 'the signed-in page shows the account controls (so the next check means something)');
   await lockVault(tab);
@@ -216,7 +204,6 @@ try {
   await tab.reload();
   check(where(tab).pathname === '/login', 'reloading after sign-out shows the sign-in page');
 
-  // ---- a session the SERVER ends: the same account returns to an ordinary page only ----
   const endSessions = async () => { await mongoose.models.Session.deleteMany({}); };
   const link = (name) => tab.getByRole('link', { name, exact: true }).first();
   await signIn(tab, A);

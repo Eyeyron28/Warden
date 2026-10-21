@@ -3,11 +3,6 @@ import { useId, useState } from 'react';
 import Icon from './Icon.jsx';
 import styles from './Faq.module.css';
 
-/**
- * Accessible accordion: each question is a real <button> inside a
- * heading, with aria-expanded/aria-controls pointing at its answer
- * region. Several can be open at once.
- */
 function Faq({ items, columns = false }) {
   const baseId = useId();
   const [open, setOpen] = useState(() => new Set());

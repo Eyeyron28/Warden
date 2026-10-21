@@ -10,7 +10,6 @@ import styles from '../pages/auth/auth.module.css';
 
 const CODE_FAILED = 'That code is incorrect or has expired. Check it and try again, or go back and start again.';
 
-/** A server challenge, turned into millisecond timestamps for the countdowns. */
 export function readChallenge(data) {
   return {
     token: data.challengeToken,
@@ -20,31 +19,6 @@ export function readChallenge(data) {
   };
 }
 
-/**
- * The emailed-code step, shared by every flow that uses one (logging in,
- * finishing a phone recovery, deleting an account): six boxes, an expiry
- * countdown, "Resend code" with its cooldown, and "Back".
- *
- * The challenge token lives ONLY in this component's state - never in
- * storage, the URL or router state - and is dropped when the component goes
- * away (success, Back, expiry). What happens with the code is the caller's
- * business: `onSubmitCode(code, token)` runs it (e.g. verify-otp, or just
- * holding it for the next step); if it resolves, `onVerified(result)` fires.
- *
- * @param {{
- *   challenge: object,                       // the server's challenge payload
- *   onSubmitCode: (code: string, token: string) => Promise<any>,
- *   onResend: (token: string) => Promise<object>,
- *   onVerified: (result: any) => void,
- *   onBack: () => void,
- *   onDead: (message: string) => void,       // expired, or the server dropped it
- *   onStatus?: (status: 'idle' | 'unlocking' | 'error') => void,
- *   trustOption?: boolean,                   // show "Trust this browser for 30 days" (login only)
- *   submitLabel?: string,
- *   busyLabel?: string,
- *   footer?: import('react').ReactNode,        // under the boxes (e.g. "Try another way")
- * }} props
- */
 function OtpChallengePanel({
   challenge: initialChallenge,
   onSubmitCode,
@@ -60,11 +34,10 @@ function OtpChallengePanel({
 }) {
   const [challenge, setChallenge] = useState(() => readChallenge(initialChallenge));
   const [digits, setDigits] = useState(emptyDigits);
-  const [message, setMessage] = useState(null); // { tone: 'error' | 'info', text }
+  const [message, setMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
-  // Ticked by default (so a returning person is not asked for a code every time); the note under it is the warning.
   const [trust, setTrust] = useState(true);
 
   useEffect(() => {
@@ -75,7 +48,6 @@ function OtpChallengePanel({
   const expiresInSeconds = Math.max(0, Math.ceil((challenge.expiresAt - now) / 1000));
   const resendInSeconds = Math.max(0, Math.ceil((challenge.resendAvailableAt - now) / 1000));
 
-  // The code ran out: the server has dropped the challenge, so let go of it.
   useEffect(() => {
     if (expiresInSeconds === 0 && !submitting) onDead('That code expired. Start again to get a new one.');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,8 +71,6 @@ function OtpChallengePanel({
       if (err?.response?.status === 429) {
         setMessage({ tone: 'error', text: 'Too many attempts. Please wait a few minutes and try again.' });
       } else if (err?.response?.status === 401) {
-        // One answer for wrong, expired, used and out-of-tries, so we cannot
-        // tell which; the token stays only until the code expires or Back.
         setMessage({ tone: 'error', text: CODE_FAILED });
       } else {
         setMessage({ tone: 'error', text: extractErrorMessage(err, 'We couldn’t check that code. Please try again.') });
@@ -108,10 +78,6 @@ function OtpChallengePanel({
     }
   };
 
-  // The sixth digit submits, so a pasted or autofilled code is one step. A
-  // failed or resent code clears the boxes, so this cannot loop. Not when the
-  // "Trust this browser" choice is on offer: it sits under the boxes, so the
-  // person must be able to tick it after typing the code and press the button.
   useEffect(() => {
     if (!trustOption && !submitting && isComplete(digits)) handleSubmit();
     // eslint-disable-next-line react-hooks/exhaustive-deps

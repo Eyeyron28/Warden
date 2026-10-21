@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Starred, Recent, the details panel, folder colours and icons, and the batch move / batch trash behind bulk selection.
-// The REAL app on a LOCAL throwaway MongoDB (skipped, with the reason, without one); mail is captured, no .env is read.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -50,8 +46,6 @@ const list = async (user) => (await live.api('GET', '/api/documents', { token: u
 const D = '/api/documents';
 const raw = (id) => live.mongoose.models.Document.collection.findOne({ _id: new live.mongoose.Types.ObjectId(id) });
 
-// ---------------- 1. starred ----------------
-
 it('a star is set and cleared for one file or a batch, shows in the list, and is not a change to the file', async () => {
   const a = await account('star.a@example.com');
   const ids = [await upload(a, 'one.txt'), await upload(a, 'two.txt'), await upload(a, 'three.txt')];
@@ -67,7 +61,6 @@ it('a star is set and cleared for one file or a batch, shows in the list, and is
   const after = Object.fromEntries((await list(a)).map((doc) => [doc.id, doc.starred]));
   assert.equal(after[ids[0]], false);
   assert.equal(after[ids[1]], true);
-  // a document from before stars existed reads as not starred
   await live.mongoose.models.Document.collection.updateOne({ _id: new live.mongoose.Types.ObjectId(ids[2]) }, { $unset: { starred: 1 } });
   assert.equal((await list(a)).find((doc) => doc.id === ids[2]).starred, false);
 });
@@ -82,10 +75,8 @@ it('star input is validated: 1 to 50 text ids and a real boolean; bad ids and Tr
     { ids: [id], starred: 'true' }, { ids: [id], starred: 1 }, { ids: [id] },
   ]) assert.equal((await star(bad)).status, 400, JSON.stringify(bad).slice(0, 60));
   assert.equal((await star({ ids: Array(50).fill(id), starred: true })).status, 200, 'exactly 50 is allowed');
-  // not-an-id, someone else's id and a missing id all look the same: they are simply not counted
   const result = await star({ ids: ['nonsense', new live.mongoose.Types.ObjectId().toString(), id], starred: false });
   assert.deepEqual(result.body, { starred: false, updatedCount: 1 });
-  // a trashed file cannot be starred
   await live.api('DELETE', `${D}/${id}`, { token: a.token });
   assert.equal((await star({ ids: [id], starred: true })).body.updatedCount, 0);
 });
@@ -115,16 +106,14 @@ it('"frequently used" puts starred files first', async () => {
   assert.deepEqual(items.map((item) => [item.filename, item.starred]), [['starred.txt', true], ['popular.txt', false]]);
 });
 
-// ---------------- 2. recent ----------------
-
 it('Recent: the last 30 touched files, newest first, with the device that last opened each, never Trash, never another account\'s', async () => {
   const a = await account('recent.a@example.com');
   const b = await account('recent.b@example.com');
   const ids = [];
   for (let i = 0; i < 32; i += 1) ids.push(await upload(a, `file-${String(i).padStart(2, '0')}.txt`)); // eslint-disable-line no-await-in-loop
   await upload(b, 'b-only.txt');
-  await live.api('GET', `${D}/${ids[0]}/view`, { token: a.token }); // the OLDEST upload is now the newest activity
-  await live.api('DELETE', `${D}/${ids[31]}`, { token: a.token }); // the newest upload goes to Trash
+  await live.api('GET', `${D}/${ids[0]}/view`, { token: a.token });
+  await live.api('DELETE', `${D}/${ids[31]}`, { token: a.token });
 
   const res = await live.api('GET', `${D}/recent`, { token: a.token });
   assert.equal(res.status, 200);
@@ -150,11 +139,9 @@ it('Recent reaches back only as far as the activity log: an old event is not sho
   const a = await account('recent.old@example.com');
   assert.deepEqual((await live.api('GET', `${D}/recent`, { token: a.token })).body, { retentionDays: 30, items: [] });
   const id = await upload(a, 'old.txt');
-  await live.mongoose.models.AuditEvent.deleteMany({ userId: a.userId, targetId: id }); // what the 30-day expiry does
+  await live.mongoose.models.AuditEvent.deleteMany({ userId: a.userId, targetId: id });
   assert.deepEqual((await live.api('GET', `${D}/recent`, { token: a.token })).body.items, []);
 });
-
-// ---------------- 3. the details panel ----------------
 
 it('details: one answer with the facts, sharing, purpose, a 12-character fingerprint and the last 5 activities, and no secrets', async () => {
   const a = await account('details.a@example.com');
@@ -188,7 +175,6 @@ it('details: one answer with the facts, sharing, purpose, a 12-character fingerp
   const times = body.activity.map((entry) => new Date(entry.at).getTime());
   assert.deepEqual(times, [...times].sort((x, y) => y - x));
 
-  // nothing secret in it, anywhere
   const text = res.text;
   const row = await raw(id);
   for (const secret of [full, row.iv, row.authTag, row.encryptedBlob.toString('base64').slice(0, 24)]) assert.ok(!text.includes(secret), 'no checksum, IV, tag or ciphertext');
@@ -209,8 +195,6 @@ it('details: another account\'s file, a trashed file and a bad id are all the sa
   await live.api('DELETE', `${D}/${id}`, { token: a.token });
   assert.equal((await live.api('GET', `${D}/${id}/details`, { token: a.token })).status, 404);
 });
-
-// ---------------- 4. folder colours and icons ----------------
 
 it('folders take a colour and an icon from the server lists; anything else is refused', async () => {
   assert.equal(FOLDER_COLORS.length, 8);
@@ -240,7 +224,6 @@ it('the look rides on the folder answers (no extra request), and old folders kee
   const sub = (await live.api('GET', `${D}/folders/children`, { token: a.token, query: { path: 'Health' } })).body;
   assert.deepEqual(sub.folders.map((f) => [f.name, f.color, f.icon]), [['Child', 'teal', null]]);
   assert.ok(!('styles' in sub), 'only the top-level answer carries the map');
-  // the plain list of folder paths is unchanged
   assert.deepEqual((await live.api('GET', `${D}/folders`, { token: a.token })).body, ['root', 'Health', 'Health/Child', 'Plain']);
 });
 
@@ -273,7 +256,6 @@ it('changing the look does not change the path, the unique name or what is insid
   assert.equal((await patch({ path: 'Taxes 2026' })).status, 400, 'something to change is required');
   assert.equal((await patch({ path: 'Taxes 2026', name: 'Valid', color: 'nope' })).status, 400);
   assert.equal(await Folder.countDocuments({ userId: a.userId, name: 'Valid' }), 0, 'a refused style stops the rename too');
-  // the unique index still holds: the same name in the same place is a clash
   await live.api('POST', `${D}/folders`, { token: a.token, json: { name: 'Other', parentPath: '' } });
   assert.equal((await patch({ path: 'Other', name: 'taxes 2026' })).status, 409);
 });
@@ -290,14 +272,12 @@ it('B cannot restyle A\'s folder: the same answer as for a folder that does not 
   assert.deepEqual([folder.color, folder.icon], ['blue', undefined]);
 });
 
-// ---------------- 5. batch move and batch trash ----------------
-
 it('batch move: up to 50 files, a result for each id, conflicts reported, one activity event per file, shares and expiry untouched', async () => {
   const a = await account('batch.a@example.com');
   await live.api('POST', `${D}/folders`, { token: a.token, json: { name: 'Target', parentPath: '' } });
   const ids = [];
   for (let i = 0; i < 4; i += 1) ids.push(await upload(a, `m${i}.txt`)); // eslint-disable-line no-await-in-loop
-  await upload(a, 'm3.txt', { folder: 'Target' }); // a clash for m3
+  await upload(a, 'm3.txt', { folder: 'Target' });
   const share = await live.api('POST', `${D}/${ids[0]}/share`, { token: a.token, json: { durationHours: 24 } });
   assert.equal(share.status, 201);
   await live.api('PATCH', `${D}/${ids[1]}`, { token: a.token, json: { docExpiresAt: '2031-01-01' } });
@@ -317,12 +297,10 @@ it('batch move: up to 50 files, a result for each id, conflicts reported, one ac
   assert.equal(await AuditEvent.countDocuments({ userId: a.userId, type: 'move' }) - movesBefore, 3, 'one event per file moved');
   assert.equal((await raw(ids[3])).folder, 'root', 'the clash did not move');
   assert.equal((await raw(ids[0])).folder, 'Target');
-  // the share link still works, the expiry date is unchanged, nothing went to Trash
   const shares = (await live.api('GET', '/api/shares', { token: a.token })).body.shares;
   assert.equal(shares.length, 1);
   assert.equal((await raw(ids[1])).docExpiresAt.toISOString().slice(0, 10), '2031-01-01');
   assert.equal(await live.mongoose.models.Document.countDocuments({ userId: a.userId, deletedAt: { $ne: null } }), 0);
-  // moving again: "already there"
   const again = await live.api('POST', `${D}/batch/move`, { token: a.token, json: { ids: [ids[0]], destination: 'Target' } });
   assert.equal(again.body.results[0].status, 'unchanged');
 });
@@ -383,8 +361,6 @@ it('batch trash: files go to Trash with their share links stopped, one event eac
   assert.equal(restore.status, 200, 'and restorable');
 });
 
-// ---------------- budgets, and the emergency allowlist ----------------
-
 it('each new route counts against its own per-account bucket', async () => {
   const a = await account('limits.a@example.com');
   const id = await upload(a, 'l.txt');
@@ -393,7 +369,6 @@ it('each new route counts against its own per-account bucket', async () => {
     await RateLimit.deleteMany({});
     const res = await live.api(method, path, { token: a.token, json });
     assert.ok(res.status < 500, `${method} ${path} -> ${res.status}`);
-    // (live.api clears the counters BEFORE a request, so what is there now was made by this one)
     return (await RateLimit.find({}).lean()).map((row) => row.bucket);
   };
   assert.ok((await hit('POST', `${D}/star`, { ids: [id], starred: true })).includes('docs-star'));

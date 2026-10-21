@@ -1,10 +1,3 @@
-// node scripts/check-transfers.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try another one)
-//
-// Drives the transfer tray in a real browser against the real app on a LOCAL throwaway MongoDB (127.0.0.1:27099, or a local
-// WARDEN_TEST_MONGO; no .env is read; mail is captured), served with the production CSP. Uploads are held back by the script, so the
-// states in between can be looked at. It checks that: one click is one row and one file (a double click too); the tray follows the
-// person across pages; Cancel works; a too-large file is refused in the dialog; a failed upload shows Retry and the retry makes exactly
-// one file; two files at once; a new version and a dropped file use the tray; the zip import is a row; no CSP violations.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -20,7 +13,7 @@ const root = path.resolve(here, '..', '..');
 const dist = process.env.DIST_DIR ? path.resolve(process.env.DIST_DIR) : path.join(root, 'client', 'dist');
 const requireServer = createRequire(path.join(root, 'server', 'package.json'));
 const SHOTS = process.env.SHOTS || '';
-const TRAY_MS = 3000; // the shortened dismiss time
+const TRAY_MS = 3000;
 
 const baseUri = process.env.WARDEN_TEST_MONGO || 'mongodb://127.0.0.1:27099/?replicaSet=rs0&directConnection=true';
 if (!/^mongodb:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//.test(baseUri)) {
@@ -80,7 +73,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -121,13 +114,12 @@ try {
   browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 860 }, reducedMotion: 'reduce' });
   await context.addInitScript(([value, ms]) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__WARDEN_TEST__ = { importCardMs: ms };
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, [token, TRAY_MS]);
 
-  // The script decides what happens to each upload: held (released later), failed once, or let through at once.
   const gate = { mode: 'pass', held: [], posts: 0, failNext: 0 };
   await context.route('**/api/documents', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
@@ -172,7 +164,6 @@ try {
   await page.goto(`${base}/files`);
   await page.getByRole('button', { name: 'New' }).waitFor({ timeout: 15000 });
 
-  // ---- one click, one row, one file; the dialog closes at once ----
   gate.mode = 'hold';
   let dialog = await openUpload();
   await dialog.locator('input[type=file]').setInputFiles(file('alpha.txt'));
@@ -188,7 +179,6 @@ try {
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'tray-sending-1280.png') });
   check(!(await tray.evaluate((el) => el.contains(document.activeElement))), 'the tray did not take the focus');
 
-  // ---- the tray follows the person ----
   for (const [label, p] of [['Overview', '/overview'], ['Devices & activity', '/devices'], ['Trash', '/trash'], ['My files', '/files']]) {
     await nav(label).click();
     await page.waitForURL((url) => url.pathname === p, { timeout: 8000 });
@@ -200,11 +190,9 @@ try {
   await page.waitForTimeout(600);
   check((await page.getByText('alpha.txt').count()) > 1, 'the file list was refreshed by itself (the name is in the list as well as in the tray)');
 
-  // ---- the finished tray goes away by itself ----
   await tray.waitFor({ state: 'detached', timeout: TRAY_MS + 8000 });
   check(true, `a finished tray with no failure closes by itself (set to ${TRAY_MS} ms)`);
 
-  // ---- double click = one file ----
   gate.mode = 'pass';
   gate.posts = 0;
   dialog = await openUpload();
@@ -213,7 +201,6 @@ try {
   await page.waitForTimeout(1500);
   check(gate.posts === 1 && (await named(/^beta/)).length === 1, `a double click: one request, one file (${gate.posts} request(s))`);
 
-  // ---- Cancel while the request is held ----
   await tray.waitFor({ state: 'detached', timeout: TRAY_MS + 8000 }).catch(() => {});
   gate.mode = 'hold';
   dialog = await openUpload();
@@ -231,7 +218,6 @@ try {
   await page.getByRole('button', { name: 'Close the transfers' }).click();
   await tray.waitFor({ state: 'detached', timeout: 5000 });
 
-  // ---- too large: refused in the dialog, which stays open ----
   gate.mode = 'pass';
   gate.posts = 0;
   dialog = await openUpload();
@@ -244,7 +230,6 @@ try {
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'detached', timeout: 4000 }).catch(() => {});
 
-  // ---- a failed upload: Retry makes exactly one file ----
   gate.failNext = 1;
   gate.posts = 0;
   dialog = await openUpload();
@@ -263,7 +248,6 @@ try {
   await page.getByRole('button', { name: 'Close the transfers' }).click();
   await tray.waitFor({ state: 'detached', timeout: 5000 });
 
-  // ---- two files at once, a third waits ----
   gate.mode = 'hold';
   gate.posts = 0;
   const three = await page.evaluateHandle(() => {
@@ -289,7 +273,6 @@ try {
   await page.getByRole('button', { name: 'Close the transfers' }).click();
   await tray.waitFor({ state: 'detached', timeout: 5000 });
 
-  // ---- a file dropped on the page ----
   gate.mode = 'pass';
   const dataTransfer = await page.evaluateHandle(() => {
     const dt = new DataTransfer();
@@ -303,7 +286,6 @@ try {
   check((await named(/^dropped\.txt$/)).length === 1, 'a file dropped onto the Files page goes through the tray and is saved');
   await tray.waitFor({ state: 'detached', timeout: TRAY_MS + 8000 }).catch(() => {});
 
-  // ---- Upload new version ----
   const alpha = (await named(/^alpha/))[0];
   await page.locator('button[aria-label^="Details for alpha"]').first().click();
   const panel = page.getByRole('dialog', { name: /^Details for/ });
@@ -320,7 +302,6 @@ try {
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Close the transfers' }).click().catch(() => {});
 
-  // ---- the zip import is a row ----
   gate.mode = 'pass';
   const zipFile = await makeZip('backup.zip', 8);
   await nav('Export / Import').click();
@@ -332,17 +313,15 @@ try {
   await page.getByText(/8 files sealed/).first().waitFor({ timeout: 30000 });
   check((await named(/^note-/)).length === 8, 'all 8 files of the zip are in the vault');
 
-  // ---- Escape minimizes ----
   await tray.getByRole('button', { name: 'Minimize the transfers' }).focus();
   await page.keyboard.press('Escape');
   check((await tray.getAttribute('data-minimized')) === 'true', 'Escape minimizes the tray');
 
-  // ---- nothing in storage, no CSP problems ----
   const stored = await page.evaluate(async () => ({
     local: Object.keys(window.localStorage),
     session: Object.keys(window.sessionStorage).filter((k) => k !== 'warden.session'),
     idb: indexedDB.databases ? (await indexedDB.databases()).map((db) => db.name) : [],
-    caches: (await caches.keys()).filter((key) => !key.startsWith('warden-shell')), // the app's own offline shell, never a file
+    caches: (await caches.keys()).filter((key) => !key.startsWith('warden-shell')),
   }));
   check(stored.local.length === 0 && stored.session.length === 0 && stored.idb.length === 0 && stored.caches.length === 0, `no file name was stored anywhere (${JSON.stringify(stored)})`);
   const csp = await page.evaluate(() => window.__csp).catch(() => []);

@@ -12,7 +12,6 @@ import { shortName } from '../utils/ellipsis.js';
 const R = 14;
 const C = 2 * Math.PI * R;
 
-/** The seal ring: fills as bytes are sent, pulses while the server seals, closes into a lock; a warning ring when it failed. */
 export function SealRing({ ring, percent = 0, small = false }) {
   const filled = ring === RING.SEALED || ring === RING.HELD || ring === RING.REFUSED ? 100 : ring === RING.PULSE ? 100 : ring === RING.PROGRESS ? percent : ring === RING.FAILED ? 100 : 0;
   return (
@@ -77,10 +76,6 @@ function Row({ row, onAction }) {
   );
 }
 
-/**
- * The transfer tray as markup, for one model (utils/trayModel.js buildTray) and nothing else: no store, no router, no timers, so
- * every state can be rendered on its own. TransferTray.jsx is the part that is wired up.
- */
 export function TransferTrayView({
   model,
   announce = '',
@@ -112,7 +107,6 @@ export function TransferTrayView({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* The only live region: it changes at the start, every quarter and the end, not with every byte. */}
       <div className={styles.sr} role="status" aria-live="polite">
         {announce}
       </div>

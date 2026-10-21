@@ -1,4 +1,3 @@
-// Plain labels for the landing heading. The page starts on the first one.
 export const TYPE_WORDS = ['documents', 'Valid IDs', 'Photos', 'Contracts', 'Receipts', 'Transcripts', 'Passports', 'Diplomas', 'Certificates'];
 
 const TYPE_MS = 90;
@@ -7,14 +6,8 @@ const HOLD_MS = 1600;
 const PAUSE_MS = 350;
 const PASSES = 2;
 
-/**
- * Types a word into `el`, holds it, deletes it, types the next. Two full passes through the list, then it settles on the
- * first word and stops (the cursor goes with it). Reduced motion: nothing happens. Every timer is cleared by the returned
- * function and while the tab is hidden.
- */
 export function startTypewriter(el, srClass) {
   if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
-  // The word stays in the heading as real text for screen readers; the typed copy is hidden from them.
   const real = el.cloneNode(true);
   real.className = srClass;
   el.before(real);

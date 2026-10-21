@@ -4,7 +4,6 @@ import { getPreferences, setExpiryReminders } from '../services/accountService.j
 import { extractErrorMessage } from '../services/api.js';
 import styles from './ReminderSetting.module.css';
 
-/** Account settings: "Email me about expiring documents" (on by default). Saves as soon as it is changed. */
 function ReminderSetting() {
   const [on, setOn] = useState(null);
   const [busy, setBusy] = useState(false);

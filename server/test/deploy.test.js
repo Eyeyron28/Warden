@@ -56,14 +56,11 @@ test('each required setting is reported by name when missing or invalid', () => 
   assert.ok(names({ ...GOOD, INVITE_CODE: 'short' }).includes('INVITE_CODE'));
   assert.ok(names({ ...GOOD, MONGO_URI: 'postgres://x' }).includes('MONGO_URI'));
   for (const bad of ['0', '-5', 'abc']) assert.ok(names({ ...GOOD, STORAGE_QUOTA_MB: bad }).includes('STORAGE_QUOTA_MB'), bad);
-  // the key that signs the activity log: required, and long enough to mean something
   assert.ok(names({ ...GOOD, AUDIT_HMAC_KEY: 'too-short' }).includes('AUDIT_HMAC_KEY'));
-  // F14: the cron secret is required, and long enough to mean something
   assert.ok(names({ ...GOOD, CRON_SECRET: 'short-secret' }).includes('CRON_SECRET'));
   assert.ok(names({ ...GOOD, CRON_SECRET: '   ' }).includes('CRON_SECRET'));
   assert.ok(!names({ ...GOOD, CRON_SECRET: '0123456789abcdef' }).includes('CRON_SECRET'), 'exactly 16 is enough');
   assert.ok(names({ ...GOOD, CRON_SECRET: '0123456789abcde' }).includes('CRON_SECRET'), '15 is not');
-  // the optional session lifetime
   assert.deepEqual(names({ ...GOOD, SESSION_ABSOLUTE_HOURS: '12' }), []);
   for (const bad of ['0', '0.5', '169', 'abc', '-1']) assert.ok(names({ ...GOOD, SESSION_ABSOLUTE_HOURS: bad }).includes('SESSION_ABSOLUTE_HOURS'), bad);
   for (const bad of ['0', '400', 'x', '1.5']) assert.ok(names({ ...GOOD, AUDIT_RETENTION_DAYS: bad }).includes('AUDIT_RETENTION_DAYS'), bad);
@@ -96,7 +93,6 @@ test('vercel.json: cache rules, headers and the CSP script hash match the real p
   assert.match(header(pages, 'Content-Security-Policy'), /frame-ancestors 'none'/);
   assert.equal(header(rule('/shared/(.*)'), 'Referrer-Policy'), 'no-referrer');
 
-  // The inline theme script in index.html is allowed by hash; editing it without updating the hash would blank every page.
   const html = fs.readFileSync(path.join(root, 'client', 'index.html'), 'utf8');
   const inline = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
   const hash = `'sha256-${crypto.createHash('sha256').update(inline).digest('base64')}'`;
@@ -124,7 +120,6 @@ test('CORS: the deployed app origin (PUBLIC_APP_URL) may call its own API; other
   });
 });
 
-// The cron routes are rate limited (F14); the limiter's counter table is the in-memory fake.
 const cronWorld = require('./helpers/fakeDb').createWorld();
 require('./helpers/fakeDb').stubModule(path.join(__dirname, '..', 'models', 'RateLimit'), require('./helpers/fakeDb').fakeModel(cronWorld, 'ratelimits'));
 

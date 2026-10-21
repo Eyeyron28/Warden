@@ -3,11 +3,6 @@ import { Component } from 'react';
 import { isChunkFailure } from '../utils/chunkFailure.js';
 import styles from './RouteErrorBoundary.module.css';
 
-/**
- * Keeps one page's failure inside that page. Without a boundary, a page that throws (or whose code cannot be fetched) takes
- * the WHOLE app down: React unmounts everything, header and sidebar included, and the person is left with a white page.
- * With it, the frame stays and this area says what happened, with a way forward. Reset by moving to another page.
- */
 class RouteErrorBoundary extends Component {
   constructor(props) {
     super(props);

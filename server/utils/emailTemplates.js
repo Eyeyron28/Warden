@@ -1,32 +1,3 @@
-/**
- * Every email Warden sends is built here, and nowhere else.
- *
- * `renderEmail` turns structured input into { subject, html, text }. Callers pass
- * those to sendEmail, which sends them as multipart/alternative (plain text plus
- * HTML). The named builders at the bottom (`templates.*`) are the only emails that
- * exist; a controller never writes its own wording or markup.
- *
- * The HTML is built for email clients, not browsers:
- *   - table layout, 600px wide at most, every style inline (the one <style> block
- *     only adds dark-mode and small-screen refinements; mail that strips it still
- *     reads correctly);
- *   - system fonts, no JavaScript, no remote images, no tracking pixels: nothing in
- *     a message loads from another site;
- *   - a dark header band with the text wordmark, a light card below it, and
- *     color-scheme meta tags so Gmail's dark mode keeps it readable;
- *   - a hidden preheader line (the inbox preview text);
- *   - a code is shown ALONE in one highlighted box as a single unbroken string
- *     (double-click selects it, copy gives exactly the digits).
- *
- * Safety: every interpolated value is HTML-escaped; subjects are fixed strings (no
- * user text, no code); bodies never contain share keys (#k=), reset tokens, other
- * people's addresses, file names or share purposes. Links go only to the app's own
- * public address (PUBLIC_APP_URL) and never carry a token.
- *
- * These are transactional messages (the person just did something, or someone did
- * something to their account), so there is deliberately no unsubscribe link.
- */
-
 const BRAND = Object.freeze({
   accent: '#d45ebb',
   dark: '#130c11',
@@ -48,17 +19,14 @@ const NEVER_SHARE = 'Never share this code with anyone — Warden will never ask
 const IGNORE_IF_NOT_YOU =
   "If you didn't request this, ignore this email; your account is safe. Consider changing your password if you keep receiving these.";
 
-/** Escapes text for HTML (element content and double-quoted attributes). */
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 }
 
-/** A plain-text value: no control characters, so nothing can forge extra lines or headers. */
 function line(value) {
   return String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
 }
 
-/** "Oct 9, 2026, 5:14 PM PHT (UTC+8)" - the time in Manila, labelled. */
 function formatManilaTime(date = new Date()) {
   const when = new Date(date).toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',
@@ -72,7 +40,6 @@ function formatManilaTime(date = new Date()) {
   return `${when} Philippine Time (UTC+8)`;
 }
 
-/** "Manila, Philippines" from a two-letter country code and an optional city; "Unknown" when there is neither. */
 function placeLabel(country, city) {
   let name = null;
   if (typeof country === 'string' && /^[A-Za-z]{2}$/.test(country)) {
@@ -86,7 +53,6 @@ function placeLabel(country, city) {
   return parts.length ? parts.join(', ') : 'Unknown';
 }
 
-/** The app's public origin for links, or null when none is configured (development). */
 function appOrigin() {
   const raw = (process.env.PUBLIC_APP_URL || '').trim();
   if (!raw) return null;
@@ -98,7 +64,6 @@ function appOrigin() {
   }
 }
 
-/** A link to a fixed path on the app (never carries a token or key), or null. */
 function appLink(pathname) {
   const origin = appOrigin();
   return origin ? `${origin}${pathname}` : null;
@@ -119,21 +84,6 @@ function renderDetailsHtml(details) {
   );
 }
 
-/**
- * @param {{
- *   subject: string,                 // fixed text, never the code or personal data
- *   preheader: string,               // the inbox preview line (hidden in the message)
- *   title: string,
- *   intro: string,
- *   code?: string,                   // a single unbroken string such as 482916
- *   codeNote?: string,               // shown directly under the code ("This code expires in 5 minutes")
- *   details?: Array<[string, string]>,
- *   warning?: string,
- *   cta?: { label: string, href: string } | null,   // a button; href must come from appLink()
- *   footerNote?: string,             // one extra sentence above the standard footer
- * }} input
- * @returns {{ subject: string, html: string, text: string }}
- */
 function renderEmail({ subject, preheader, title, intro, code, codeNote, details, warning, cta, secondaryCta, footerNote }) {
   const hasCode = typeof code === 'string' && code !== '';
   if (hasCode && !/^\d{6}$/.test(code)) throw new Error('A code must be a single unbroken string of 6 digits.');
@@ -142,7 +92,6 @@ function renderEmail({ subject, preheader, title, intro, code, codeNote, details
   if (secondaryCta && !/^https:\/\//.test(secondaryCta.href)) throw new Error('A link must be an https address.');
 
   const pre = esc(preheader);
-  // Pad the preheader so the inbox preview never pulls in body text.
   const padding = '&#847;&zwnj;&nbsp;'.repeat(40);
 
   const codeBlock = hasCode
@@ -224,7 +173,6 @@ function renderEmail({ subject, preheader, title, intro, code, codeNote, details
 const minutes = (n) => `${n} minute${n === 1 ? '' : 's'}`;
 const expiresNote = (ttlMinutes) => `This code expires in ${minutes(ttlMinutes)}`;
 
-/** A code email. `purposeLine` says in plain words what the code is for. */
 function codeEmail({ subject, preheader, title, purposeLine, code, ttlMinutes, warning }) {
   return renderEmail({
     subject,
@@ -281,7 +229,6 @@ const templates = {
       warning: `${NEVER_SHARE} If you didn't request this, ignore this email; nothing was opened and no account is involved.`,
     }),
 
-  // Sign-up: the code that proves the address BEFORE any account exists. Plain: no link, no button, no image.
   signupCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your Warden sign-up code',
@@ -364,7 +311,6 @@ const templates = {
       cta: appLink('/wasnt-me') ? { label: "This wasn't me", href: appLink('/wasnt-me') } : null,
     }),
 
-  // Counts only: no file name ever goes in an email.
   expiringDocuments: ({ expired = 0, within7 = 0, within30 = 0, within60 = 0 }) => {
     const total = expired + within7 + within30 + within60;
     const plural = (n) => (n === 1 ? '1 document' : `${n} documents`);
@@ -385,9 +331,6 @@ const templates = {
     });
   },
 
-  // ---------- Emergency Access (no file names, ever) ----------
-
-  // To the contact
   emergencyContactRequestCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your code to request emergency access',
@@ -438,7 +381,6 @@ const templates = {
           : 'The owner of the vault replaced the emergency access kit. The old kit no longer works and any request or session you had has ended. Ask the owner for the new kit.',
     }),
 
-  // To the owner
   emergencyOwnerSetupCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your code to change emergency access',
@@ -535,10 +477,6 @@ const templates = {
     }),
 };
 
-// Which daily budget a message belongs to (utils/mailBudget.js). Priority: anything a person needs to sign in, to confirm a
-// sensitive action or to reset a password, and security notices about their account (a changed password, Emergency Access).
-// Bulk: sign-up codes, "someone tried to sign up", reminders, new-device notices and share codes: they stop first when the
-// day's budget runs short, so they can never block a login code.
 const MAIL_CLASS = Object.freeze({
   signInCode: 'priority',
   deleteAccountCode: 'priority',
@@ -568,7 +506,6 @@ const MAIL_CLASS = Object.freeze({
 for (const name of Object.keys(templates)) {
   const build = templates[name];
   const wrapped = (...args) => ({ ...build(...args), mailClass: MAIL_CLASS[name] || 'priority' });
-  // Keep the template's own source text (a test reads which templates take a `code`).
   wrapped.toString = () => build.toString();
   templates[name] = wrapped;
 }

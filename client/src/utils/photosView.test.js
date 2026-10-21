@@ -33,6 +33,5 @@ test('the Photos toolbar has the List and Grid buttons, and both views show the 
   assert.match(page, /aria-label="List view" aria-pressed=\{view === 'list'\}/);
   assert.match(page, /aria-label="Grid view" aria-pressed=\{view === 'grid'\}/);
   assert.match(page, /useState\(readPhotosView\)/);
-  // One FileBrowser, one set of items: only the view prop changes.
   assert.match(page, /<FileBrowser items=\{group\.items\} view=\{view\}/);
 });

@@ -1,6 +1,3 @@
-// In-memory stand-ins for the Mongoose models, so controller tests can run
-// without a database and then look at every "collection" directly. They
-// understand only the query shapes this codebase uses.
 const path = require('node:path');
 const mongoose = require('mongoose');
 
@@ -30,7 +27,6 @@ function matchValue(actual, cond) {
   return String(actual) === String(cond);
 }
 
-// { $lt: ['$downloadCount', '$maxDownloads'] }
 function matchExpr(doc, expr) {
   const [op] = Object.keys(expr);
   const [a, b] = expr[op].map((x) => (typeof x === 'string' && x.startsWith('$') ? norm(doc[x.slice(1)]) : x));
@@ -55,9 +51,6 @@ function matches(doc, filter) {
 }
 
 
-// A small evaluator for the aggregation-pipeline UPDATES the code uses ($set / $unset stages over $ifNull, $cond, $add,
-// $gt/$gte/$lt/$lte, $or, $and, $not, $max and field references). Lets tests run the real pipeline from
-// utils/loginLimiter.js against the in-memory table. Anything else throws, so a new operator is noticed.
 const rank = (v) => (v === undefined || v === null ? -Infinity : isDate(v) ? v.getTime() : v);
 function evalExpr(doc, expr) {
   if (typeof expr === 'string') return expr.startsWith('$') ? doc[expr.slice(1)] : expr;
@@ -97,10 +90,8 @@ function runPipelineUpdate(doc, stages) {
   }
 }
 
-// Unique indexes the code under test relies on (a create that repeats one fails like MongoDB's E11000).
 const UNIQUE = { auditevents: ['userId', 'seq'], devices: ['userId', 'deviceIdHash'], reminderlogs: ['userId', 'fileId', 'threshold'] };
 
-/** One fake model backed by world.tables[table]. `extras` can add or override methods. */
 function fakeModel(world, table, extras = {}) {
   const rows = () => world.tables[table];
   const query = (result) => {
@@ -198,7 +189,6 @@ function fakeModel(world, table, extras = {}) {
       world.tables[table] = keep;
       return { deletedCount };
     },
-    // $match / $sort ({ _id: 1 }) / $limit / $project (1, or { $binarySize }) only; any other stage gives [].
     aggregate: (pipeline = []) => {
       const run = () => {
         let out = rows();
@@ -209,7 +199,6 @@ function fakeModel(world, table, extras = {}) {
             const key = (row) => (typeof row[field] === 'number' ? row[field] : String(row[field]));
             out = [...out].sort((a, b) => (key(a) < key(b) ? -dir : key(a) > key(b) ? dir : 0));
           } else if (stage.$group) {
-            // { _id: '$field', name: { $sum: 1 } } only
             const idField = String(stage.$group._id).replace(/^\$/, '');
             const groups = new Map();
             for (const row of out) {
@@ -259,25 +248,20 @@ function createWorld() {
   return { tables: Object.fromEntries(Object.values(MODEL_TABLES).map((t) => [t, []])), mails: [], fail: null };
 }
 
-/** For tests that stub models by hand: just the login-lockout counter (utils/loginLimiter.js), as its own tiny world. */
 function installLoginFailures() {
   const world = { tables: { loginfailures: [] } };
   stubModule(path.join(__dirname, '..', '..', 'models', 'LoginFailure'), fakeModel(world, 'loginfailures'));
   return world;
 }
 
-/** Installs a fake for every model (call BEFORE requiring any controller). */
 function installModels(world, extras = {}) {
   for (const [modelName, table] of Object.entries(MODEL_TABLES)) {
     stubModule(path.join(__dirname, '..', '..', 'models', modelName), fakeModel(world, table, extras[modelName]));
   }
 }
 
-/** A budget counter standing in for middleware/rateLimit (windows are not simulated). */
 function installRateLimit() {
   const counts = new Map();
-  // Callable like the real module (route files build limiters with it); the per-route limiters are pass-throughs here,
-  // the budgets below are what the tests exercise.
   const factory = () => (req, res, next) => next();
   stubModule(path.join(__dirname, '..', '..', 'middleware', 'rateLimit'), Object.assign(factory, {
     consumeBudget: async ({ name, key, max }) => {
@@ -316,7 +300,6 @@ function installMailer(world) {
   });
 }
 
-/** Runs an Express handler against a fake request and reports what it did. */
 async function call(handler, { userId, dek, body = {}, params = {}, headers = {}, query = {}, secure = true, files, file, ip = '203.0.113.9', ...extra } = {}) {
   const out = { status: null, json: null, headers: {}, body: null, error: null, cookies: {}, cleared: [] };
   const res = {

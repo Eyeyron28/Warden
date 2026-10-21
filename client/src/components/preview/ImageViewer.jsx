@@ -7,12 +7,6 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 8;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-/**
- * An image with zoom and pan: wheel, +/- buttons, + - 0 keys, double-click,
- * pinch, and drag to pan once zoomed. The picture is shown from an object URL
- * over a Blob whose type came from the byte sniffing (an allowlisted image
- * type), revoked when this goes away.
- */
 function ImageViewer({ bytes, mime, name, onFail }) {
   const [url, setUrl] = useState(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -27,7 +21,6 @@ function ImageViewer({ bytes, mime, name, onFail }) {
     return () => URL.revokeObjectURL(objectUrl);
   }, [bytes, mime]);
 
-  // Zoom keeping the point under (cx, cy) - measured from the stage centre - still.
   const zoomAt = useCallback((factor, cx = 0, cy = 0) => {
     setView((current) => {
       const scale = clamp(current.scale * factor, MIN_SCALE, MAX_SCALE);
@@ -49,7 +42,6 @@ function ImageViewer({ bytes, mime, name, onFail }) {
     return { cx: event.clientX - rect.left - rect.width / 2, cy: event.clientY - rect.top - rect.height / 2 };
   };
 
-  // Wheel needs a non-passive listener to stop the page scrolling behind it.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;

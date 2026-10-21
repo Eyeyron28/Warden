@@ -15,8 +15,6 @@ const code = (relative) => read(relative).replace(/\/\*[\s\S]*?\*\//g, '').repla
 
 const KEY = 'X5N7-8DYX-9ERG-XMR3';
 
-// ---- the typo suggestion ----
-
 test('common typos in well-known domains get a suggestion that keeps the part before the @', () => {
   assert.equal(suggestEmailFix('name@gmial.com'), 'name@gmail.com');
   assert.equal(suggestEmailFix('name@gmai.com'), 'name@gmail.com');
@@ -33,12 +31,9 @@ test('nothing is suggested for a correct, unknown or unfinished address, and a s
   }
   for (const domain of TYPO_DOMAINS) assert.notEqual(suggestEmailFix(`a@${domain}`), `a@${domain}`);
   const page = code('pages/auth/SignupPage.jsx');
-  // offered next to the field, applied only by a click; canSubmit does not mention it
   assert.match(page, /emailSuggestion && touched\.email/);
   assert.doesNotMatch(page.match(/const canSubmit = [^;]+;/)[0], /emailSuggestion/);
 });
-
-// ---- the recovery key display ----
 
 test('the chips are the four groups with no dash in any of them, so there is no trailing hyphen', () => {
   assert.deepEqual(keyGroups(KEY), ['X5N7', '8DYX', '9ERG', 'XMR3']);
@@ -141,8 +136,6 @@ test('the key lives only in memory: no browser storage, cookie, URL or log anywh
   assert.doesNotMatch(page, /navigate\([^)]*recoveryKey|state:\s*\{[^}]*recoveryKey/, 'not carried in the URL or router state');
 });
 
-// ---- the flow ----
-
 function fakeStorage() {
   const data = new Map();
   return { getItem: (key) => (data.has(key) ? data.get(key) : null), setItem: (key, value) => data.set(key, String(value)), removeItem: (key) => data.delete(key), data };
@@ -158,7 +151,6 @@ test('a reload mid-flow returns to the form with the email filled in, and never 
   assert.equal(after.values.password, '');
   assert.equal(after.values.confirm, '');
   assert.equal(after.values.invite, '');
-  // the only thing ever stored is the address
   assert.deepEqual([...storage.data.values()], ['sam@example.com']);
   clearSignupEmail(storage);
   assert.equal(readSignupEmail(storage), '');

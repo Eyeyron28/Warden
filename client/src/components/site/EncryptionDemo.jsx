@@ -5,21 +5,16 @@ import styles from './EncryptionDemo.module.css';
 
 const START_TEXT = 'Land title, scan 2 of 3';
 
-/**
- * "See what the server stores": type a sentence, watch it turn into ciphertext in this tab. The key is made here, kept
- * in memory and never sent anywhere (utils/encryptionDemo.js has no network call, and a test keeps it that way).
- */
 function EncryptionDemo() {
   const inputId = useId();
   const [text, setText] = useState(START_TEXT);
-  const [sealed, setSealed] = useState(null); // { ivHex, cipherHex, plainBytes }
-  const [shown, setShown] = useState(false); // the Decrypt toggle
+  const [sealed, setSealed] = useState(null);
+  const [shown, setShown] = useState(false);
   const [opened, setOpened] = useState('');
   const [state, setState] = useState(() => (demoSupported() ? 'ready' : 'unsupported'));
   const keyRef = useRef(null);
   const runRef = useRef(0);
 
-  // Encrypt on every change. A newer keystroke makes an older answer arrive late and get dropped.
   useEffect(() => {
     if (state === 'unsupported') return undefined;
     const run = ++runRef.current;

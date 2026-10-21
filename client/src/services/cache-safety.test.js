@@ -12,14 +12,10 @@ import { getFrequentFiles } from './insightsService.js';
 import { getEmergencyStatus, peekEmergencyStatus } from './emergencyService.js';
 import { logoutVault } from './authService.js';
 
-// The in-memory page cache (services/dataCache.js) must never outlive the session it was filled under: not on logout, not on
-// a 401, not when another account signs in in the same tab, not when the session expires. And it holds JSON lists only.
-
 const here = path.dirname(fileURLToPath(import.meta.url));
 const A = `${'a1'.repeat(32)}.${'b2'.repeat(32)}`;
 const B = `${'c3'.repeat(32)}.${'d4'.repeat(32)}`;
 
-/** A server whose answers depend on WHO is asking (the bearer token), so a leak between sessions would show. */
 function server({ hold = false, status = 200, code } = {}) {
   const pending = [];
   api.defaults.adapter = (config) => {
@@ -52,7 +48,7 @@ test('logout empties the cache at once (before, and whether or not, the logout r
   server();
   setToken(A);
   await fill();
-  clearToken(); // what the Log out button does the instant it is pressed
+  clearToken();
   assert.equal(cacheSize(), 0);
   assert.equal(peekDocuments(), undefined);
 
@@ -91,7 +87,7 @@ test('a different account signing in in the same tab never sees the previous acc
   setToken(A);
   await fill();
   assert.deepEqual(peekDocuments(), [{ id: 'A-doc' }]);
-  setToken(B); // signed in as someone else without a logout in between
+  setToken(B);
   assert.equal(cacheSize(), 0);
   assert.equal(peekDocuments(), undefined);
   assert.equal(peekEmergencyStatus(), undefined);
@@ -117,11 +113,9 @@ test('session expiry empties the cache: by the server saying so, and by another 
   assert.equal(cacheSize(), 0);
   assert.equal(getToken(), null);
 
-  // (The channel between tabs only exists in a browser: give the module a window, with no storage, for this part.)
   globalThis.window = {};
   setToken(A);
   await fill();
-  // Another tab of the same browser signs out / expires this token: it tells this one over the same-origin channel.
   const other = new BroadcastChannel('warden-session');
   other.postMessage({ type: 'logout', token: A });
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -139,7 +133,6 @@ test('the cache holds only the JSON lists of a fixed set of endpoints: never doc
   assert.doesNotMatch(held, new RegExp(A.slice(0, 20)), 'no token in the cache');
   assert.doesNotMatch(held, /wrappedDEK|recoveryKey|sessionKey|encryptionKey|dataKey|base64/i);
 
-  // Every use of the cache, anywhere in the client, names one of these list endpoints.
   const allowed = ['auth/me', 'documents', 'documents/expiring', 'documents/folders', 'documents/folders/children', 'documents/recent', 'documents/details', 'emergency/status', 'insights/overview', 'insights/frequent', 'shares', 'trash'];
   const root = path.join(here, '..');
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));

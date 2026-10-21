@@ -3,19 +3,9 @@ import axios from 'axios';
 import { getToken, clearToken, expireSession } from './session.js';
 import { invalidateAll } from './dataCache.js';
 
-// Relative, not an absolute host - resolves against whatever origin this
-// page itself was loaded from (localhost, a home Wi-Fi IP, a phone
-// hotspot IP...) and Vite's dev server proxy (see vite.config.js) forwards
-// it to the backend. This is what lets the app work on any network with
-// zero .env editing - a hardcoded absolute URL here went stale every time
-// the network changed, which made GET /api/auth/status fail and the app
-// wrongly fall back to showing first-run setup instead of unlock.
 const api = axios.create({
   baseURL: '/api',
 });
-// No default Content-Type here: axios infers "application/json" for plain
-// object payloads and the correct multipart boundary for FormData on its
-// own. Forcing one globally would break document uploads.
 
 api.interceptors.request.use((config) => {
   const token = getToken();
@@ -26,8 +16,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Any write - successful or not (a failed one may still have changed something) - forgets every remembered list
-// (services/dataCache.js), so a page never starts from data the write has just made wrong.
 const isWrite = (config) => Boolean(config?.method) && String(config.method).toLowerCase() !== 'get';
 
 api.interceptors.response.use(
@@ -38,17 +26,8 @@ api.interceptors.response.use(
   (error) => {
     if (isWrite(error.config)) invalidateAll();
     if (error.response?.status === 401) {
-      // Session expired, was invalidated, or never existed. Clearing it
-      // here (rather than in every caller) is what lets the app fall
-      // back to /login from any authenticated call, globally (App.jsx RequireSession).
-      //
-      // Exception: a call that opts out with `skipSessionClear` (a signed-in
-      // screen where a 401 can also mean "wrong password" or "wrong code",
-      // e.g. deleting the account) only ends the session when the server says
-      // the SESSION is the problem (code SESSION_INVALID).
       const sessionProblem = error.response?.data?.error?.code === 'SESSION_INVALID';
       if (!error.config?.skipSessionClear || sessionProblem) {
-        // A token that the server no longer accepts (expired, or signed out from another device): the login page says so.
         if (getToken()) expireSession();
         else clearToken();
       }
@@ -57,13 +36,6 @@ api.interceptors.response.use(
   }
 );
 
-/**
- * Pulls the backend's `{ error: { message, errors? } }` shape out of a
- * failed axios call, falling back to a generic message for network errors
- * etc. When the backend sends a specific `errors` array (e.g. a password
- * policy rejection), that's joined and preferred over the generic message
- * so the caller doesn't have to reach into the response shape itself.
- */
 export function extractErrorMessage(error, fallback = 'Something went wrong. Please try again.') {
   const apiError = error?.response?.data?.error;
   if (Array.isArray(apiError?.errors) && apiError.errors.length > 0) {

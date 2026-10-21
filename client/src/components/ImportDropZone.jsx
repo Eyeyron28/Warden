@@ -5,18 +5,10 @@ import { hasFiles } from '../utils/fileDrag.js';
 import { useFileDrag } from '../utils/useFileDrag.js';
 import styles from './ImportDropZone.module.css';
 
-/** Only a .zip is taken (by name, or by type when the system gives one). */
 export const isZipFile = (file) => /\.zip$/i.test(file?.name || '') || file?.type === 'application/zip' || file?.type === 'application/x-zip-compressed';
 
 export const NOT_A_ZIP = (name) => `Only a .zip file can be imported. “${name}” is not one.`;
 
-/**
- * The Import card's drop zone. It only draws what it is given (idle, drag over, chosen, invalid), so each state can be rendered on
- * its own; the page owns the zip and the import.
- *
- * props: dragOver (bool, for tests and for the zone's own hover), chosen ({ name, files, size, folders } or null), error (string),
- * disabled, onFile(file), children (the problems found in a chosen zip).
- */
 export function ImportDropZone({ dragOver: forcedOver = false, chosen = null, error = '', disabled = false, onFile, children }) {
   const input = useRef(null);
   const { active: over, reset: clearDrag, handlers: dragHandlers } = useFileDrag(hasFiles);

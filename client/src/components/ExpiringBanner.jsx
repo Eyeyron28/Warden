@@ -15,11 +15,6 @@ const readDismissed = () => {
   }
 };
 
-/**
- * A dismissible heads-up at the top of My files: documents that have expired or expire within 60 days.
- * Dismissing hides it for this tab's session. It never gets in the way: nothing is drawn while loading, on an
- * error, or when there is nothing to report.
- */
 function ExpiringBanner() {
   const [items, setItems] = useState(() => peekExpiringDocuments() ?? []);
   const [dismissed, setDismissed] = useState(readDismissed);
@@ -58,7 +53,6 @@ function ExpiringBanner() {
           try {
             window.sessionStorage.setItem(DISMISS_KEY, '1');
           } catch {
-            // the banner just comes back next time
           }
           setDismissed(true);
         }}

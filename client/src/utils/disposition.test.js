@@ -9,7 +9,6 @@ const server = require('../../../server/utils/fileNames.js');
 const { NAMES } = require('../../../server/test/helpers/samples.js');
 
 test('the browser reads the REAL name from what the server sends, not the ASCII fallback', () => {
-  // The fallback comes first in the header; a naive parser stops there and saves "R_sum_ __.pdf".
   const header = server.contentDisposition('Résumé 履歴.pdf');
   assert.match(header, /^attachment; filename="R_sum_/);
   assert.equal(filenameFromDisposition(header), 'Résumé 履歴.pdf');

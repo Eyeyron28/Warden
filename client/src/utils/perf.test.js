@@ -14,8 +14,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const src = path.join(here, '..');
 const TOKEN = `${'a'.repeat(64)}.${'b'.repeat(64)}`;
 
-// ---------- navigation never reloads the page ----------
-
 function sourceFiles(dir = src, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -32,14 +30,12 @@ test('no internal link is a plain <a href>: every one is a <Link> or <NavLink> (
   for (const file of sourceFiles()) {
     if (!file.endsWith('.jsx')) continue;
     const text = code(file);
-    // <a ... href="/x" | href='/x' | href={"/x"} | href={`/x`} | href={'/x'}   (but not "//host", which is another site)
     for (const match of text.matchAll(/<a\b[^>]*\bhref=(?:"\/(?!\/)|'\/(?!\/)|\{\s*["'`]\/(?!\/))/g)) bad.push(`${rel(file)}: ${match[0].slice(0, 60)}`);
   }
   assert.deepEqual(bad, [], 'use <Link to="/..."> from react-router-dom for in-app links');
 });
 
 test('the page is never reloaded from code: window.location assignment is only for a mailto: link', () => {
-  // a mailto: link, and the "Reload" buttons a person presses for a new version (never automatic)
   const allowed = new Map([
     ['pages/public/ContactSection.jsx', /window\.location\.href = mailto;/],
     ['components/UpdatePrompt.jsx', /window\.location\.reload\(\)/],
@@ -63,7 +59,6 @@ test('the signed-in frame is ONE parent route with an Outlet, and the Suspense f
   assert.match(layout, /<Suspense fallback=\{<PageSkeleton \/>\}>\s*<Outlet \/>\s*<\/Suspense>/, 'a page that is still loading hides only its own area');
   const pages = [...app.matchAll(/<Route path="\/(files|photos|shared|trash|export|overview|devices|account|emergency-access)"/g)].length;
   assert.equal(pages, 9, 'every signed-in page is a child of that one frame');
-  // no page renders the frame itself
   for (const file of sourceFiles(path.join(src, 'pages'))) assert.doesNotMatch(code(file), /<(Header|Sidebar|AppLayout)\b/, rel(file));
 });
 
@@ -73,8 +68,6 @@ test('while the stored session is checked the guard shows the frame’s skeleton
   assert.doesNotMatch(app, /if \(!ready\) return null;/);
   assert.match(app, /function checkSessionOnce\(\) \{\s*if \(!sessionCheck\)/, 'once per page load (module level), not per navigation');
 });
-
-// ---------- the in-memory cache ----------
 
 const fakeNetwork = () => {
   const seen = [];
@@ -127,7 +120,7 @@ test('an answer that was in flight when a write happened is thrown away, not sto
   const slowRead = listDocuments();
   await new Promise((resolve) => setTimeout(resolve, 5));
   fakeNetwork.hold = false;
-  await api.patch('/documents/d1', { filename: 'new' }); // the write lands while the read is out
+  await api.patch('/documents/d1', { filename: 'new' });
   net.release();
   await slowRead;
   assert.equal(peekDocuments(), undefined, 'the old list is never remembered after the write');
@@ -162,12 +155,9 @@ test('only JSON answers are remembered: nothing in the cache layer touches docum
   assert.doesNotMatch(text, /localStorage|sessionStorage|indexedDB|blob|arrayBuffer|crypto/i);
   for (const file of ['documentsService.js']) {
     const service = code(path.join(src, 'services', file));
-    // the byte and thumbnail downloads do not go through the cache
     assert.doesNotMatch(service, /fetchCached\([^)]*(view|thumbnail)/);
   }
 });
-
-// ---------- the first screen asks in parallel with the session check ----------
 
 test('on /files the first screen’s requests all go out at once, and the page shares them', async () => {
   invalidateAll();
@@ -176,13 +166,12 @@ test('on /files the first screen’s requests all go out at once, and the page s
   setToken(TOKEN);
   prefetchFirstScreen('/files');
   await new Promise((resolve) => setTimeout(resolve, 5));
-  // all in the air before any has answered (the old order: one, then the page renders, then the rest)
   assert.deepEqual(
     [...net.seen].sort(),
     ['GET /auth/me', 'GET /documents', 'GET /documents/expiring', 'GET /documents/folders', 'GET /documents/folders/children', 'GET /emergency/status', 'GET /insights/frequent'].sort()
   );
   const before = net.seen.length;
-  const shared = listDocuments(); // the page asks for the same list
+  const shared = listDocuments();
   assert.equal(net.seen.length, before, 'it joins the request already out');
   fakeNetwork.hold = false;
   net.release();

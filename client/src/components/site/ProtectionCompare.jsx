@@ -2,7 +2,6 @@ import { useId, useState } from 'react';
 
 import styles from './ProtectionCompare.module.css';
 
-// Factual, from the code and the privacy page. "Can see" is deliberately not empty for anyone: Warden is not end-to-end encrypted.
 const VIEWS = [
   {
     id: 'database',
@@ -47,7 +46,6 @@ const VIEWS = [
   },
 ];
 
-/** A three-way switch (native radio buttons, so arrow keys and touch work) that changes who is looking. */
 function ProtectionCompare() {
   const name = useId();
   const [picked, setPicked] = useState(VIEWS[0].id);

@@ -29,13 +29,6 @@ const COLUMNS = [
 const placeLabel = (location) => (location ? `My files / ${location.split('/').join(' / ')}` : 'My files');
 const daysLabel = (days) => `${days} day${days === 1 ? '' : 's'}`;
 
-/**
- * Trash: what you deleted, kept encrypted for 30 days and then removed for
- * good. Restore puts an item back where it was; if that folder is gone or the
- * name is taken it goes to the top level (and says so). A deleted folder comes
- * back together with everything in it. Nothing here can be opened - restore it
- * first - so a click on a row just selects it.
- */
 function TrashPage() {
   usePageMeta('Trash', 'Deleted files, kept for 30 days.');
   const { showToast, refreshSidebar } = useShell();
@@ -44,7 +37,7 @@ function TrashPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
-  const [confirm, setConfirm] = useState(null); // { type: 'delete' | 'empty', items }
+  const [confirm, setConfirm] = useState(null);
   const [view, setView] = useState(() => getViewPrefs().view);
   const [sort, setSort] = useState(() => getViewPrefs().sort);
 
@@ -74,7 +67,6 @@ function TrashPage() {
         name: entry.name,
         size: entry.size ?? 0,
         modified: entry.deletedAt,
-        // Trashed files have no preview or thumbnail to fetch: show the type icon.
         thumbDocument: entry.kind === 'file' ? { id: entry.id, filename: entry.name, hasThumb: false } : undefined,
         subtitle: `${placeLabel(entry.originalLocation)} · ${daysLabel(entry.daysLeft)} left`,
         cells: {
@@ -85,7 +77,6 @@ function TrashPage() {
         },
       };
     });
-    // Folders-first does not apply here: order purely as chosen.
     return sortItems(rows.map((row) => ({ ...row, kind: row.kind === 'trash-folder' ? 'file' : row.kind })), sort).map(
       (row) => rows.find((original) => original.key === row.key)
     );
@@ -118,7 +109,6 @@ function TrashPage() {
         if (result.message) messages.push(`“${target.name}”: ${result.message}`);
       } catch (err) {
         if (isSessionExpired(err)) break;
-        // A 409 means the top level has that name as well: the server's message says what to do.
         problems.push(`“${target.name}”: ${extractErrorMessage(err, 'Could not restore this item.')}`);
       }
     }
@@ -175,8 +165,6 @@ function TrashPage() {
   ];
 
 
-  // Right-click, long-press or Shift+F10 on an item. An unselected item becomes the selection;
-  // with several selected, the menu holds the actions that apply to the selection.
   const handleItemContextMenu = (item, { x, y, opener }) => {
     const wasSelected = selection.isSelected(item.key);
     if (!wasSelected) selection.setOnly(item.key);
@@ -198,7 +186,6 @@ function TrashPage() {
 
   return (
     <div className={styles.page}>
-      {/* The title stays; only the controls on the right become the selection bar. */}
       <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             <h1 className={styles.heading}>Trash</h1>

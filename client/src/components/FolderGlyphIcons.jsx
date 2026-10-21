@@ -13,8 +13,6 @@ import {
   ShieldCheck,
 } from '@phosphor-icons/react';
 
-// The whole icon set a folder can have (server/utils/folderStyle.js lists the ids). It lives in its own chunk, loaded only when a
-// folder with an icon is first drawn, so folders without one (every older folder) cost the main bundle nothing.
 const ICONS = {
   folder: FolderSimple,
   'id-card': IdentificationCard,

@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// The removed drive backup / USB recovery (old URLs answer 410, nothing writes BackupLog any
-// more) and the preview bookkeeping: what the bytes allow, and failures recorded so a file is
-// not retried on every run.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -16,7 +11,6 @@ process.env.NODE_ENV = 'test';
 const db = require('./helpers/fakeDb');
 
 const world = db.createWorld();
-// The list is an aggregation; only the stages it uses are needed here.
 const aggregate = (pipeline) => {
   const rows = world.tables.documents.filter((r) => db.matches(r, pipeline[0].$match));
   const q = { session: () => q, then: (ok, bad) => Promise.resolve(rows.map((r) => ({ ...r, size: r.encryptedBlob.length }))).then(ok, bad) };
@@ -47,8 +41,6 @@ function addDoc(userId, extra = {}) {
 function reset() {
   for (const name of Object.keys(world.tables)) world.tables[name] = [];
 }
-
-// ------------------------------------------------------------------ removed features
 
 test('the old backup, restore and USB-recovery URLs answer 410 and do nothing else', async () => {
   const express = require('express');
@@ -103,20 +95,16 @@ test('nothing in the server writes backups, reads a server path, or offers USB r
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const name = path.relative(root, file);
-    // (a developer-run script that can save sample email files; it never runs as part of the server)
     if (name === path.join('scripts', 'send-test-emails.js')) continue;
     assert.doesNotMatch(source, /BackupLog\.(create|insertMany|save)|new BackupLog/, `${name}: no BackupLog writes`);
     assert.doesNotMatch(source, /usbPassphrase|wrappedDEKUsb|recoverViaUsb\b|\bfs\.(writeFile|mkdir|readdir)/, name);
     if (name !== path.join('routes', 'removed.routes.js')) assert.doesNotMatch(source, /recover-via-usb|api\/backup/, name);
   }
-  // The model stays only so existing rows can be removed with the account and by a wipe.
   assert.ok(fs.existsSync(path.join(root, 'models', 'BackupLog.js')));
   const deletion = fs.readFileSync(path.join(root, 'utils', 'accountDeletion.js'), 'utf8');
   assert.match(deletion, /BackupLog/);
   assert.match(fs.readFileSync(path.join(root, 'utils', 'accountReset.js'), 'utf8'), /BackupLog\.deleteMany/);
 });
-
-// ------------------------------------------------------------------ preview eligibility
 
 test('what the bytes allow: image, pdf or none - never decided by a name', () => {
   const pad = (bytes) => Buffer.concat([Buffer.from(bytes), Buffer.alloc(32)]);
@@ -132,8 +120,6 @@ test('what the bytes allow: image, pdf or none - never decided by a name', () =>
   const upload = fs.readFileSync(path.join(__dirname, '..', 'controllers', 'documents.controller.js'), 'utf8');
   assert.match(upload, /previewKind: sniffPreviewKind\(buffer\)/, 'classified from the bytes at upload');
 });
-
-// ------------------------------------------------------------------ recorded failures
 
 test('a failed preview is recorded with a reason code, shown in the list, and cleared by a retry', async () => {
   reset();
@@ -151,12 +137,10 @@ test('a failed preview is recorded with a reason code, shown in the list, and cl
   assert.equal(listed.thumbFailReason, 'decode-failed');
   assert.equal(listed.previewKind, 'image');
 
-  // an unsupported type also takes the file out of the "could have a preview" count
   const heic = addDoc(ALICE, { filename: 'photo.heic' });
   await db.call(D.markThumbnailFailed, { ...as(ALICE), params: { id: String(heic._id) }, body: { reason: 'unsupported-type' } });
   assert.equal(heic.previewKind, 'none');
 
-  // bad input, other accounts, and trashed files
   for (const body of [{}, { reason: 'because I said so' }, { reason: 5 }, { reason: ['decode-failed'] }]) {
     assert.equal((await db.call(D.markThumbnailFailed, { ...as(ALICE), params: { id: String(mine._id) }, body })).error.status, 400);
   }
@@ -166,7 +150,6 @@ test('a failed preview is recorded with a reason code, shown in the list, and cl
   assert.equal((await db.call(D.markThumbnailFailed, { ...as(ALICE), params: { id: String(trashed._id) }, body: { reason: 'timeout' } })).error.status, 404);
   assert.deepEqual(PREVIEW_FAILURE_REASONS.slice().sort(), ['decode-failed', 'download-failed', 'timeout', 'too-big-result', 'too-large', 'unsupported-type']);
 
-  // retry forgets MY failures only
   await db.call(D.markThumbnailFailed, { ...as(BOB), params: { id: String(theirs._id) }, body: { reason: 'timeout' } });
   const retried = await db.call(D.retryFailedThumbnails, as(ALICE));
   assert.equal(retried.status, 200);

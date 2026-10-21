@@ -1,26 +1,3 @@
-/**
- * Vault health: a score out of 100 from settings and facts Warden can actually see. Nothing here guesses about
- * things Warden cannot know (where a recovery key is kept, how strong a password is outside Warden, ...), and
- * it is not a security guarantee. Pure: give it facts, get the score.
- *
- * Each item has a MAXIMUM penalty; the nine maximums add up to exactly 100, so a vault with every item at its
- * worst scores 0 and one with none scores 100. A "warn" costs half of an item's maximum (rounded down), a "bad"
- * costs all of it. `points` on an item is what it cost (0 when ok).
- *
- * facts = {
- *   openShares:          active links with neither a link password nor an email restriction
- *   oldShares:           active links created more than 14 days ago
- *   trustedBrowsers:     trusted browsers still valid
- *   staleTrusted:        of those, unused for 20+ days
- *   suspiciousFlags:     unusual-activity flags in the last 30 days
- *   expiredDocs:         live documents whose "Expires on" day has passed
- *   expiringDocs:        live documents expiring within 30 days
- *   remindersOn:         the expiry-email setting
- *   trashNearPurge:      Trash files within 7 days of being deleted for good
- *   hasExpiryDates:      whether any live document has an expiry date (the reminders item only matters then)
- * }
- */
-
 const WEIGHTS = Object.freeze({
   open_shares: 15,
   old_shares: 10,
@@ -43,7 +20,6 @@ function item(id, label, status, detail, actionPath) {
   return { id, label, status, points, detail, actionPath };
 }
 
-/** @returns {{ score: number, items: Array<{ id: string, label: string, status: 'ok'|'warn'|'bad', points: number, detail: string, actionPath: string }> }} */
 function computeVaultHealth(facts = {}) {
   const openShares = num(facts.openShares);
   const oldShares = num(facts.oldShares);

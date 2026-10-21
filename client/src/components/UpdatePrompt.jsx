@@ -2,15 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import styles from './UpdatePrompt.module.css';
 
-/**
- * "New version available" bar. The service worker takes over as soon as a new
- * deployment is live (skipWaiting + clients.claim); this tab is still running
- * the old code until it reloads, so it says so and lets the person choose
- * when, rather than reloading under a half-typed form.
- *
- * A first install also fires controllerchange, so the bar only shows when the
- * page already had a controller, i.e. this really is a replacement.
- */
 function UpdatePrompt() {
   const [ready, setReady] = useState(false);
   const bar = useRef(null);
@@ -23,7 +14,6 @@ function UpdatePrompt() {
     };
     navigator.serviceWorker.addEventListener('controllerchange', onChange);
 
-    // Look for a newer deployment now and whenever the tab comes back.
     const check = () => navigator.serviceWorker.getRegistration().then((registration) => registration?.update()).catch(() => {});
     const onVisible = () => {
       if (document.visibilityState === 'visible') check();
@@ -35,15 +25,12 @@ function UpdatePrompt() {
     };
   }, []);
 
-  // While the bar is up, the page gets room at its bottom (styles/global.css) so the footer and any bottom bar can scroll above it.
   useEffect(() => {
     if (!ready) return undefined;
     document.documentElement.classList.add('update-bar-open');
     return () => document.documentElement.classList.remove('update-bar-open');
   }, [ready]);
 
-  // Its height is published as --update-bar-h, so anything else that sits at the bottom (the import card) stacks above it whatever
-  // height the bar has when its text wraps on a narrow screen.
   useEffect(() => {
     if (!ready || !bar.current) return undefined;
     const root = document.documentElement;

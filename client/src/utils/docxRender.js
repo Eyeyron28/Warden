@@ -1,17 +1,3 @@
-/**
- * .docx preview, built so that nothing in the document can run or phone home.
- *
- *  1. docx-preview (Apache-2.0, loaded only when a .docx is opened) renders into
- *     a DOMParser document that is never attached to the app - the app's own
- *     DOM never receives converted HTML.
- *  2. sanitizeRendered() then removes everything that could execute or load:
- *     scripts, frames, objects, links, forms, SVG, every on* attribute, every
- *     href, and every URL except an embedded raster image (data:image/...).
- *  3. The result is a string for an <iframe srcdoc> with sandbox="" (no
- *     allow-scripts, no allow-same-origin) AND its own Content-Security-Policy
- *     that forbids all network loads, so even a missed attribute can't fetch.
- */
-
 export const MAX_DOCX_BYTES = 4 * 1024 * 1024;
 const MAX_HTML_CHARS = 8 * 1024 * 1024;
 const RENDER_TIMEOUT_MS = 20000;
@@ -26,7 +12,6 @@ const REMOVE_TAGS = new Set([
 ]);
 const URL_ATTRIBUTES = ['href', 'src', 'srcset', 'poster', 'background', 'action', 'formaction', 'ping', 'data', 'xlink:href', 'cite', 'longdesc', 'usemap'];
 const SAFE_IMAGE = /^data:image\/(png|jpeg|jpg|gif|webp|bmp);base64,[a-z0-9+/=\s]+$/i;
-// Any url(...) except an embedded font or raster image.
 const CSS_URL = /url\(\s*(?!['"]?data:(?:image\/(?:png|jpeg|jpg|gif|webp|bmp)|font\/|application\/(?:x-font|font))[^)]*\))[^)]*\)/gi;
 
 export function sanitizeCss(css) {
@@ -39,14 +24,10 @@ export function sanitizeCss(css) {
     .replace(/behavior\s*:[^;}]*/gi, '');
 }
 
-/**
- * Cleans a rendered document in place. `root` is the document element of the
- * DOMParser document the library rendered into.
- */
 export function sanitizeRendered(root) {
   const all = [...root.querySelectorAll('*')];
   for (const element of all) {
-    if (!root.contains(element)) continue; // already removed along with an ancestor
+    if (!root.contains(element)) continue;
     const tag = element.tagName.toLowerCase();
     if (REMOVE_TAGS.has(tag)) {
       element.remove();
@@ -70,7 +51,6 @@ export function sanitizeRendered(root) {
         element.removeAttribute(attribute.name);
       }
     }
-    // An image that lost its source would show a broken-image box: drop it.
     if (tag === 'img' && !element.getAttribute('src')) element.remove();
   }
 }
@@ -78,11 +58,6 @@ export function sanitizeRendered(root) {
 const withTimeout = (promise, ms) =>
   Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('render timed out')), ms))]);
 
-/**
- * @param {Uint8Array} bytes the .docx
- * @returns {Promise<string>} a complete HTML document for iframe.srcdoc
- * @throws if the file is too big, can't be parsed, or the result is too large
- */
 export async function renderDocxToSrcdoc(bytes) {
   if (bytes.length > MAX_DOCX_BYTES) throw new Error('too large');
   const { renderAsync } = await import('docx-preview');
@@ -104,7 +79,7 @@ export async function renderDocxToSrcdoc(bytes) {
       renderEndnotes: true,
       renderComments: false,
       ignoreLastRenderedPageBreak: true,
-      useBase64URL: true, // images and fonts become data: URLs - nothing is fetched by URL
+      useBase64URL: true,
       experimental: false,
       trimXmlDeclaration: true,
       debug: false,

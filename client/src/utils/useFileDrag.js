@@ -2,11 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createDragCounter, hasFiles } from './fileDrag.js';
 
-/**
- * The highlight state of a drop zone. `active` is on only for a drag that carries files (`accept`), and it clears on a drop
- * anywhere, dragend, a drag that leaves the window, the window losing focus, Escape and a hidden tab, so it never sticks.
- * The caller keeps its own preventDefault / drop logic and calls `reset()` after a drop (also a refused one).
- */
 export function useFileDrag(accept = hasFiles) {
   const [active, setActive] = useState(false);
   const counter = useRef(createDragCounter());

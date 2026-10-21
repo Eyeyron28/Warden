@@ -16,8 +16,6 @@ const MB = 1024 * 1024;
 const f = (name, size = 1000, lastModified = 1) => ({ name, size, lastModified });
 const many = (n, size = 1000) => Array.from({ length: n }, (_, i) => f(`file-${i + 1}.txt`, size, i));
 
-// ---------- the model ----------
-
 test('the limit is one constant: 10', () => {
   assert.equal(MAX_FILES_PER_UPLOAD, 10);
 });
@@ -71,7 +69,6 @@ test('an exact duplicate (name, size and last-modified time) shows "Already adde
   assert.deepEqual(second.items.map((r) => r.error), ['', 'Already added', '', '']);
   assert.equal(second.duplicates, 1);
   assert.equal(summarize(second.items).valid.length, 3);
-  // a duplicate inside the same batch of files
   const same = addFiles([], [f('b.txt', 1, 1), f('b.txt', 1, 1)]);
   assert.deepEqual(same.items.map((r) => r.error), ['', 'Already added']);
   assert.equal(fileKey(f('x', 1, 2)), fileKey(f('x', 1, 2)));
@@ -102,7 +99,6 @@ test('quota: the valid files together must fit; the message says how much is lef
   assert.equal(withBig.canUpload, true, 'the over-size row is not part of the batch');
   assert.match(summarize(addFiles([], [f('a', 1000)]).items, { availableBytes: 10 }).quotaMessage, /storage is full/);
   assert.equal(summarize(addFiles([], [f('a', 1000)]).items, null).canUpload, true, 'meter unknown: the server decides');
-  // removing a file clears the message
   const rows = addFiles([], [f('a', 2 * MB), f('b', 2 * MB)]).items;
   assert.equal(summarize(removeItem(rows, rows[0].id), usage).canUpload, true);
 });
@@ -119,8 +115,6 @@ test('counter and button: "3 of 10 files · 5.2 MB", and "Encrypt & upload" for 
   assert.equal(summarize([]).canUpload, false);
   assert.equal(summarize(addFiles([], [f('e', 0)]).items).canUpload, false, 'only an error row: off');
 });
-
-// ---------- the dialog, rendered ----------
 
 let render;
 test.before(async () => {
@@ -209,8 +203,6 @@ test('a 255-character name: cut in the middle with the whole name as the tooltip
   assert.match(/\.remove \{([^}]*)\}/.exec(css)[1], /width: 44px;[\s\S]*height: 44px;/);
 });
 
-// ---------- wiring ----------
-
 test('the dialog hands the valid files over once, keeps the lock, announces politely, and never steals focus', () => {
   const form = strip(read('components/UploadForm.jsx'));
   assert.match(form, /onSubmit\(\{ files: summary\.valid\.map\(\(row\) => row\.file\), expiryDate \}\)/);
@@ -230,8 +222,6 @@ test('"Upload new version" stays one file; the limit constant lives with the dia
   assert.doesNotMatch(strip(read('utils/transferRules.js')), /MAX_FILES_PER_UPLOAD/);
   assert.doesNotMatch(strip(read('App.jsx')) + strip(read('services/transfers.js')), /uploadSelection/);
 });
-
-// ---------- zips only through Export / Import ----------
 
 import { ZIP_MESSAGE, ZIP_REFUSAL, ZIP_ROW_REASON, isZipName, zipsNotAdded } from './uploadSelection.js';
 import { buildTray } from './trayModel.js';
@@ -291,7 +281,6 @@ test('tray: a zip that was not added is a "Not saved" row with the reason and a 
   assert.equal(model.rows[0].showLabel, 'Open Export / Import');
   assert.equal(model.title, '1 not saved');
   assert.equal(manager.isRunning(), false);
-  // and the server's refusal for a zip that only looks like something else reads the same way
   const sentRefusal = { refused: true, reasons: ['PLAIN_ZIP'], retryable: false };
   assert.equal(buildTray({ rows: [{ id: 2, kind: 'upload', name: 'x.bin', size: 5, phase: 'failed', error: sentRefusal }], announce: '' }, { status: 'idle', results: [], skipped: [], ignored: [] }).rows[0].line, 'Not saved: zips go through Export / Import');
 });

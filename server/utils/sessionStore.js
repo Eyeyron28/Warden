@@ -5,33 +5,8 @@ const { wrapKey, unwrapKey } = require('./crypto');
 const { revokeAllTrustedDevices } = require('./trustedDevice');
 const { logSecurity } = require('./securityLog');
 
-/**
- * DB-backed session store, replacing the old in-memory Map. A single
- * long-lived Node process could safely hold the unwrapped DEK in RAM for
- * the life of a session; a serverless deployment has no such process -
- * every request may land on a different instance - so the session itself
- * has to live in Mongo. See models/Session.js for exactly what is and
- * isn't persisted.
- *
- * The bearer token handed to the client is `${sessionId}.${sessionKey}`,
- * both hex. sessionId identifies the Session document (by the SHA-256 of
- * itself, never in plain form); sessionKey is the AES-256-GCM key the
- * DEK is wrapped under and is NEVER stored anywhere - it only ever exists
- * inside the bearer token itself, so a database compromise alone (without
- * a client's actual bearer token) cannot unwrap any account's DEK.
- *
- * Same 30-minute sliding expiry as the in-memory store it replaces:
- * refreshSession bumps expiresAt forward on every authenticated request,
- * same as before - "sliding," not fixed.
- */
+const SESSION_TTL_MS = 30 * 60 * 1000;
 
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes, refreshed on each use
-
-/**
- * The longest a sign-in can last however busy it is: SESSION_ABSOLUTE_HOURS (default 12, 1 to 168). The 30-minute idle
- * timeout slides forever on use; this does not slide. A bad value falls back to the default (the server's startup check
- * names it, see utils/productionConfig.js).
- */
 const DEFAULT_ABSOLUTE_HOURS = 12;
 function sessionAbsoluteHours() {
   const raw = (process.env.SESSION_ABSOLUTE_HOURS ?? '').trim();
@@ -41,24 +16,12 @@ function sessionAbsoluteHours() {
 }
 const sessionAbsoluteMs = () => sessionAbsoluteHours() * 60 * 60 * 1000;
 const SESSION_ID_BYTES = 32;
-const SESSION_KEY_BYTES = 32; // AES-256
+const SESSION_KEY_BYTES = 32;
 
 function hashSessionId(sessionId) {
   return crypto.createHash('sha256').update(sessionId).digest('hex');
 }
 
-/**
- * Creates a new session for a just-unwrapped DEK and returns its bearer
- * token.
- *
- * @param {import('mongoose').Types.ObjectId | string} userId
- * @param {Buffer} dek
- * @param {{ deviceId?: any, emergency?: { accessId: any, requestId: any, scopeMode: 'all'|'folders', scopePaths?: string[], absoluteMs: number } }} [options]
- *   deviceId: the browser (models/Device.js) this session belongs to.
- *   emergency: makes it an Emergency Access session (read-only, scoped, never longer than absoluteMs). This is still
- *   the ONE function that creates a session; nothing else writes Session rows.
- * @returns {Promise<string>} bearer token, `sessionId.sessionKey`
- */
 async function createSession(userId, dek, { deviceId = null, emergency = null } = {}) {
   const sessionId = crypto.randomBytes(SESSION_ID_BYTES).toString('hex');
   const sessionKey = crypto.randomBytes(SESSION_KEY_BYTES);
@@ -90,10 +53,6 @@ async function createSession(userId, dek, { deviceId = null, emergency = null } 
   return `${sessionId}.${sessionKey.toString('hex')}`;
 }
 
-/**
- * Parses a bearer token into its two halves, or null if it isn't
- * shaped like one at all (no DB lookup needed for that case).
- */
 function parseToken(token) {
   if (typeof token !== 'string') return null;
   const dot = token.indexOf('.');
@@ -104,17 +63,6 @@ function parseToken(token) {
   return { sessionId, sessionKey: Buffer.from(sessionKeyHex, 'hex') };
 }
 
-/**
- * Looks up a session by bearer token and unwraps its DEK. Returns `null`
- * if the token is malformed, unknown, expired (the TTL index will reap it
- * from Mongo shortly after, but a request can race that by a moment), or
- * if the wrap fails to unwrap (a sessionKey that doesn't match what this
- * session was created with, which can only mean a forged/corrupted token
- * since a real one always carries its own matching key).
- *
- * @param {string} token
- * @returns {Promise<{ userId: import('mongoose').Types.ObjectId, dek: Buffer, deviceId: any, sessionIdHash: string } | null>}
- */
 async function getSession(token) {
   const parsed = parseToken(token);
   if (!parsed) return null;
@@ -122,8 +70,6 @@ async function getSession(token) {
   const session = await Session.findOne({ sessionIdHash: hashSessionId(parsed.sessionId) });
   if (!session) return null;
 
-  // Every session has an absolute end that sliding refreshes can never push past: SESSION_ABSOLUTE_HOURS from when it
-  // was created, and (emergency sessions) the 4-hour cap fixed at creation, whichever comes first.
   const absoluteEnd = Math.min(
     session.createdAt ? session.createdAt.getTime() + sessionAbsoluteMs() : Infinity,
     session.absoluteExpiresAt ? session.absoluteExpiresAt.getTime() : Infinity
@@ -146,7 +92,6 @@ async function getSession(token) {
     dek,
     deviceId: session.deviceId || null,
     sessionIdHash: session.sessionIdHash,
-    // When this session ends however it is used (passed to refreshSession so a refresh cannot slide past it).
     absoluteExpiresAt: Number.isFinite(absoluteEnd) ? new Date(absoluteEnd) : null,
     emergency: session.emergency
       ? {
@@ -161,50 +106,26 @@ async function getSession(token) {
   };
 }
 
-/**
- * Slides a session's expiry forward from now. Called on every
- * authenticated request so an active user is never logged out mid-use.
- *
- * @param {string} token
- */
 async function refreshSession(token, { absoluteExpiresAt = null } = {}) {
   const parsed = parseToken(token);
   if (!parsed) return;
   const slid = new Date(Date.now() + SESSION_TTL_MS);
-  // One update that can never slide past the session's absolute end: the 30-minute slide, the end stored on an
-  // emergency session, SESSION_ABSOLUTE_HOURS after it was created, and (if the caller knows it) the end it passes.
   const ends = [slid, { $add: ['$createdAt', sessionAbsoluteMs()] }, '$absoluteExpiresAt'];
   if (absoluteExpiresAt) ends.push(new Date(absoluteExpiresAt));
   await Session.updateOne({ sessionIdHash: hashSessionId(parsed.sessionId) }, [{ $set: { expiresAt: { $min: ends } } }]);
 }
 
-/**
- * Ends a session immediately (e.g. explicit lock/logout) by deleting its
- * document outright, rather than leaving it to expire on its own - this is
- * what makes "Lock vault" a real security boundary instead of just a UI
- * state change.
- *
- * @param {string} token
- */
 async function destroySession(token) {
   const parsed = parseToken(token);
   if (!parsed) return;
   await Session.deleteOne({ sessionIdHash: hashSessionId(parsed.sessionId) });
 }
 
-/**
- * Signs one browser out: every session that belongs to this device.
- * @returns {Promise<number>} how many sessions were removed
- */
 async function destroySessionsForDevice(userId, deviceId) {
   const result = await Session.deleteMany({ userId, deviceId });
   return result?.deletedCount ?? 0;
 }
 
-/**
- * Signs out every session of the account EXCEPT the one with this id hash (the caller's own).
- * @returns {Promise<number>} how many sessions were removed
- */
 async function destroyOtherSessions(userId, keepSessionIdHash) {
   const result = await Session.deleteMany({ userId, sessionIdHash: { $ne: keepSessionIdHash } });
   const count = result?.deletedCount ?? 0;
@@ -212,30 +133,14 @@ async function destroyOtherSessions(userId, keepSessionIdHash) {
   return count;
 }
 
-/**
- * Ends every Emergency Access session of an account at once (revoke, a new kit, a request that ended, a changed
- * vault key). Normal login sessions are untouched.
- * @returns {Promise<number>}
- */
 async function destroyEmergencySessions(userId) {
   const result = await Session.deleteMany({ userId, emergency: true });
   return result?.deletedCount ?? 0;
 }
 
-/**
- * Deletes every session belonging to one account - called after a
- * password reset (utils/accountReset.js finishReset) so a stolen session
- * token from before the reset stops working immediately, same spirit as
- * destroySession but for every device at once rather than just the
- * caller's own.
- *
- * @param {import('mongoose').Types.ObjectId | string} userId
- */
 async function destroyAllSessionsForUser(userId) {
   const gone = await Session.deleteMany({ userId });
   if ((gone?.deletedCount ?? 0) > 0) logSecurity('sessions_revoked', { bucket: 'reset', count: gone.deletedCount });
-  // Trusted browsers go with the sessions: a password reset or vault wipe must
-  // not leave a device that still skips the emailed code.
   await revokeAllTrustedDevices(userId);
 }
 

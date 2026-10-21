@@ -10,7 +10,6 @@ const src = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 
 test('the search bar shows on My Files and on none of the other app pages', () => {
-  // The same test AppLayout uses, applied to each route.
   const layout = read('components/AppLayout.jsx');
   const rule = /const onFilesPage = location\.pathname === '([^']+)';/.exec(layout);
   assert.ok(rule, 'the search bar is gated by one route test');
@@ -27,7 +26,6 @@ test('the shared banner has a Dismiss button only when onDismiss is given, and t
   const banner = read('components/Banner.jsx');
   assert.match(banner, /if \(!onDismiss\) return/);
   assert.match(banner, /<button type="button" className=\{styles\.close\} aria-label="Dismiss" onClick=\{onDismiss\}>/);
-  // The pages that own the message clear it, so the same action can show it again.
   assert.match(read('pages/FilesPage.jsx'), /onDismiss=\{\(\) => setActionError\(''\)\}/);
   assert.match(read('pages/TrashPage.jsx'), /onDismiss=\{\(\) => setError\(''\)\}/);
 });

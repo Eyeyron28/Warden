@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// F10: a session ends after 30 minutes without activity AND after SESSION_ABSOLUTE_HOURS (default 12) however busy it is.
-// Emergency sessions keep their own 4-hour cap. The clock is controlled (node:test mock timers), so "12 hours" takes no time.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -26,7 +22,6 @@ function clock(context) {
   return (ms) => context.mock.timers.setTime(START + ms);
 }
 
-/** What requireSession does for one request, minus the HTTP: resolve the token, then slide it. */
 async function use(token) {
   const session = await store.getSession(token);
   if (!session) return null;
@@ -48,17 +43,14 @@ test('a busy session still ends 12 hours after it was created', async (context) 
   await withHours(undefined, async () => {
     const token = await store.createSession(userId, dek);
     let last = 0;
-    // Active every 25 minutes (well inside the idle limit) for 11h50m: always valid.
     for (let t = 25 * MIN; t <= 11 * HOUR + 50 * MIN; t += 25 * MIN) {
       at(t);
       assert.ok(await use(token), `still valid at ${t / MIN} minutes`);
       last = t;
     }
     assert.ok(last > 11 * HOUR);
-    // Just before the 12-hour mark it still works...
     at(11 * HOUR + 59 * MIN);
     assert.ok(await use(token));
-    // ...and one minute after it does not, even though the last request was a minute ago.
     at(12 * HOUR + 1 * MIN);
     assert.equal(await store.getSession(token), null);
     assert.equal(world.tables.sessions.length, 0, 'the row is removed too');
@@ -86,7 +78,7 @@ test('the 30-minute idle limit is unchanged', async (context) => {
     const token = await store.createSession(userId, dek);
     at(29 * MIN);
     assert.ok(await use(token));
-    at(29 * MIN + 31 * MIN); // 31 minutes of silence
+    at(29 * MIN + 31 * MIN);
     assert.equal(await store.getSession(token), null);
   });
 });

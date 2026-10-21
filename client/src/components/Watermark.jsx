@@ -2,11 +2,6 @@ import { useId } from 'react';
 
 import styles from './Watermark.module.css';
 
-/**
- * A tiled, diagonal, semi-transparent text watermark laid over its (position: relative) parent. SVG only:
- * drawn text, pointer-events none, hidden from screen readers (the purpose is also printed in the page header).
- * It discourages reuse; it cannot stop a screenshot.
- */
 function Watermark({ text }) {
   const patternId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   if (!text) return null;

@@ -1,13 +1,3 @@
-// npm run check:responsive
-//
-// Loads the public pages and, with a seeded throwaway account, the signed-in pages (Files, Overview, Devices, Trash, Shared) at
-// 360, 768 and 1280 px, and fails on horizontal scroll or on fixed/sticky bars that overlap each other (checked at the top of the
-// page and after scrolling). It starts its own copy of the real app (the API and client/dist) against a LOCAL throwaway MongoDB:
-//   - the database is 127.0.0.1:27099 by default, or WARDEN_TEST_MONGO, which must be local (anything else is refused);
-//   - no .env file is read (dotenv is replaced), nothing connects to Atlas, mail is captured and never sent;
-//   - the database it makes is dropped at the end.
-// Build the client first (npm run build). The browser is the Chromium Playwright finds (PLAYWRIGHT_BROWSERS_PATH, e.g.
-// /opt/pw-browsers), or PW_CHROMIUM_PATH, or an installed Chrome or Edge. This script never downloads a browser.
 import fs from 'node:fs';
 import { shortName } from '../src/utils/ellipsis.js';
 import os from 'node:os';
@@ -45,7 +35,6 @@ const WIDTHS = [
 ];
 const LONG_ASCII = `${'Quarterly_financial_statements_and_supporting_schedules_'.repeat(5).slice(0, 251)}.pdf`;
 const LONG_UNICODE = `${'\u5c65\u6b74\u66f8_\u8077\u52d9\u7d4c\u6b74\u66f8_Ünïcödé_'.repeat(9)}final.pdf`;
-// The dialogs are tried at these sizes (the last is a small laptop).
 const DIALOG_SIZES = [
   { name: '320', width: 320, height: 640 },
   { name: '360', width: 360, height: 800 },
@@ -56,7 +45,6 @@ const DIALOG_SIZES = [
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/forgot-password', '/privacy', '/terms', '/emergency'];
 const APP_PAGES = ['/files', '/overview', '/devices', '/trash', '/shared', '/starred', '/recent', '/export', '/quarantine'];
 
-// ---------- the real app, locally ----------
 const load = Module._load;
 Module._load = function stubbed(request, ...rest) {
   return request === 'dotenv' ? { config: () => ({}), parse: () => ({}) } : load.call(this, request, ...rest);
@@ -124,8 +112,6 @@ async function seed() {
   await api('DELETE', `/api/documents/${ids[11]}`, { token });
   await api('POST', '/api/documents/star', { token, json: { ids: [ids[0], ids[3]], starred: true } });
   for (const id of ids.slice(0, 4)) await api('GET', `/api/documents/${id}/view`, { token });
-  // A private note (one long unbroken word, to try the layout) and two earlier versions on every live file, so the notes box and
-  // the Versions section are there whichever file's details open.
   for (const [n, id] of ids.slice(0, 11).entries()) {
     await api('PUT', `/api/documents/${id}/note`, { token, json: { note: `Original is in the blue folder, drawer ${n}.\n${'x'.repeat(60)}-unbroken-word-to-test-wrapping\nCall the office before Friday.` } });
     for (const round of [1, 2]) {
@@ -134,7 +120,6 @@ async function seed() {
       await api('POST', `/api/documents/${id}/versions`, { token, form });
     }
   }
-  // Two files with very long names (255 characters with no space or hyphen to break at, which is the case that overflows; and a long Unicode name): the dialogs below must cope with both.
   for (const name of [LONG_ASCII, LONG_UNICODE]) {
     const form = new FormData();
     form.append('file', new Blob(['long name document '.repeat(20)], { type: 'text/plain' }), name);
@@ -145,7 +130,6 @@ async function seed() {
   return token;
 }
 
-// ---------- the checks, run inside the page ----------
 function inPage() {
   const visible = (el) => {
     const rect = el.getBoundingClientRect();
@@ -171,7 +155,6 @@ function inPage() {
     }
   }
   const doc = document.documentElement;
-  // When the page is too wide, name the widest things that stick out of the window (not those inside a scrolling box).
   const insideScroller = (el) => {
     for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
       if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(node).overflowX)) return true;
@@ -208,7 +191,6 @@ async function launch() {
   throw new Error(`No Chromium found (set PLAYWRIGHT_BROWSERS_PATH or PW_CHROMIUM_PATH, or install Chrome or Edge): ${String(last?.message).split('\n')[0]}`);
 }
 
-// A small gray-gradient PNG for the Scan dialog (built here, so no file or library is needed).
 function samplePng(width, height) {
   const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
   const crc = (buffer) => { let c = 0xffffffff; for (const byte of buffer) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
@@ -229,11 +211,10 @@ let failures = 0;
 try {
   const token = await seed();
   browser = await launch();
-  // ONLY_DIALOGS=1 skips the page matrix and runs just the long-name dialogs and the Folders/Files blocks.
   for (const size of process.env.ONLY_DIALOGS ? [] : WIDTHS) {
     for (const [signedIn, pages] of [[false, PUBLIC_PAGES], [true, APP_PAGES]]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
-      if (signedIn) await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      if (signedIn) await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch {  } }, token);
       const page = await context.newPage();
       for (const route of pages) {
         let apiCalls = 0;
@@ -250,7 +231,6 @@ try {
         await page.waitForTimeout(150);
         const scrolled = await page.evaluate(inPage);
         const problems = [];
-        // The details panel (a drawer, or a sheet on a phone): opens from a file's info button, stays inside the screen, is closed by Escape.
         if (route === '/files' || route === '/starred' || route === '/recent') {
           await page.evaluate(() => window.scrollTo(0, 0));
           const info = page.locator('button[aria-label^="Details for"]').first();
@@ -259,7 +239,6 @@ try {
             const panel = page.getByRole('dialog', { name: /^Details for/ });
             await panel.waitFor({ timeout: 8000 });
             await page.waitForFunction(() => document.querySelector('[role=dialog] dl'), null, { timeout: 8000 }).catch(() => {});
-            // The notes box and the Versions section, and that nothing in them pushes the panel sideways.
             const notes = panel.locator('textarea');
             if ((await notes.count()) !== 1) problems.push('details panel has no notes box');
             else if (!(await notes.inputValue()).includes('unbroken-word')) problems.push('the saved note is not in the box');
@@ -279,7 +258,6 @@ try {
             await page.getByRole('dialog', { name: /^Details for/ }).waitFor({ state: 'detached', timeout: 4000 }).catch(() => problems.push('Escape did not close the details panel'));
           } else problems.push('no details button found');
         }
-        // The Scan dialog: opens from the Scan button, takes a page, shows the editor and the save step inside the screen.
         if (route === '/files') {
           await page.evaluate(() => window.scrollTo(0, 0));
           const scan = page.getByRole('button', { name: 'Scan', exact: true });
@@ -323,15 +301,11 @@ try {
     }
   }
 
-  // ---------- long names in dialogs, and the Folders / Files blocks ----------
-  // For each dialog: it is inside the screen, nothing sideways-scrolls, no control sticks out of it or overlaps another. The
-  // Share dialog is two columns from 760 px and one below, and fits a 1366x768 screen without scrolling.
   let currentKind = '';
   const inspect = async (page, dialog, label, size, { expectColumns } = {}) => {
     const out = [];
     const found = await dialog.evaluate((el) => {
       const rect = el.getBoundingClientRect();
-      // What is really on screen: not in a closed <details>, and only the part a scrolling box (or the dialog) does not cut off.
       const shown = (node) => {
         if (node.closest('[hidden]')) return null;
         const details = node.closest('details:not([open])');
@@ -385,7 +359,6 @@ try {
   };
   const openMenuItem = async (page, name, item) => {
     const trigger = page.getByRole('button', { name: `More actions for ${shortName(name)}`, exact: true });
-    // Scroll the row into view FIRST and let the scrolling stop: a menu closes when the page scrolls under it.
     await trigger.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     await trigger.click();
@@ -400,20 +373,19 @@ try {
   for (const size of process.env.ONLY_IMPORT ? [] : DIALOG_SIZES) {
     for (const [kind, longName] of [['ascii', LONG_ASCII], ['unicode', LONG_UNICODE]]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
-      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch {  } }, token);
       const page = await context.newPage();
       page.setDefaultTimeout(10000);
       currentKind = kind;
       await page.goto(base + '/files', { waitUntil: 'networkidle' });
       const record = (label, problems) => { dialogRows.push({ label: `${label} (${kind})`, size: size.name, problems }); if (problems.length) failures += 1; };
       const attempt = async (label, work) => {
-        await page.waitForTimeout(300); // the previous dialog has finished closing
+        await page.waitForTimeout(300);
         try { record(label, await work()); } catch (error) {
           record(label, [`could not be checked: ${String(error.message).split('\n')[0]}`]);
           if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `failed-${label.toLowerCase().replace(/[^a-z]/g, '')}-${kind}-${size.name}.png`) }).catch(() => {});
         }
         await page.keyboard.press('Escape').catch(() => {});
-        // Escape must close the dialog: if one is still there a moment later, that is a problem of its own.
         await page.waitForFunction(() => !document.querySelector('[aria-modal="true"]'), null, { timeout: 2500 }).catch(async () => {
           dialogRows.push({ label: `${label} (${kind})`, size: size.name, problems: ['Escape did not close the dialog'] });
           failures += 1;
@@ -434,7 +406,6 @@ try {
         if (!(await dialog.locator('button[aria-label^="Remove "]').count())) found.push('the row has no Remove button with the file name');
         return found;
       });
-      // Several files: ten rows (one with the 255-character name), then twelve files (the limit message), then rows with errors and a quota error.
       await attempt('Upload (10 files)', async () => {
         await page.getByRole('button', { name: 'New' }).click();
         await page.getByRole('menuitem', { name: /Upload file/ }).click();
@@ -534,7 +505,6 @@ try {
         });
       }
 
-      // The Folders and Files blocks (the page itself, not a dialog)
       if (kind === 'ascii' && ['360', '768', '1280'].includes(size.name)) {
         const blocks = [];
         const headings = await page.getByRole('heading', { level: 2 }).allInnerTexts();
@@ -563,20 +533,16 @@ try {
     }
   }
 
-  // ---------- the import card (running, finished; a 255-character zip name; with the "new version" bar up) ----------
-  // The card sits at the bottom right (a phone: across the width). It must be inside the screen, not make the page scroll sideways,
-  // not overlap another fixed or sticky element, and stack above the update bar.
   {
     const zipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'warden-resp-zip-'));
     const longZipName = `${'quarterly_backup_'.repeat(20).slice(0, 251)}.zip`;
     const zip = new JSZip();
     for (let i = 1; i <= 6; i += 1) zip.file(`Imported/note-${i}.txt`, `note ${i} `.repeat(20));
-    // In memory, under its 255-character name (a path that long is past what Windows allows on disk).
     const longZip = { name: longZipName, mimeType: 'application/zip', buffer: Buffer.from(await zip.generateAsync({ type: 'uint8array' })) };
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__WARDEN_TEST__ = { importCardMs: 60000 };
       }, token);
       await context.route('**/api/documents', async (route) => {
@@ -635,11 +601,10 @@ try {
     }
 
 
-    // The tray with uploads: sending, a 255-character name, many rows scrolling, a failure (Retry), and the finished state.
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__WARDEN_TEST__ = { importCardMs: 60000 };
       }, token);
       const held = [];
@@ -710,7 +675,6 @@ try {
         await page.waitForTimeout(600);
         record('Transfer tray (a failure with Retry)', await inspectCard('transfers-failed'));
         {
-          // the status icon's tooltip, opened by keyboard focus: inside the screen, as wide as the screen allows, readable
           const tipFound = [];
           await card.getByTestId('transfer-row').nth(1).getByTestId('status-icon').focus();
           const tip = page.getByTestId('tooltip');
@@ -734,11 +698,10 @@ try {
       await context.close();
     }
 
-    // The Export / Import page: two equal cards side by side from 1000 px, stacked below; the drop zone in its states; no sideways scroll.
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__csp = [];
         document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
       }, token);
@@ -766,7 +729,6 @@ try {
         if (layout.sentence !== 'Take your files out as a zip, or bring a zip in.') found.push('the one-sentence header is missing');
         if (size.width > 400 && (await page.getByRole('link', { name: 'Export / Import', exact: true }).count()) < 1) found.push('no "Export / Import" in the sidebar');
 
-        // the drop zone: drag over, a wrong file, then a real zip
         const zone = page.getByTestId('import-dropzone');
         const stateOf = () => zone.getAttribute('data-state');
         const text = await page.evaluateHandle(() => { const dt = new DataTransfer(); dt.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' })); return dt; });
@@ -796,7 +758,6 @@ try {
       await context.close();
     }
 
-    // Quarantine: the page (a list with a 255-character name, empty, error) and the release dialog, no sideways scroll, big enough buttons.
     {
       const heldNames = [`${'quarterly_statement_'.repeat(14).slice(0, 251)}.pdf`, 'invoice.pdf.exe', 'helper-script.js'];
       const bodies = [
@@ -814,7 +775,7 @@ try {
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__csp = [];
         document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
       }, token);
@@ -854,7 +815,6 @@ try {
         await shot('list');
         record('Quarantine page (3 held, 255-character name)', found);
 
-        // the release dialog
         const dialogFound = [];
         await page.getByRole('button', { name: /^Release quarterly/ }).click();
         const dialog = page.getByRole('dialog', { name: 'Release this file?' });
@@ -871,7 +831,6 @@ try {
         await dialog.waitFor({ state: 'detached' }).catch(() => dialogFound.push('Escape did not close the dialog'));
         record('Quarantine release dialog', dialogFound);
 
-        // the empty and error states
         for (const [state, expected, label] of [['empty', 'quarantine-empty', 'Quarantine page (empty)'], ['error', 'quarantine-error', 'Quarantine page (error)']]) {
           mode = state;
           await page.goto(base + '/quarantine', { waitUntil: 'networkidle' });
@@ -891,11 +850,10 @@ try {
       await context.close();
     }
 
-    // A finished tray with a held file (amber), and the Export / Import page with a chosen zip waiting: no sideways scroll, big targets.
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__csp = [];
         document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
       }, token);
@@ -910,7 +868,6 @@ try {
         return { hScroll: doc.scrollWidth > doc.clientWidth + 1, tray: r && { x: r.x, right: r.right, bottom: r.bottom }, minButton: buttons.length ? Math.min(...buttons) : null };
       }, buttonScope);
       try {
-        // the held tray: one clean and one risky file dropped on the page
         await page.goto(base + '/files', { waitUntil: 'networkidle' });
         await page.getByRole('button', { name: 'New' }).waitFor();
         const dt = await page.evaluateHandle(() => {
@@ -933,7 +890,6 @@ try {
         if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, `tray-held-${process.env.THEME || 'light'}-${size.name}.png`) });
         record('Transfer tray (finished with a held file)', found);
 
-        // the page with a chosen zip
         const zip = new JSZip();
         zip.file('Waiting/a.txt', 'a');
         zip.file('Waiting/b.txt', 'b');
@@ -954,10 +910,9 @@ try {
       await context.close();
     }
 
-    // The shared tooltips near each edge of the screen (left, right, bottom): inside the viewport, at most 240 px wide.
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
-      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch {  } }, token);
       const page = await context.newPage();
       page.setDefaultTimeout(12000);
       const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
@@ -985,7 +940,6 @@ try {
           await probe('left edge (sidebar)', page.getByRole('button', { name: 'Expand sidebar' }));
           await probe('bottom left (Account)', page.locator('#app-sidebar a[href="/account"]'));
         }
-        // the tray at the bottom right: a long tooltip from its status icon, and its close button
         await page.getByRole('button', { name: 'New' }).click();
         await page.getByRole('menuitem', { name: /Upload file/ }).click();
         const dialog = page.getByRole('dialog', { name: 'Upload file' });
@@ -1002,10 +956,9 @@ try {
       await context.close();
     }
 
-    // The shared tooltips near each edge of the screen (left, right, bottom): inside the viewport, at most 240 px wide.
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
-      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ } }, token);
+      await context.addInitScript((value) => { try { window.sessionStorage.setItem('warden.session', value); } catch {  } }, token);
       const page = await context.newPage();
       page.setDefaultTimeout(12000);
       const record = (label, found) => { dialogRows.push({ label, size: size.name, problems: found }); if (found.length) failures += 1; };
@@ -1033,7 +986,6 @@ try {
           await probe('left edge (sidebar)', page.getByRole('button', { name: 'Expand sidebar' }));
           await probe('bottom left (Account)', page.locator('#app-sidebar a[href="/account"]'));
         }
-        // the tray at the bottom right: a long tooltip from its status icon, and its close button
         await page.getByRole('button', { name: 'New' }).click();
         await page.getByRole('menuitem', { name: /Upload file/ }).click();
         const dialog = page.getByRole('dialog', { name: 'Upload file' });
@@ -1050,11 +1002,10 @@ try {
       await context.close();
     }
 
-    // Finished, and with the update bar: a context that has a service worker controller before the import starts.
     for (const size of WIDTHS) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__WARDEN_TEST__ = { importCardMs: 60000 };
       }, token);
       await context.route('**/api/documents', async (route) => {
@@ -1120,12 +1071,11 @@ try {
     }
     fs.rmSync(zipDir, { recursive: true, force: true });
 
-    // The grouped sidebar: Main, Management, System and the pinned Account footer, with about 30 folders in the tree.
     for (let n = 1; n <= 30; n += 1) await api('POST', '/api/documents/folders', { token, json: { name: `Project ${String(n).padStart(2, '0')}`, parentPath: '', color: 'gray', icon: 'folder' } });
     for (const size of [{ name: '360', width: 360, height: 800 }, { name: '768', width: 768, height: 1024 }, { name: '1366x768', width: 1366, height: 768 }, { name: '1920', width: 1920, height: 1080 }]) {
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, reducedMotion: 'reduce', colorScheme: process.env.THEME === 'dark' ? 'dark' : 'light' });
       await context.addInitScript((value) => {
-        try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+        try { window.sessionStorage.setItem('warden.session', value); } catch {  }
         window.__csp = [];
         document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
       }, token);
@@ -1206,7 +1156,6 @@ try {
   await mongoose.disconnect();
 }
 
-// ---------- the table ----------
 const pad = (text, n) => String(text).padEnd(n);
 const routes = process.env.ONLY_DIALOGS ? [] : [...PUBLIC_PAGES, ...APP_PAGES];
 console.log(`\n${pad('page', 20)}${WIDTHS.map((w) => pad(`${w.name}px`, 9)).join('')}`);

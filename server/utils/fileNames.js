@@ -1,18 +1,3 @@
-/**
- * File names: what we store, what we put in a download, and how a missing
- * extension is recovered. The browser has a mirror of the pure parts
- * (client/src/utils/fileNames.js); a test keeps the two in step.
- *
- * Rules:
- *  - The STORED name is whatever the owner chose (minus control characters and
- *    path separators); nothing here ever rewrites it.
- *  - A DOWNLOAD name is sanitised (no separators, control or bidi characters,
- *    quotes, Windows-reserved characters, trailing dots/spaces; length limited
- *    with the extension kept) and, only when the stored name has no extension
- *    AND the bytes are unmistakably a known type, gets that type's extension.
- *    An unknown type never gets one.
- */
-
 const MAX_STORED_NAME = 255;
 const MAX_DOWNLOAD_NAME = 120;
 const MAX_EXTENSION = 16;
@@ -21,7 +6,6 @@ const FORBIDDEN_IN_DOWNLOAD = '/\\:*?"<>|';
 const isControl = (code) => code < 32 || code === 127 || (code >= 0x80 && code <= 0x9f);
 const isBidiOverride = (code) => (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
 
-/** The name as stored: no control characters and no path separators. */
 function cleanStoredName(name) {
   let out = '';
   for (const char of String(name ?? '')) {
@@ -30,7 +14,6 @@ function cleanStoredName(name) {
   }
   out = out.trim();
   if ([...out].length > MAX_STORED_NAME) {
-    // Cut the base name, never the extension (a plain slice would drop ".pdf" from a long name).
     const { base, ext } = splitName(out);
     const suffix = ext && ext.length <= MAX_EXTENSION ? `.${ext}` : '';
     out = [...(suffix ? base : out)].slice(0, MAX_STORED_NAME - suffix.length).join('').trimEnd() + suffix;
@@ -38,7 +21,6 @@ function cleanStoredName(name) {
   return out || 'file';
 }
 
-/** Splits "report.final.docx" into { base: 'report.final', ext: 'docx' }. A leading dot (".env") or a non-extension tail is not an extension. */
 function splitName(name) {
   const text = String(name ?? '');
   const dot = text.lastIndexOf('.');
@@ -67,7 +49,6 @@ function sanitizeDownloadName(name, max = MAX_DOWNLOAD_NAME) {
 const startsWith = (b, bytes, at = 0) => b.length >= at + bytes.length && bytes.every((v, i) => b[at + i] === v);
 const ascii = (b, from, to) => b.toString('latin1', from, to);
 
-/** Minimal ZIP central-directory name list (no inflating), for telling .docx apart. */
 function zipNames(buffer) {
   if (buffer.length < 22) return [];
   const lowest = Math.max(0, buffer.length - 22 - 0xffff);
@@ -96,10 +77,6 @@ function zipNames(buffer) {
 const MP4_BRANDS = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'dash', 'mmp4', 'M4V ']);
 const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'heim', 'heis', 'mif1', 'msf1']);
 
-/**
- * The extension (without the dot) the BYTES call for, or null when they are not
- * unmistakably one of the types below. Never from the name or a claimed type.
- */
 function sniffExtension(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
   const b = buffer;
@@ -127,19 +104,16 @@ function sniffExtension(buffer) {
   return null;
 }
 
-/** Adds `.ext` only when the name has no extension and one is known. */
 function withSniffedExtension(name, ext) {
   if (!ext || splitName(name).ext) return name;
   return `${name}.${ext}`;
 }
 
-/** The name a download should carry. */
 function downloadName(storedName, buffer) {
   const clean = sanitizeDownloadName(storedName);
   return sanitizeDownloadName(withSniffedExtension(clean, sniffExtension(buffer)));
 }
 
-/** A Content-Disposition value: quoted ASCII fallback plus RFC 5987 filename*= for the real name. */
 function contentDisposition(name) {
   const safe = sanitizeDownloadName(name);
   const fallback = safe.replace(/[^\x20-\x7e]/g, '_').replace(/["\\%]/g, '_');

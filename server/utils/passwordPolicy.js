@@ -1,27 +1,8 @@
-/**
- * Warden password policy.
- *
- * Pure functions, no DB/network access - mirrored (not shared, since the
- * frontend needs this to run on every keystroke without a round-trip) in
- * client/src/utils/passwordPolicy.js. Keep the two in sync if the rules
- * here ever change.
- */
-
-// 12, not the more common 8: NIST SP 800-63B stopped requiring composition
-// rules years ago and leans on length as the strongest lever a policy can
-// pull, and 8 characters is well within reach of offline brute-force on
-// modern hardware even with scrypt in front of it. 12 is a floor, not a
-// target - the strength meter still rewards going well past it.
 const MIN_LENGTH = 12;
 const MAX_LENGTH = 128;
 
 const SPECIAL_CHARS = new Set('!@#$%^&*()_+-=[]{};\':"\\|,.<>/?'.split(''));
 
-// A deliberately small, hardcoded blocklist. A real product would check
-// against a proper breach corpus (e.g. Have I Been Pwned's k-anonymity
-// range API), but Warden is fully offline by design - there's no network
-// call to make here. This list exists to catch the most obvious cases
-// (including the product's own name), not to replace a real breach check.
 const COMMON_PASSWORDS = [
   'password',
   '12345678',
@@ -36,12 +17,6 @@ const COMMON_PASSWORDS = [
 ];
 
 const SEQUENTIAL_RUN_LENGTH = 4;
-
-// Deliberately not checked: "doesn't contain personal info (name,
-// birthday, user ID)". Warden is single-user with no profile fields
-// collected at setup - there is no name, email, or birthdate on record to
-// compare a password against. This is a scope decision given what data
-// actually exists, not an oversight.
 
 function hasUppercase(password) {
   return /[A-Z]/.test(password);
@@ -68,11 +43,6 @@ function containsCommonPassword(password) {
   return COMMON_PASSWORDS.some((word) => lower.includes(word));
 }
 
-/**
- * True if the password contains a run of `SEQUENTIAL_RUN_LENGTH` or more
- * consecutive characters, ascending or descending by character code -
- * catches "1234", "4321", "abcd", "dcba", including mid-string.
- */
 function hasSequentialRun(password) {
   let ascending = 1;
   let descending = 1;
@@ -100,10 +70,6 @@ function hasSequentialRun(password) {
   return false;
 }
 
-/**
- * True if the password contains the same character repeated
- * `SEQUENTIAL_RUN_LENGTH` or more times in a row - catches "aaaa", "1111".
- */
 function hasRepeatedRun(password) {
   let run = 1;
 
@@ -123,13 +89,6 @@ function hasBadPattern(password) {
   return containsCommonPassword(password) || hasSequentialRun(password) || hasRepeatedRun(password);
 }
 
-/**
- * Validates a candidate master (or recovery-reset) password against
- * Warden's policy.
- *
- * @param {string} password
- * @returns {{ valid: boolean, errors: string[] }}
- */
 function validatePassword(password) {
   if (typeof password !== 'string' || password.length === 0) {
     return { valid: false, errors: ['A password is required.'] };
@@ -155,16 +114,6 @@ function validatePassword(password) {
 
 const STRENGTH_LABELS = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'];
 
-/**
- * Scores a password's strength from 0-4. Combines length and character
- * variety, but a password matching the common-password/sequential/repeat
- * checks (or containing spaces) is capped low regardless of length or
- * variety - a long password built from an obvious pattern isn't actually
- * strong just because it's long.
- *
- * @param {string} password
- * @returns {{ score: number, label: string }}
- */
 function calculatePasswordStrength(password) {
   if (typeof password !== 'string' || password.length === 0) {
     return { score: 0, label: STRENGTH_LABELS[0] };

@@ -1,8 +1,3 @@
-// Run with: cd server && npm test
-//
-// Emergency sessions are read-only and deny-by-default. These tests walk the REAL router stack (the same routers
-// server.js mounts) and prove that every registered route is either on the short allowlist or refused for an
-// emergency token; then they check scope leaks, the session lifetime and that nothing else can make a session.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -16,10 +11,9 @@ const requireSession = require('../middleware/requireSession');
 const SERVER_DIR = path.join(__dirname, '..');
 const ID = 'a'.repeat(24);
 
-// ---------- the router stack, built from server.js itself ----------
 function mountedRouters() {
   const source = fs.readFileSync(path.join(SERVER_DIR, 'server.js'), 'utf8');
-  const modules = {}; // variable name -> { file, key }
+  const modules = {};
   for (const match of source.matchAll(/const (\{[^}]*\}|\w+) = require\('\.\/routes\/([\w.]+)'\);/g)) {
     const file = path.join(SERVER_DIR, 'routes', match[2]);
     if (match[1].startsWith('{')) {
@@ -34,7 +28,7 @@ function mountedRouters() {
   const mounts = [];
   for (const match of source.matchAll(/app\.use\('(\/api[^']*)',\s*(\w+)\);/g)) {
     const entry = modules[match[2]];
-    if (!entry) continue; // a plain middleware, not a router
+    if (!entry) continue;
     const loaded = require(entry.file);
     mounts.push({ prefix: match[1], name: match[2], router: entry.key ? loaded[entry.key] : loaded });
   }
@@ -63,7 +57,6 @@ function registeredRoutes() {
   return routes;
 }
 
-/** An emergency session from the real flow (kit, code, wait, start). */
 async function startEmergency({ scope = { mode: 'all' } } = {}) {
   W.reset();
   const vault = W.seedVault();
@@ -97,7 +90,6 @@ test('EVERY registered route is on the allowlist, public (never sees a session),
   const routes = registeredRoutes();
   assert.ok(routes.length > 80, `the stack was enumerated (${routes.length} routes)`);
 
-  // the routes server.js mounts are the ones we walked (a new router must show up here)
   const mounted = mountedRouters().map((m) => m.prefix).sort();
   for (const expected of ['/api/auth', '/api/documents', '/api/shares', '/api/shared', '/api/account', '/api/security', '/api/insights', '/api/trash', '/api/cron', '/api/emergency', '/api/emergency/public']) {
     assert.ok(mounted.includes(expected), `${expected} is mounted and walked`);
@@ -124,7 +116,6 @@ test('EVERY registered route is on the allowlist, public (never sees a session),
       assert.equal(error?.code, 'EMERGENCY_READ_ONLY');
       continue;
     }
-    // no session check at all: it must be one of the places that never takes a session
     publicCount += 1;
     if (!PUBLIC_PREFIXES.some((prefix) => entry.prefix === prefix)) unguardedElsewhere.push(`${entry.method} ${entry.full}`);
   }
@@ -133,7 +124,6 @@ test('EVERY registered route is on the allowlist, public (never sees a session),
   assert.ok(refused >= 40, `many routes refused (${refused})`);
   assert.ok(publicCount > 20);
 
-  // among the unguarded /api/auth routes none is /me or /logout
   const authOpen = routes.filter((r) => r.prefix === '/api/auth' && !r.guarded).map((r) => r.route);
   assert.ok(!authOpen.includes('/me') && !authOpen.includes('/logout'));
 });
@@ -158,7 +148,6 @@ test('writes are refused even on an allowlisted path; the verb matters', async (
     assert.equal(reached, false, `${method} ${baseUrl}${sub}`);
     assert.equal(error?.status, 403, `${method} ${baseUrl}${sub}`);
   }
-  // look-alike paths are not allowlisted; the real ones are
   for (const sneaky of ['/api/documents/folders/x', `/api/documents/${ID}/view/extra`, '/api/documents/zz/view', '/api/documents/ABCDEFABCDEFABCDEFABCDEF/view', '/api/documents/folders/children/x', '/api/auth/me/x', '/api/auth/mee', '/api/documents/../account/health']) {
     assert.equal(matchAllowlist('GET', sneaky), null, sneaky);
   }
@@ -168,7 +157,6 @@ test('writes are refused even on an allowlisted path; the verb matters', async (
   assert.notEqual(matchAllowlist('HEAD', '/api/documents'), null, 'HEAD counts as GET');
 });
 
-// ---------- scope ----------
 async function scopedSession(folderPaths, extraFolders = []) {
   W.reset();
   const vault = W.seedVault();
@@ -194,14 +182,12 @@ test('scope leaks: a folder-scoped session sees only its folders and what is ins
   assert.equal(s.req.emergency.scopeMode, 'folders');
   assert.equal(s.started.json.scope.mode, 'folders');
 
-  // the file list (and so every count, search and breadcrumb the browser builds from it)
   const list = await call(D.listDocuments, s.ctx());
   assert.deepEqual(list.json.map((d) => d.filename).sort(), ['taxes-2024.txt', 'taxes-return.txt']);
   assert.equal(list.json.length, 2, 'the count is the scoped count');
   const shown = JSON.stringify(list.json);
   for (const hidden of ['root-passport', 'medical-record', 'private-diary', 'Medical', 'Private']) assert.ok(!shown.includes(hidden), `${hidden} never appears`);
 
-  // the folder tree
   const folders = await call(D.listFolders, s.ctx());
   assert.deepEqual(folders.json, ['root', 'Taxes', 'Taxes/2024']);
   const top = await call(D.listFolderChildren, s.ctx({ query: { path: '' } }));
@@ -217,7 +203,6 @@ test('scope leaks: a folder-scoped session sees only its folders and what is ins
   const hidden = await call(D.listFolderChildren, s.ctx({ query: { path: 'Medical' } }));
   assert.equal(hidden.error.message, nope.error.message, 'a real folder out of scope looks exactly like one that does not exist');
 
-  // direct access by id: 404, never 403, same as a file that does not exist
   const missing = await call(D.viewDocument, s.ctx({ params: { id: String(W.db.oid()) }, query: {} }));
   for (const doc of [s.docs.root, s.docs.medical, s.docs.priv]) {
     const view = await call(D.viewDocument, s.ctx({ params: { id: String(doc._id) }, query: {} }));
@@ -226,7 +211,6 @@ test('scope leaks: a folder-scoped session sees only its folders and what is ins
     const thumb = await call(D.getThumbnail, s.ctx({ params: { id: String(doc._id) } }));
     assert.equal(thumb.error?.status, 404);
   }
-  // inside the scope it works, nested folders included
   for (const doc of [s.docs.taxes, s.docs.tax24]) {
     const view = await call(D.viewDocument, s.ctx({ params: { id: String(doc._id) }, query: {} }));
     assert.equal(view.status, 200);
@@ -238,14 +222,12 @@ test('scope edges: a sibling with the same prefix, regex characters, a deleted f
   const s = await scopedSession(['Tax.1'], [['dot', 'Tax.1', 'dot-doc.txt'], ['lookalike', 'TaxX1', 'lookalike-doc.txt'], ['prefix', 'Tax.10', 'prefix-doc.txt']]);
   const list = await call(D.listDocuments, s.ctx());
   assert.deepEqual(list.json.map((d) => d.filename), ['dot-doc.txt'], 'Tax.1 is not a pattern and not a prefix of Tax.10');
-  // a trashed file inside the scope is not served
   const inScope = W.addDoc({ folder: 'Tax.1', filename: 'trashed-one.txt' });
   inScope.deletedAt = new Date();
   const after = await call(D.listDocuments, s.ctx());
   assert.deepEqual(after.json.map((d) => d.filename), ['dot-doc.txt']);
   assert.equal((await call(D.viewDocument, s.ctx({ params: { id: String(inScope._id) }, query: {} }))).error?.status, 404);
 
-  // the owner deletes the folder afterwards: a NEW session's scope is empty, not "everything"
   world.tables.folders = world.tables.folders.filter((f) => f.name !== 'Tax.1');
   const code = await W.contactCode();
   world.tables.sessions = [];
@@ -303,7 +285,6 @@ test('an emergency session is not a device, learns no owner address, and shows u
   assert.equal(status.json.activeSessions, 1);
 });
 
-// ---------- session lifetime ----------
 test('an emergency session ends at 4 hours whatever happens, and sliding refreshes never push past it', async () => {
   const s = await startEmergency();
   const row = world.tables.sessions.find((x) => x.emergency);
@@ -311,21 +292,18 @@ test('an emergency session ends at 4 hours whatever happens, and sliding refresh
   assert.ok(row.absoluteExpiresAt.getTime() - created === 4 * 3600 * 1000, 'absolute max 4 hours');
   assert.ok(row.expiresAt.getTime() - created <= 30 * 60 * 1000 + 10, 'idle TTL 30 minutes');
 
-  // every use slides the idle window, but never beyond the absolute end
   const near = new Date(Date.now() + 10 * 60 * 1000);
   row.absoluteExpiresAt = near;
   const ok = await W.throughRequireSession(s.token, { path: '/' });
   assert.ok(ok.reached);
   assert.ok(row.expiresAt.getTime() <= near.getTime(), 'the refresh stopped at the absolute end');
 
-  // past the absolute end: dead, and gone, even though the idle window was open
   row.expiresAt = new Date(Date.now() + 20 * 60 * 1000);
   row.absoluteExpiresAt = new Date(Date.now() - 1000);
   const dead = await W.throughRequireSession(s.token, { path: '/' });
   assert.equal(dead.error?.status, 401);
   assert.equal(world.tables.sessions.length, 0);
 
-  // a normal login session is unchanged: 30 minutes sliding, no absolute end
   W.reset();
   const token = await require('../utils/sessionStore').createSession(ALICE, DEK, { deviceId: null });
   const normal = world.tables.sessions[0];
@@ -353,7 +331,6 @@ test('regenerating the kit and a changed vault key also end running sessions at 
   assert.equal((await W.throughRequireSession(s.token, { path: '/' })).error?.status, 401);
 });
 
-// ---------- only one door for sessions ----------
 test('nothing but createSession makes a session, and only login and Emergency Access call it', () => {
   const offenders = { create: [], callers: [] };
   const scan = (dir) => {
@@ -372,7 +349,6 @@ test('nothing but createSession makes a session, and only login and Emergency Ac
   scan(SERVER_DIR);
   assert.deepEqual(offenders.create, ['utils/sessionStore.js'], 'only the session store writes Session rows');
   assert.deepEqual(offenders.callers.sort(), ['controllers/auth.controller.js', 'utils/emergency/service.js', 'utils/sessionStore.js']);
-  // and the emergency call is the one that is flagged emergency
   const service = fs.readFileSync(path.join(SERVER_DIR, 'utils', 'emergency', 'service.js'), 'utf8');
   assert.match(service, /createSession\(access\.userId, dek, \{\s*emergency:/);
   const login = fs.readFileSync(path.join(SERVER_DIR, 'controllers', 'auth.controller.js'), 'utf8');
@@ -383,7 +359,6 @@ test('the guard sits inside requireSession, so a route added later is refused un
   const source = fs.readFileSync(path.join(SERVER_DIR, 'middleware', 'requireSession.js'), 'utf8');
   assert.match(source, /if \(session\.emergency\) assertEmergencyAllowed\(req\)/);
   assert.ok(source.indexOf('assertEmergencyAllowed(req)') < source.indexOf('req.userId = session.userId'), 'checked before any handler data is set up');
-  // no controller makes an exception for emergency sessions except the read paths that narrow to the scope
   const using = [];
   for (const dir of ['controllers', 'routes', 'middleware', 'utils']) {
     for (const entry of fs.readdirSync(path.join(SERVER_DIR, dir), { withFileTypes: true })) {

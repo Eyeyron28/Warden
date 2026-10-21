@@ -8,7 +8,6 @@ import { checkStoredSession } from './sessionCheck.js';
 const TOKEN = `${'a1'.repeat(32)}.${'b2'.repeat(32)}`;
 const OTHER = `${'c3'.repeat(32)}.${'d4'.repeat(32)}`;
 
-/** A browser tab: its own sessionStorage, a localStorage and cookie jar that must never be touched. */
 function makeTab() {
   const session = new Map();
   const touched = { local: 0, cookie: 0 };
@@ -31,12 +30,10 @@ function makeTab() {
 
 let loads = 0;
 const loaded = [];
-/** Earlier tests' pages are still 'open' in this process; close their sessions so only this test's tabs answer. */
 async function closeEarlierTabs() {
   for (const mod of loaded) mod.clearToken();
   await new Promise((resolve) => setTimeout(resolve, 60));
 }
-/** Loads a fresh copy of session.js, as if a page had just loaded in `tab`. */
 async function pageLoad(tab) {
   globalThis.window = tab.window;
   Object.defineProperty(globalThis, 'document', {
@@ -64,7 +61,7 @@ test('a reload keeps the session: the token is read back from sessionStorage', a
   first.setToken(TOKEN);
   assert.equal(tab.session.get('warden.session'), TOKEN, 'kept in sessionStorage');
 
-  const afterReload = await pageLoad(tab); // same tab, same sessionStorage, fresh page
+  const afterReload = await pageLoad(tab);
   assert.equal(afterReload.getToken(), TOKEN);
   assert.deepEqual(tab.touched, { local: 0, cookie: 0 }, 'never localStorage, never a cookie');
 });
@@ -104,7 +101,6 @@ test('logout clears it (and says nothing); an ended session clears it and leaves
   assert.equal(session.takeSessionNotice(), null, 'no token, nothing to announce');
   assert.equal(session.EXPIRED_MESSAGE, 'Your session expired. Sign in again.');
 
-  // signing in again drops any old message
   session.setToken(TOKEN);
   session.expireSession();
   session.setToken(OTHER);
@@ -137,13 +133,11 @@ test('a second tab takes the session from the first over the same-origin channel
   assert.equal(tabB.session.get('warden.session'), TOKEN, 'stored for THIS tab only, in sessionStorage');
   assert.deepEqual(tabB.touched, { local: 0, cookie: 0 });
 
-  // signing out in one tab ends it in the other
   a.clearToken();
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.equal(b.getToken(), null);
   assert.equal(tabB.session.has('warden.session'), false);
 
-  // nobody to ask: it gives up quickly and the visitor signs in normally
   const lonely = await pageLoad(makeTab());
   const started = Date.now();
   assert.equal(await lonely.adoptTokenFromOtherTabs(150), null);
@@ -166,12 +160,9 @@ test('the session module stores the token nowhere but sessionStorage', () => {
   const text = readFileSync(fileURLToPath(new URL('./session.js', import.meta.url)), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(text, /localStorage|document\.cookie|indexedDB|caches\./);
   assert.match(text, /sessionStorage/);
-  // and the rest of the client never reads or writes it by another route
   const app = readFileSync(fileURLToPath(new URL('../App.jsx', import.meta.url)), 'utf8');
   assert.doesNotMatch(app, /sessionStorage|localStorage/);
 });
-
-// ---------- what the page does with a stored token when it starts ----------
 
 const unauthorized = () => Object.assign(new Error('401'), { response: { status: 401, data: { error: { code: 'SESSION_INVALID' } } } });
 const offline = () => Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
@@ -219,7 +210,7 @@ test('the axios interceptor ends a session the server no longer accepts, and the
   const api = readFileSync(fileURLToPath(new URL('./api.js', import.meta.url)), 'utf8');
   assert.match(api, /if \(getToken\(\)\) expireSession\(\);\s*else clearToken\(\);/);
   const app = readFileSync(fileURLToPath(new URL('../App.jsx', import.meta.url)), 'utf8');
-  assert.match(app, /if \(!ready\) return <AppFrameSkeleton \/>;/); // waits for the start-up check, drawing the frame's skeleton meanwhile
+  assert.match(app, /if \(!ready\) return <AppFrameSkeleton \/>;/);
   assert.match(app, /checkStoredSession\(\{ getToken, adoptFromOtherTabs: adoptTokenFromOtherTabs, verify: async \(\) => setModeFromMe\(await getMe\(\{ maxAgeMs: JUST_ASKED_MS \}\)\), expire: expireSession \}\)/);
   const login = readFileSync(fileURLToPath(new URL('../pages/auth/LoginPage.jsx', import.meta.url)), 'utf8');
   assert.match(login, /takeSessionNotice\(\)/);

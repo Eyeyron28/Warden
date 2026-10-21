@@ -1,10 +1,3 @@
-// node scripts/check-upload.mjs   (from client, after "npm run build"; DIST_DIR=<another build> to try an older one)
-//
-// Uploads a 4 MB PDF through the real Upload dialog in a real browser, against the real app on a LOCAL throwaway MongoDB
-// (127.0.0.1:27099, or a local WARDEN_TEST_MONGO; no .env is read; mail is captured), served with the production CSP. It
-// presses "Encrypt & upload" with a DOUBLE CLICK, and again with ENTER TWICE, and reports how many requests were sent and how many
-// files were made, plus the client-side timing: from the press to the request leaving (the page's own work), the request itself,
-// and from the press to the dialog closing. Real network, Atlas and cold-start time cannot be measured here.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -32,7 +25,6 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) {
 }
 const uri = baseUri.replace(/^(mongodb:\/\/[^/]+)\/[^?]*/, '$1/warden_upload_check');
 
-// The production policy for the app's own pages.
 const vercel = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 const CSP = JSON.stringify(vercel)
   .match(/"Content-Security-Policy","value":"(default-src 'self'[^"]+)"/)?.[1]
@@ -80,7 +72,7 @@ async function api(method, route, { token, json } = {}) {
   const response = await fetch(base + route, { method, headers, body });
   const text = await response.text();
   let parsed = null;
-  try { parsed = JSON.parse(text); } catch { /* none */ }
+  try { parsed = JSON.parse(text); } catch {  }
   return { status: response.status, body: parsed };
 }
 
@@ -112,7 +104,6 @@ try {
   browser = await launch();
   const maker = await (await browser.newContext()).newPage();
   await maker.goto(`${base}/login`);
-  // a page-sized noisy JPEG, then a one-page PDF of it close to the 4 MB cap
   const b64 = await maker.evaluate(async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 2400;
@@ -150,7 +141,7 @@ try {
 
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   await context.addInitScript((value) => {
-    try { window.sessionStorage.setItem('warden.session', value); } catch { /* none */ }
+    try { window.sessionStorage.setItem('warden.session', value); } catch {  }
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (event) => window.__csp.push(`${event.violatedDirective} ${event.blockedURI}`));
   }, token);

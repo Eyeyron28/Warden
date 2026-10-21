@@ -1,19 +1,5 @@
 const mongoose = require('mongoose');
 
-// Replaces the old in-memory session Map (server/utils/sessionStore.js) so
-// a login survives across serverless invocations/restarts instead of
-// vanishing the moment the process that handled it recycles.
-//
-// The bearer token handed to the client is `sessionId.sessionKey` (both
-// random, generated at login - see utils/sessionStore.js createSession).
-// Neither half is stored in plain form here:
-//   - sessionIdHash is SHA-256(sessionId), looked up on every request -
-//     a DB read alone never reveals a usable sessionId.
-//   - sessionKey is NEVER stored at all. It only ever exists in the
-//     bearer token itself. wrappedDEK/*  is the account's DEK encrypted
-//     (AES-256-GCM) under sessionKey, so a database leak alone - without
-//     the bearer token a client is actually holding - cannot unwrap any
-//     account's DEK.
 const sessionSchema = new mongoose.Schema({
   sessionIdHash: {
     type: String,
@@ -38,21 +24,11 @@ const sessionSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  // TTL index: Mongo removes the document itself once this passes, no
-  // separate cleanup job needed (same cleanup-for-free reasoning as every
-  // other short-lived token model in this app, e.g. PairingToken).
-  // `refreshSession` (utils/sessionStore.js) bumps this forward on every
-  // authenticated request, same sliding-expiry behavior the in-memory
-  // store had.
-  // The browser this session belongs to (models/Device.js), so that one device can be signed out
-  // without touching the others. Null for a session created before devices existed.
   deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
-  // Emergency Access sessions (utils/emergency): read-only, scoped, never longer than absoluteExpiresAt. A normal
-  // login session has none of these.
   emergency: { type: Boolean, default: false, index: true },
   accessId: { type: mongoose.Schema.Types.ObjectId, default: null },
   requestId: { type: mongoose.Schema.Types.ObjectId, default: null },
-  scopePaths: { type: [String], default: undefined }, // folder paths, when the scope is folders
+  scopePaths: { type: [String], default: undefined },
   scopeMode: { type: String, enum: ['all', 'folders', null], default: null },
   absoluteExpiresAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },

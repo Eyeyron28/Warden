@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Document expiry + reminders, the vault health score, and the purpose on share links (server side: the purpose
-// is never stored in the clear and never reaches an audit event, a log or an email).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -28,7 +24,6 @@ db.installModels(world, {
     aggregate: async () => [],
   },
 });
-// The real rate limiter is wanted while the account routes are built (they create limiters); the stub comes after.
 const accountRouter = require('../routes/account.routes');
 db.installRateLimit();
 db.installMailer(world);
@@ -75,7 +70,6 @@ function addDocument({ owner = ALICE, filename = 'passport.png', expires = null,
   return doc;
 }
 
-// ---------- docExpiry ----------
 test('expiry dates: real calendar days only, compared by UTC day, thresholds are the smallest reached', () => {
   assert.equal(parseExpiryInput('2027-03-05').toISOString(), '2027-03-05T00:00:00.000Z');
   for (const bad of ['2027-02-30', '2027-13-01', '27-03-05', '', null, 5, '1999-01-01', '2101-01-01', '2027-03-05T10:00:00Z']) {
@@ -99,7 +93,6 @@ test('expiry dates: real calendar days only, compared by UTC day, thresholds are
   assert.equal(expiryStatus(null, NOW), null);
 });
 
-// ---------- setting the date ----------
 test('setting, changing and clearing an expiry date: validated, evented by file id only, owner only', async () => {
   reset();
   const doc = addDocument({ filename: 'secret-passport-scan.png' });
@@ -125,7 +118,6 @@ test('setting, changing and clearing an expiry date: validated, evented by file 
   assert.ok(!logged.includes('secret-passport-scan') && !logged.includes('2027-03-05'), 'the event holds the file id only');
 });
 
-// ---------- reminders ----------
 test('a file 6 days from expiry: one email however many times the job runs; no file name in it', async () => {
   reset();
   addDocument({ filename: 'visa-application-form.png', expires: dayStr(6) });
@@ -141,7 +133,6 @@ test('a file 6 days from expiry: one email however many times the job runs; no f
   assert.ok(!(mail.text + mail.html + mail.subject).toLowerCase().includes('visa-application'), 'no file name');
   assert.match(mail.text, /Documents expiring soon/);
   assert.match(mail.text, /Expire within 7 days: 1/);
-  // the 60 and 30 thresholds were behind it already: marked, not emailed
   const rows = world.tables.reminderlogs;
   assert.deepEqual(rows.map((r) => r.threshold).sort((a, b) => b - a), [60, 30, 7]);
   assert.deepEqual(rows.filter((r) => r.sent).map((r) => r.threshold), [7]);
@@ -151,13 +142,13 @@ test('thresholds fire one at a time as the date approaches, each once', async ()
   reset();
   addDocument({ expires: dayStr(50) });
   const at = (offset) => new Date(NOW.getTime() + offset * DAY);
-  assert.equal((await runReminders({ now: NOW })).emails, 1); // 60
-  assert.equal((await runReminders({ now: at(10) })).emails, 0); // 40 days left: nothing new
-  assert.equal((await runReminders({ now: at(20) })).emails, 1); // 30
+  assert.equal((await runReminders({ now: NOW })).emails, 1);
+  assert.equal((await runReminders({ now: at(10) })).emails, 0);
+  assert.equal((await runReminders({ now: at(20) })).emails, 1);
   assert.equal((await runReminders({ now: at(21) })).emails, 0);
-  assert.equal((await runReminders({ now: at(43) })).emails, 1); // 7
-  assert.equal((await runReminders({ now: at(50) })).emails, 1); // the day itself
-  assert.equal((await runReminders({ now: at(70) })).emails, 0); // expired long ago, already told
+  assert.equal((await runReminders({ now: at(43) })).emails, 1);
+  assert.equal((await runReminders({ now: at(50) })).emails, 1);
+  assert.equal((await runReminders({ now: at(70) })).emails, 0);
   assert.equal(world.mails.length, 4);
 });
 
@@ -184,10 +175,8 @@ test('a changed expiry date re-arms the reminders', async () => {
   const doc = addDocument({ expires: dayStr(6) });
   assert.equal((await runReminders({ now: NOW })).emails, 1);
   assert.equal((await runReminders({ now: NOW })).emails, 0);
-  // same date saved again changes nothing
   await call(updateDocument, { userId: ALICE, dek: DEK, params: { id: String(doc._id) }, body: { docExpiresAt: dayStr(6) } });
   assert.equal((await runReminders({ now: NOW })).emails, 0);
-  // renewed to a new date, then close to it again
   await call(updateDocument, { userId: ALICE, dek: DEK, params: { id: String(doc._id) }, body: { docExpiresAt: dayStr(5) } });
   assert.equal(world.tables.reminderlogs.length, 0, 'rows cleared');
   assert.equal((await runReminders({ now: NOW })).emails, 1);
@@ -195,9 +184,9 @@ test('a changed expiry date re-arms the reminders', async () => {
 
 test('trashed files, other people, opted-out and unverified accounts, and far-off dates never remind', async () => {
   reset();
-  addDocument({ expires: dayStr(2), deletedAt: new Date(NOW.getTime() - DAY) }); // in Trash
-  addDocument({ expires: dayStr(200) }); // far away
-  addDocument({}); // no date
+  addDocument({ expires: dayStr(2), deletedAt: new Date(NOW.getTime() - DAY) });
+  addDocument({ expires: dayStr(200) });
+  addDocument({});
   addDocument({ owner: BOB, expires: dayStr(2) });
   world.tables.users.find((u) => String(u._id) === String(BOB)).expiryReminders = false;
   const carol = db.oid();
@@ -268,12 +257,10 @@ test('reminder rows go with the file (deleted for good, Trash emptied, purged) a
   assert.equal(world.tables.reminderlogs.length, 0);
 });
 
-// ---------- the cron route ----------
 function cronCall(authorization) {
   const layer = cronRouter.stack.find((l) => l.route?.path === '/reminders');
   assert.ok(layer, 'GET /reminders exists');
   assert.equal(layer.route.methods.get, true);
-  // rate limit first (F14), then the secret check, then the job
   const handles = layer.route.stack.map((s) => s.handle);
   assert.equal(handles.length, 3, 'limit, secret check, job');
   const [, secretCheck, handler] = handles;
@@ -331,7 +318,6 @@ test('vercel.json schedules the reminders once a day at 01:00 UTC (09:00 in Mani
   assert.equal(cron.schedule, '0 1 * * *');
 });
 
-// ---------- the expiring list ----------
 test('the expiring list holds only the caller’s live files within 60 days or already expired, soonest first', async () => {
   reset();
   addDocument({ filename: 'a', expires: dayStr(-3) });
@@ -344,7 +330,6 @@ test('the expiring list holds only the caller’s live files within 60 days or a
   assert.deepEqual(out.json.map((d) => d.expiryStatus), ['expired', 'expiring_soon']);
 });
 
-// ---------- vault health ----------
 const OK = { openShares: 0, oldShares: 0, trustedBrowsers: 0, staleTrusted: 0, suspiciousFlags: 0, expiredDocs: 0, expiringDocs: 0, remindersOn: true, trashNearPurge: 0 };
 const itemOf = (result, id) => result.items.find((i) => i.id === id);
 
@@ -355,7 +340,6 @@ test('vault health: the weights add up to 100, nothing wrong scores 100, everyth
   assert.equal(clean.items.length, 9);
   assert.ok(clean.items.every((i) => i.status === 'ok' && i.points === 0 && i.actionPath.startsWith('/')));
   const worst = computeVaultHealth({ openShares: 2, oldShares: 2, trustedBrowsers: 9, staleTrusted: 9, suspiciousFlags: 3, expiredDocs: 1, expiringDocs: 1, remindersOn: false, hasExpiryDates: true, trashNearPurge: 1 });
-  // the "warn" items cost half their weight, so only the "bad" ones reach their maximum
   assert.equal(worst.score, 100 - (15 + 5 + 5 + 5 + 25 + 15 + 2 + 2 + 2));
   assert.equal(computeVaultHealth({}).score, 100, 'no facts: nothing is wrong');
   const garbage = computeVaultHealth({ openShares: -4, oldShares: 'x', suspiciousFlags: NaN, trustedBrowsers: null });
@@ -364,41 +348,31 @@ test('vault health: the weights add up to 100, nothing wrong scores 100, everyth
 
 test('vault health: each item and its boundary', () => {
   const rate = (facts) => computeVaultHealth({ ...OK, ...facts });
-  // open shares: any is bad
   assert.equal(itemOf(rate({ openShares: 1 }), 'open_shares').status, 'bad');
   assert.equal(itemOf(rate({ openShares: 1 }), 'open_shares').points, 15);
   assert.equal(itemOf(rate({ openShares: 0 }), 'open_shares').status, 'ok');
-  // old shares
   assert.equal(itemOf(rate({ oldShares: 1 }), 'old_shares').status, 'warn');
   assert.equal(itemOf(rate({ oldShares: 1 }), 'old_shares').points, 5);
-  // trusted browsers: warn ABOVE 3
   assert.equal(itemOf(rate({ trustedBrowsers: 3 }), 'trusted_browsers').status, 'ok');
   assert.equal(itemOf(rate({ trustedBrowsers: 4 }), 'trusted_browsers').status, 'warn');
   assert.equal(itemOf(rate({ staleTrusted: 1 }), 'stale_trusted').status, 'warn');
   assert.equal(itemOf(rate({ staleTrusted: 0 }), 'stale_trusted').status, 'ok');
-  // suspicious activity: bad, the biggest weight
   const flagged = rate({ suspiciousFlags: 1 });
   assert.equal(itemOf(flagged, 'suspicious').status, 'bad');
   assert.equal(flagged.score, 75);
-  // documents
   assert.equal(itemOf(rate({ expiredDocs: 1 }), 'expired_docs').status, 'bad');
   assert.equal(rate({ expiredDocs: 1 }).score, 85);
   assert.equal(itemOf(rate({ expiringDocs: 2 }), 'expiring_docs').status, 'warn');
   assert.match(itemOf(rate({ expiringDocs: 2 }), 'expiring_docs').detail, /2 documents/);
-  // reminders off only matters when some document has a date
   assert.equal(itemOf(rate({ remindersOn: false }), 'reminders_off').status, 'ok');
   assert.equal(itemOf(rate({ remindersOn: false, hasExpiryDates: true }), 'reminders_off').status, 'warn');
   assert.equal(itemOf(rate({ remindersOn: true, hasExpiryDates: true }), 'reminders_off').status, 'ok');
-  // trash
   assert.equal(itemOf(rate({ trashNearPurge: 1 }), 'trash_near_purge').status, 'warn');
-  // singular and plural wording
   assert.match(itemOf(rate({ openShares: 1 }), 'open_shares').detail, /1 active link /);
   assert.match(itemOf(rate({ openShares: 3 }), 'open_shares').detail, /3 active links /);
-  // a mixed vault
   const mixed = rate({ openShares: 1, expiredDocs: 1, trustedBrowsers: 5 });
   assert.equal(mixed.score, 100 - 15 - 15 - 5);
   assert.ok(mixed.items.every((i) => ['ok', 'warn', 'bad'].includes(i.status)));
-  // every claim is about something Warden can see: no recovery-key or password-strength items
   assert.ok(!mixed.items.some((i) => /recovery|password strength/i.test(i.label)));
 });
 
@@ -412,7 +386,6 @@ test('GET /account/health needs a session and reports only the caller’s own da
 
   reset();
   const now = Date.now();
-  // Alice: one open share, one expired document. Bob: three open shares, a flagged-looking pile of nothing.
   world.tables.shares.push({ _id: db.oid(), ownerUserId: ALICE, ready: true, expiresAt: new Date(now + DAY), createdAt: new Date(now), passwordVerifierHash: null, recipientEmail: null });
   for (let i = 0; i < 3; i += 1) world.tables.shares.push({ _id: db.oid(), ownerUserId: BOB, ready: true, expiresAt: new Date(now + DAY), createdAt: new Date(now - 20 * DAY), passwordVerifierHash: null, recipientEmail: null });
   addDocument({ expires: dayStr(-5, new Date()) });
@@ -433,7 +406,6 @@ test('GET /account/health needs a session and reports only the caller’s own da
   assert.ok(!everything.includes(String(BOB)) && !everything.includes('bob@example.com'));
 });
 
-// ---------- purpose on share links ----------
 const PURPOSE = 'For BDO account opening';
 
 async function makeShare(body, doc = addDocument()) {
@@ -454,7 +426,6 @@ test('purpose: only inside the encrypted manifest and label; nowhere in the data
   let made;
   try {
     ({ made } = await makeShare({ purpose: `  ${PURPOSE}  ` }));
-    // visitors fetch the manifest through the public endpoint
     const shareId = made.json.id;
     const manifest = await call(viewSharedManifest, { params: { shareId }, headers: {}, query: {}, ip: '198.51.100.5' });
     assert.equal(manifest.status, 200, JSON.stringify(manifest.json || manifest.error?.message));
@@ -471,7 +442,6 @@ test('purpose: only inside the encrypted manifest and label; nowhere in the data
   assert.ok(!JSON.stringify(made.json).includes(PURPOSE), 'the create response does not echo it either');
   assert.equal(world.tables.auditevents.at(-1).type, 'share_created');
 
-  // the viewer (holding the key from the link) can read it, with the day the link was made
   const share = world.tables.shares[0];
   const plain = shareCrypto.unpackAndDecrypt(
     Buffer.concat([share.manifestIv, share.manifestCipher, share.manifestAuthTag].length ? [share.manifestIv, share.manifestCipher, share.manifestAuthTag] : []),
@@ -482,7 +452,6 @@ test('purpose: only inside the encrypted manifest and label; nowhere in the data
   assert.equal(parsed.purpose, PURPOSE);
   assert.match(parsed.sharedAt, /^\d{4}-\d{2}-\d{2}$/);
 
-  // the owner's manager shows it (decrypted from their own encrypted label, for their session only)
   const list = await call(listAllShares, { userId: ALICE, dek: DEK });
   assert.equal(list.json.shares[0].purpose, PURPOSE);
 });

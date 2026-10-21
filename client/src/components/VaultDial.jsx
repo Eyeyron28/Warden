@@ -2,11 +2,6 @@ import { Lock, LockOpen, X } from '@phosphor-icons/react';
 
 import styles from './VaultDial.module.css';
 
-/**
- * Signature visual element: a mechanical vault dial rendered in SVG.
- * Its motion is tied to real unlock state (idle scan / unlocking spin-up /
- * unlocked settle / error jolt) rather than decorative animation.
- */
 function VaultDial({ status = 'idle' }) {
   const ticks = Array.from({ length: 24 });
 

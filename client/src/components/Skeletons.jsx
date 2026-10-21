@@ -2,7 +2,6 @@ import styles from './Skeletons.module.css';
 
 const bars = (count) => Array.from({ length: count }, (_, index) => index);
 
-/** The content area of a page that has not arrived yet: a title and a few rows. Draws only inside the area. */
 export function PageSkeleton({ rows = 6 }) {
   return (
     <div className={styles.page} role="status" aria-busy="true" aria-label="Loading">
@@ -22,7 +21,6 @@ export function PageSkeleton({ rows = 6 }) {
   );
 }
 
-/** A list that is on its way, inside a page that is already on screen. */
 export function ListSkeleton({ rows = 6 }) {
   return (
     <div className={styles.rows} role="status" aria-busy="true" aria-label="Loading your files">
@@ -38,7 +36,6 @@ export function ListSkeleton({ rows = 6 }) {
   );
 }
 
-/** The signed-in frame (header, sidebar, content) while the stored session is checked: never a blank page. */
 export function AppFrameSkeleton() {
   return (
     <div className={styles.frame} aria-busy="true">

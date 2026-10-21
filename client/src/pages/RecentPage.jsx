@@ -21,10 +21,6 @@ const WHAT = {
   expiry_cleared: 'Expiry date removed',
 };
 
-/**
- * Recent: the last 30 files you uploaded, opened or changed, newest first, with the device that last opened each. It is read
- * from the activity log (nothing extra is stored), so it only reaches back as far as that log does.
- */
 function RecentPage() {
   usePageMeta('Recent', 'The files you opened, uploaded or changed lately.');
   const [data, setData] = useState(null);

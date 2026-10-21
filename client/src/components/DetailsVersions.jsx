@@ -11,7 +11,6 @@ import { formatBytes } from '../utils/listing.js';
 import { useSingleFlight } from '../utils/useSingleFlight.js';
 import styles from './DetailsPanel.module.css';
 
-/** "Upload new version": picks a file and replaces this file's contents, keeping the old ones as a previous version. */
 export function UploadVersion({ id, name, folder = '' }) {
   const input = useRef(null);
   const [state, setState] = useState({ busy: false, message: '', error: '' });
@@ -32,7 +31,6 @@ export function UploadVersion({ id, name, folder = '' }) {
       setState({ busy: false, message: '', error: check.reason });
       return;
     }
-    // Handed to the transfer tray (the panel does not wait): the earlier contents are kept as a version once it is sealed.
     transfers.enqueue([{ kind: 'newVersion', file, documentId: id, destination: folder }]);
     setState({ busy: false, message: 'Sending. Follow it in the tray at the bottom right.', error: '' });
   };
@@ -59,9 +57,8 @@ export function UploadVersion({ id, name, folder = '' }) {
   );
 }
 
-/** The previous versions of a file, with Restore, Download and Delete (each of Restore and Delete asks first). Hidden when there are none. */
 function DetailsVersions({ id, versions, limits, onChanged }) {
-  const [ask, setAsk] = useState(null); // { id, action: 'restore' | 'delete' }
+  const [ask, setAsk] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 

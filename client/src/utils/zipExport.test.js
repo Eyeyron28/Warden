@@ -10,7 +10,6 @@ const PDF = new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n
 const bytesOf = (text) => new TextEncoder().encode(text);
 const doc = (id, filename, folder = 'root', size = 10) => ({ id, filename, folder, size, updatedAt: '2026-10-01T00:00:00Z' });
 
-/** A fake vault: bytes by document id, with optional failures. */
 function vault(contents, { fail = {}, delay = 0 } = {}) {
   let active = 0;
   const stats = { maxActive: 0, calls: [] };
@@ -64,7 +63,7 @@ test('the export has the vault structure, original names, empty folders, and the
   const contents = {
     1: bytesOf('top level'),
     2: bytesOf('tax return'),
-    3: PDF, // stored without an extension: recovered from its bytes, like a download
+    3: PDF,
     4: bytesOf('Résumé'),
     5: bytesOf('first'),
     6: bytesOf('second'),

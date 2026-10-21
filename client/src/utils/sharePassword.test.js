@@ -1,4 +1,3 @@
-// Run with: cd client && npm test   (Node's built-in test runner, no deps)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -16,8 +15,6 @@ import {
   wrapShareKey,
 } from './sharePassword.js';
 
-// The server's view of the same scheme (test/share-gates.test.js builds the
-// vectors the same way): scrypt, then HMAC under two labels.
 const require = createRequire(import.meta.url);
 const serverCrypto = require('../../../server/utils/shareCrypto.js');
 const serverGate = require('../../../server/utils/shareGate.js');
@@ -34,7 +31,6 @@ test('the browser and the server derive the same verifier, and the wrap key is a
   const server = serverDerive('Correct Horse Battery', Buffer.from(salt));
   assert.equal(verifier, server.verify.toString('base64'));
   assert.notEqual(verifier, server.wrap.toString('base64'), 'domain separation: verifier is not the wrap key');
-  // Another password or salt gives something else entirely.
   assert.notEqual((await deriveShareSecrets('Correct Horse Batterx', salt)).verifier, verifier);
   assert.notEqual((await deriveShareSecrets('Correct Horse Battery', randomSalt())).verifier, verifier);
 });
@@ -59,7 +55,6 @@ test('a share key wraps under the password and only that password unwraps it', a
   await assert.rejects(unwrapShareKey(wrapped, wrongPassword, shareId), 'wrong password');
   await assert.rejects(unwrapShareKey(wrapped, wrapKey, 'f'.repeat(32)), 'wrong share id');
 
-  // The server, holding only the stored hash and the wrapped blob, can open nothing.
   const stored = serverGate.sha256(Buffer.from(verifier, 'base64'));
   const asKey = await crypto.subtle.importKey('raw', Buffer.from(stored, 'hex'), 'AES-GCM', false, ['decrypt']);
   await assert.rejects(unwrapShareKey(wrapped, asKey, shareId), 'the stored hash is not a key');
@@ -69,7 +64,6 @@ test('a share key wraps under the password and only that password unwraps it', a
 });
 
 test('the server accepts exactly the material the browser makes', async () => {
-  // Same parsing rules as shares.controller.parsePasswordBody, applied to real output.
   const shareKey = serverCrypto.generateShareKey();
   const salt = randomSalt();
   const { wrapKey, verifier } = await deriveShareSecrets('pw-123456', salt);

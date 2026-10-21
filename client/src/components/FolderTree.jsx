@@ -14,21 +14,14 @@ const ancestorsOf = (path) => {
   return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
 };
 
-/**
- * The "My files" folder tree. Only one level is fetched at a time: a folder's
- * children load when it is first expanded (and again when `version` changes
- * because folders were added, moved or trashed). The folder being viewed is
- * highlighted and its ancestors are opened for it.
- */
 function FolderTree({ current, active, version, onNavigate }) {
   const navigate = useNavigate();
-  // path -> { folders, loading, error }. The top level starts from the last answer when there is one.
   const [nodes, setNodes] = useState(() => {
     const top = peekFolderChildren('');
     return top ? { '': { folders: top.folders, loading: false, error: false } } : {};
   });
   const [expanded, setExpanded] = useState(() => new Set());
-  const [dropPath, setDropPath] = useState(null); // the folder a drag is over
+  const [dropPath, setDropPath] = useState(null);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
@@ -39,7 +32,6 @@ function FolderTree({ current, active, version, onNavigate }) {
       setNodes((state) => ({ ...state, [path]: { folders: data.folders, loading: false, error: false } }));
     } catch (err) {
       if (err?.response?.status === 404 && path !== '') {
-        // The folder is gone (trashed or moved): forget it rather than keep asking.
         setNodes((state) => {
           const next = { ...state };
           delete next[path];
@@ -56,15 +48,12 @@ function FolderTree({ current, active, version, onNavigate }) {
     }
   }, []);
 
-  // The top level, and every opened folder again when something changed.
   useEffect(() => {
-    // The first time (version 0) the answer may have been asked for a moment ago by the start-up prefetch.
     load('', { reuse: version === 0 });
     for (const path of expanded) load(path);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, load]);
 
-  // Opening a folder in the page opens its ancestors in the tree.
   useEffect(() => {
     if (!active) return;
     const needed = ancestorsOf(current);

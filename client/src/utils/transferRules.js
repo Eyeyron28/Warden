@@ -4,12 +4,6 @@ import { formatBytes } from './listing.js';
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 export const MAX_NAME_CHARS = 255;
 
-/**
- * Checked BEFORE a dialog closes, so a refusal can be shown next to the file: the 4 MB cap, the name rules (a name is needed, and
- * at most 255 characters) and the room left in the account (`usage` is the storage meter; `pendingBytes` is what the same batch
- * has already claimed). The server checks all of it again regardless.
- * @returns {{ ok: true } | { ok: false, reason: string, code: 'size' | 'name' | 'quota' }}
- */
 export function validateUpload(file, { usage = null, pendingBytes = 0 } = {}) {
   const name = String(file?.name ?? '').trim();
   if (!name) return { ok: false, reason: 'This file has no name.', code: 'name' };
@@ -20,12 +14,8 @@ export function validateUpload(file, { usage = null, pendingBytes = 0 } = {}) {
   return { ok: true };
 }
 
-/**
- * A short, plain reason for a failed upload, and whether trying again can help. Quota and size problems do not get better by
- * retrying, so they have no Retry.
- */
 export function describeTransferError(error) {
-  if (error?.described) return error.described; // Quarantine's refusal, worded by services/transferRuntime.js
+  if (error?.described) return error.described;
   const status = error?.response?.status;
   const code = error?.response?.data?.error?.code;
   const message = String(error?.response?.data?.error?.message || '');

@@ -1,9 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Share links: the per-share key never reaches the server, the database holds
-// only ciphertext, limits are enforced, and no endpoint serves shared content
-// as a web page. The models are replaced with in-memory fakes BEFORE the
-// controllers load, so these tests need no database.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -48,7 +42,6 @@ const { createShare, createBulkShare, listShares, listAllShares, getUsage, revok
 const { viewSharedManifest, viewSharedFile, openAccess } = require('../controllers/sharedView.controller');
 const { call } = db;
 
-// ---------- helpers ----------
 const DEK = crypto.randomBytes(32);
 const ALICE = db.oid();
 const BOB = db.oid();
@@ -73,7 +66,6 @@ function reset() {
 const owner = (userId = ALICE, extra = {}) => ({ userId, dek: DEK, ...extra });
 const fragmentKey = (shareUrl) => Buffer.from(new URL(shareUrl).hash.slice('#k='.length), 'base64url');
 
-// ---------- crypto ----------
 test('share crypto round-trips and is bound to its key, share id and slot', () => {
   const key = shareCrypto.generateShareKey();
   const sealed = shareCrypto.pack(shareCrypto.encryptForShare(Buffer.from('hello'), key, 'sid', 'file1'));
@@ -86,7 +78,6 @@ test('share crypto round-trips and is bound to its key, share id and slot', () =
   assert.throws(() => shareCrypto.unpackAndDecrypt(tampered, key, 'sid', 'file1'), 'tampered');
 });
 
-// ---------- creation ----------
 test('creating a share stores ciphertext only and returns the key once, in the link fragment', async () => {
   reset();
   const doc = addDocument({ filename: 'Secret Tax Return 2024.pdf', mimeType: 'application/pdf', folder: 'Taxes' });
@@ -121,7 +112,6 @@ test('creating a share stores ciphertext only and returns the key once, in the l
   );
   assert.equal(shareCrypto.SHARE_ID_RE.test(share.shareId), true);
 
-  // The vault key cannot open the copies; the share key can.
   const blob = shareCrypto.pack(file);
   assert.throws(() => shareCrypto.unpackAndDecrypt(blob, DEK, share.shareId, file.fileId));
   assert.ok(shareCrypto.unpackAndDecrypt(blob, key, share.shareId, file.fileId).equals(doc.plaintext));
@@ -132,7 +122,6 @@ test('creating a share stores ciphertext only and returns the key once, in the l
   );
   assert.equal(manifest.files[0].name, 'Secret Tax Return 2024.pdf');
 
-  // The owner's label is under the VAULT key (so the manager can show a name) and opens for nobody else.
   const label = JSON.parse(decryptFile(share.labelCipher, DEK, share.labelIv, share.labelAuthTag).toString());
   assert.deepEqual(label.names, ['Secret Tax Return 2024.pdf']);
   assert.throws(() => decryptFile(share.labelCipher, key, share.labelIv, share.labelAuthTag));
@@ -187,7 +176,6 @@ test('revoke deletes the share and its ciphertext copies; missing shares are a 4
   assert.equal(junk.error?.status, 404);
 });
 
-// ---------- limits ----------
 test('the server still accepts lifetimes the interface never offers (hours), within the 30-day cap', async () => {
   reset();
   const doc = addDocument();
@@ -241,7 +229,6 @@ test('limits: 30-day cap, 21st active share, 20MB per share, 60MB per user', asy
   assert.match(full.error.message, /Not enough shared storage/);
 });
 
-// ---------- public side ----------
 test('public endpoints serve ciphertext only, with no owner data, and identical generic errors', async () => {
   reset();
   const doc = addDocument();

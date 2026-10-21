@@ -25,16 +25,10 @@ function buildMailto(values) {
   return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-/**
- * Contact form with no backend: on submit it opens the visitor's own mail
- * app with the message prefilled, addressed to CONTACT_EMAIL (config.js).
- * A hidden honeypot field filters the simplest bots - if it's filled in,
- * the form pretends to succeed and does nothing.
- */
 function ContactSection() {
   const [values, setValues] = useState({ name: '', email: '', message: '', website: '' });
   const [touched, setTouched] = useState({});
-  const [submitted, setSubmitted] = useState(null); // null | { mailto }
+  const [submitted, setSubmitted] = useState(null);
   const formRef = useRef(null);
 
   const errors = validate(values);
@@ -47,7 +41,6 @@ function ContactSection() {
     event.preventDefault();
     setTouched({ name: true, email: true, message: true });
     if (Object.keys(errors).length > 0) {
-      // Send keyboard and screen-reader users straight to the first problem.
       const first = ['name', 'email', 'message'].find((field) => errors[field]);
       formRef.current?.querySelector(`#contact-${first}`)?.focus();
       return;

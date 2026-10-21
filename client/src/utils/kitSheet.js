@@ -1,15 +1,6 @@
 import { describeWait } from './emergencyWizard.js';
 import { kitRows } from './kitHolder.js';
 
-/**
- * What the printed "Warden Emergency Kit" sheet says. The sheet is made from EXACTLY these inputs, so it cannot
- * carry anything else: not the owner's password, recovery key or email.
- *
- * Honest wording: a stolen kit alone cannot open the vault, but anyone who has the kit AND a copy of Warden's
- * database could, and the owner can deny a request during the waiting period. Folder limits are enforced by the
- * server. The sheet says to keep it private and does not claim more.
- */
-
 export const SHEET_TITLE = 'Warden Emergency Kit';
 
 export function buildKitSheet({ contactName, address, waitMinutes, kit, date = new Date() }) {

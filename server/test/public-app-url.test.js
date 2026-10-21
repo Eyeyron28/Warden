@@ -1,7 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// PUBLIC_APP_URL: the only source of the origin used in share links and
-// emails. Never taken from request headers.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -56,7 +52,6 @@ test('production requires it; development falls back to the local dev server, ne
     assert.throws(() => assertPublicAppUrlConfig(), /required in production/, 'Vercel counts as production');
   });
   withEnv({ PUBLIC_APP_URL: undefined, NODE_ENV: 'development', VERCEL: undefined, LAN_IP: '192.168.1.50' }, () => {
-    // (a LAN_IP variable is ignored: nothing reads it any more)
     assert.deepEqual(assertPublicAppUrlConfig(), { source: 'dev', origin: 'https://localhost:5173' });
   });
   withEnv({ PUBLIC_APP_URL: 'https://warden.example.com', NODE_ENV: 'production' }, () => {

@@ -5,7 +5,6 @@ import { formatManila } from '../../utils/activityText.js';
 import { formatCountdown } from '../../utils/emergencyBanner.js';
 import styles from './emergency.module.css';
 
-/** A re-render every second, for the live countdown. */
 function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -15,11 +14,6 @@ function useNow(intervalMs = 1000) {
   return now;
 }
 
-/**
- * The open request: when access will be granted (Asia/Manila), a live countdown, and the owner's choices. While it
- * is waiting: Deny, or Approve now (which needs a fresh code). Once the wait has ended it says so and offers
- * "Turn off access" (and Deny, which still works until a session actually starts).
- */
 function RequestCard({ request, busy, onDeny, onApproveNow, onTurnOff }) {
   const now = useNow();
   const releaseMs = new Date(request.releaseAt).getTime();

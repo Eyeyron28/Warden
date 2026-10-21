@@ -31,20 +31,15 @@ function fakeServer(answer = () => ({ id: 'doc1', filename: 'x.txt', nameChanged
   return seen;
 }
 
-// ---------- names in a narrow place ----------
-
 test('a long name is cut in the middle: the extension and a few characters before it stay, whole characters only', () => {
   const long = `${'a'.repeat(251)}.pdf`;
   const { head, tail } = splitForEllipsis(long);
   assert.equal(head + tail, long);
   assert.ok(tail.endsWith('.pdf') && tail.length <= 12, tail);
   assert.ok(head.length > 200);
-  // a name without an extension keeps its last characters
   const bare = splitForEllipsis('x'.repeat(100));
   assert.equal(bare.tail.length, 8);
-  // short names are left whole
   assert.deepEqual(splitForEllipsis('a.pdf'), { head: '', tail: 'a.pdf' });
-  // Unicode: never split inside a character (emoji, Chinese, combining accents stay in one piece)
   const unicode = `${'履歴書'.repeat(30)}\u{1F4C4}final.pdf`;
   const parts = splitForEllipsis(unicode);
   assert.equal(parts.head + parts.tail, unicode);
@@ -108,8 +103,6 @@ test('names shown in the other dialogs and cards wrap or are cut: Details, Move,
   assert.match(css('components/Modal.module.css'), /\.body :where\(p, span, li, label/);
 });
 
-// ---------- the Share dialog ----------
-
 test('the Share dialog: landscape from 760 px (two columns, 90% height, up to 960 px), one column with the link first on a phone', () => {
   const modal = css('components/Modal.module.css');
   assert.match(/\.share \{([^}]*)\}/.exec(modal)[1], /max-width: min\(960px, calc\(100vw - 48px\)\);/);
@@ -124,7 +117,6 @@ test('the Share dialog: landscape from 760 px (two columns, 90% height, up to 96
   assert.match(jsx, /size="share"/);
   assert.match(jsx, /footer=\{footer\}/);
   for (const heading of ['Link settings', 'Your link']) assert.match(jsx, new RegExp(heading));
-  // what lives where
   const settingsPart = jsx.slice(jsx.indexOf('const settings'), jsx.indexOf('const linkBlock'));
   for (const field of ['share-password', 'share-max-downloads', 'share-recipient', 'share-purpose', 'Link expires after']) assert.ok(settingsPart.includes(field), `${field} is in Link settings`);
   const linkPart = jsx.slice(jsx.indexOf('const linkBlock'), jsx.indexOf('const footer'));
@@ -147,8 +139,6 @@ test('the Share dialog has no fixed widths, shrinkable children, 44 px buttons, 
   assert.match(jsx, /useState\(showQr\)/, 'the QR is already there on a wide screen');
   for (const app of ['WhatsApp', 'Telegram', 'Viber', 'Messenger']) assert.ok(strip(read('utils/shareLinks.js')).includes(app), app);
 });
-
-// ---------- one request per press ----------
 
 test('a double click, Enter twice or two taps run the action once; it can run again when it has finished, and after a failure', async () => {
   const run = createSingleFlight();
@@ -178,11 +168,9 @@ test('every submit that creates something is guarded: Upload, Scan, new version,
   const form = strip(read('components/UploadForm.jsx'));
   assert.match(form, /if \(!summary\.canUpload \|\| lock\.current\) return;\s*lock\.current = true;/, 'a ref set before any await');
   assert.match(form, /aria-disabled=\{!summary\.canUpload \|\| undefined\}/);
-  // an upload is handed to the transfer tray at once: the dialog has nothing left to submit twice
   assert.match(strip(read('pages/FilesPage.jsx')), /transfers\.enqueue\(accepted\.map\(\(file\) => \(\{ kind: 'upload', file, folder: currentPath, expiryDate \}\)\)\);\s*setUploadOpen\(false\);/);
   assert.match(strip(read('components/scan/ScanDialog.jsx')), /if \(saving\.current\) return;\s*saving\.current = true;/);
   assert.match(strip(read('components/DetailsVersions.jsx')), /onChange=\{\(event\) => run\(\(\) => choose\(event\)\)\}/);
-  // an import is one app-level job, and starting a second while one runs is refused by the job itself
   assert.match(strip(read('pages/ExportPage.jsx')), /importJob\.startPrepared\(\)/);
   assert.match(strip(read('services/importJob.js')), /if \(state\.status === 'running'\) return \{ ok: false, message: BLOCKED_MESSAGE \};/);
   assert.match(strip(read('pages/ExportPage.jsx')), /guardExport\(startExport\)/);
@@ -200,8 +188,6 @@ test('the Upload dialog checks the file BEFORE it closes (a refusal stays next t
   assert.match(page, /validateUpload\(file, \{ usage, pendingBytes: pending \}\)/);
   assert.match(page, /await getStorage\(\)/, 'against the real storage meter');
 });
-
-// ---------- the upload request itself ----------
 
 test('each upload sends its own random UUID key, the file last, and no preview with it (the preview is drawn after the file is saved)', async () => {
   invalidateAll();
@@ -251,8 +237,6 @@ test('a name that got a number is shown in the tray row ("Sealed as ...") for up
   assert.match(strip(read('services/transfers.js')), /savedAs: data\?\.nameChanged \? data\.filename : null/);
 });
 
-// ---------- folders and files as two blocks ----------
-
 const folder = (name) => ({ key: `folder:${name}`, kind: 'folder', name });
 const file = (id) => ({ key: `file:${id}`, kind: 'file', id });
 
@@ -291,7 +275,6 @@ test('the Files page renders Folders then Files, as separate blocks, with a divi
   assert.match(page, /Files <span className=\{styles\.blockCount\}>\{fileItems\.length\}<\/span>/);
   assert.match(page, /Folders <span className=\{styles\.blockCount\}>\{folderItems\.length\}<\/span>/);
   assert.match(page, /No files in this folder yet\./, 'the empty state sits under the Files heading');
-  // dropping selected files on a folder tile still moves them: both lists carry the drop handler
   assert.equal((page.match(/onDropOnFolder=\{handleDropDocument\}/g) || []).length, 2);
   const browser = strip(read('components/FileBrowser.jsx'));
   assert.match(browser, /view === 'tiles'/);
@@ -300,6 +283,5 @@ test('the Files page renders Folders then Files, as separate blocks, with a divi
   assert.match(style, /@media \(max-width: 559px\) \{\s*\.tiles \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/, 'two columns on a phone');
   const pages = css('pages/FilePages.module.css');
   assert.match(/\.blockDivider \{([^}]*)\}/.exec(pages)[1], /margin: var\(--space-4\) 0;/);
-  // no request was added, and the progressive rendering stays in the browser component (files only needs it)
   assert.doesNotMatch(page, /useProgressiveList/);
 });

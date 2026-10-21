@@ -1,13 +1,9 @@
-// Draft, not legal advice. Written for a student prototype; have it
-// reviewed before Warden is offered to the public for real.
 import { Link } from 'react-router-dom';
 
 import LegalPage from '../../components/site/LegalPage.jsx';
 import { CONTACT_EMAIL, MAX_FILE_SIZE_MB, PROJECT } from '../../config.js';
 import { usePageMeta } from '../../utils/usePageMeta.js';
 
-// Also shown inside the signup page's read-before-you-agree dialog
-// (components/site/LegalModal.jsx), so it is exported.
 export const SECTIONS = [
   {
     id: 'the-service',

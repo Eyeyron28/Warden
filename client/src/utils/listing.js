@@ -1,4 +1,3 @@
-/** Sort choices offered in the toolbar of every file view. */
 export const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
   { value: 'oldest', label: 'Oldest' },
@@ -11,12 +10,6 @@ export const SORT_OPTIONS = [
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 const time = (value) => (value ? new Date(value).getTime() : 0);
 
-/**
- * Folders first (always), then files. `items` are `{ kind, name, size, modified }`
- * with `kind` 'folder' or anything else for files. "Newest" keeps the order
- * the server sent (newest first) with expiring documents lifted to the top,
- * exactly as the list always behaved.
- */
 export function sortItems(items, sortKey) {
   const folders = items.filter((item) => item.kind === 'folder');
   const files = items.filter((item) => item.kind !== 'folder');
@@ -44,7 +37,6 @@ export function sortItems(items, sortKey) {
   return [...[...folders].sort(folderOrder), ...sortedFiles];
 }
 
-// Newest first, then expired/expiring-soon documents lifted to the top.
 function withUrgency(files) {
   const newest = [...files].sort((a, b) => time(b.modified) - time(a.modified));
   const rank = { expired: 0, expiring_soon: 1 };
@@ -59,14 +51,6 @@ function withUrgency(files) {
   return [...urgent, ...rest];
 }
 
-/**
- * Groups photos (newest first) under their month, e.g. "October 2026",
- * keeping the order they came in.
- * @template {{ createdAt: string }} T
- * @param {T[]} photos
- * @param {string} [locale]
- * @returns {Array<{ key: string, label: string, items: T[] }>}
- */
 export function groupByMonth(photos, locale) {
   const groups = [];
   const index = new Map();

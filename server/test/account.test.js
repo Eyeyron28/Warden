@@ -1,8 +1,3 @@
-// Run with: cd server && npm test   (Node's built-in test runner, no deps)
-//
-// Self-serve account deletion and the "no session without the emailed code"
-// rule. Every model is an in-memory fake installed BEFORE the controllers
-// load, so the tests can look at every collection after each step.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -16,14 +11,13 @@ delete process.env.VERCEL;
 process.env.NODE_ENV = 'test';
 
 const cryptoUtils = require('../utils/crypto');
-const loginFailures = require('./helpers/fakeDb').installLoginFailures(); // the login-lockout counter (the models below are hand-made)
+const loginFailures = require('./helpers/fakeDb').installLoginFailures();
 
 function stub(modulePath, exportsObject) {
   const resolved = require.resolve(modulePath);
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports: exportsObject };
 }
 
-// ---------- fake models ----------
 const oid = () => new mongoose.Types.ObjectId();
 const isId = (v) => v instanceof mongoose.Types.ObjectId;
 const matchValue = (actual, cond) => {
@@ -99,7 +93,6 @@ const models = {
 };
 for (const [modelName, table] of Object.entries(models)) stub(`../models/${modelName}`, fakeModel(table));
 
-// A transaction that really rolls back: snapshot every table, restore on error.
 stub('../utils/folders', {
   runInTransaction: async (fn) => {
     const snapshot = Object.fromEntries(Object.entries(world.tables).map(([k, v]) => [k, [...v]]));
@@ -138,7 +131,6 @@ stub('../utils/sessionStore', {
   destroyAllSessionsForUser: async () => {},
 });
 
-// Devices and the activity log have their own tests (devices-audit.test.js); a login here just needs a device.
 stub('../utils/deviceIdentity', {
   resolveDevice: async () => ({ device: { _id: oid() }, isNew: false, hadOtherDevices: false }),
   deviceFromCookie: async () => null,
@@ -153,7 +145,6 @@ const { unlock, verifyOtp } = require('../controllers/auth.controller');
 const { deleteChallenge, resendDeleteCode, deleteAccount } = require('../controllers/account.controller');
 const { deleteAccountData } = require('../utils/accountDeletion');
 
-// ---------- helpers ----------
 const PASSWORD = 'Tk9$Lantern-Orbit%57';
 
 function addUser(email) {
@@ -167,18 +158,16 @@ function addUser(email) {
     failedAttempts: 0, save: async () => {},
   };
   world.tables.users.push(user);
-  loginFailures.tables.loginfailures.length = 0; // each test starts with no lockout history for the address
+  loginFailures.tables.loginfailures.length = 0;
   return user;
 }
 
-// A user with a row in every collection that holds user data.
 function populate(user) {
   const t = world.tables;
   const shareId = crypto.randomBytes(16).toString('hex');
   t.documents.push({ _id: oid(), userId: user._id, filename: 'passport.png', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4) });
   t.documents.push({ _id: oid(), userId: user._id, filename: 'lease.pdf', encryptedBlob: Buffer.alloc(10) });
   t.folders.push({ _id: oid(), userId: user._id, name: 'Taxes' });
-  // Things in Trash: a file trashed on its own, and a trashed folder with a file inside it.
   const batchId = crypto.randomBytes(16).toString('hex');
   t.documents.push({ _id: oid(), userId: user._id, filename: 'old.pdf', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4), deletedAt: new Date(), purgeAt: new Date(Date.now() + 86400000), trashBatchId: null });
   t.documents.push({ _id: oid(), userId: user._id, filename: 'in-folder.png', folder: 'Old', encryptedBlob: Buffer.alloc(10), thumbCipher: Buffer.alloc(4), deletedAt: new Date(), purgeAt: new Date(Date.now() + 86400000), trashBatchId: batchId });
@@ -186,7 +175,6 @@ function populate(user) {
   t.backuplogs.push({ _id: oid(), userId: user._id });
   t.devices.push({ _id: oid(), userId: user._id, deviceIdHash: 'h', label: 'Chrome on Windows' });
   t.auditevents.push({ _id: oid(), userId: user._id, seq: 1, type: 'login', hash: 'x' });
-  // A share with every protection on, and everything that hangs off it.
   t.shares.push({
     _id: oid(), ownerUserId: user._id, shareId, sourceDocumentIds: [],
     recipientEmail: 'recipient@example.com', downloadCount: 2, maxDownloads: 5,
@@ -194,7 +182,6 @@ function populate(user) {
   });
   t.sharedfiles.push({ _id: oid(), shareId, fileId: 'f1' });
   t.shareaccess.push({ _id: oid(), shareId, tokenHash: 'cd'.repeat(32), emailOk: true, passwordOk: true });
-  // The emailed-code challenge for a visitor of that share (userId is the share's owner).
   t.otpchallenges.push({ _id: oid(), userId: user._id, purpose: 'share-email', shareId, accessId: 'a1' });
   t.ratelimits.push({ _id: oid(), bucket: 'share-password', key: shareId });
   t.ratelimits.push({ _id: oid(), bucket: 'share-email', key: shareId });
@@ -202,7 +189,7 @@ function populate(user) {
   t.trusteddevices.push({ _id: oid(), userId: user._id, tokenHash: 'ef'.repeat(32), label: 'Chrome on Windows' });
   t.ratelimits.push({ _id: oid(), bucket: 'otp-email-account', key: String(user._id) });
   t.ratelimits.push({ _id: oid(), bucket: 'signup-email', key: user.email });
-  t.ratelimits.push({ _id: oid(), bucket: 'login', key: '203.0.113.7' }); // an IP: cannot be tied to a person
+  t.ratelimits.push({ _id: oid(), bucket: 'login', key: '203.0.113.7' });
 }
 
 const countsFor = () => Object.fromEntries(NAMES.map((n) => [n, world.tables[n].length]));
@@ -211,7 +198,6 @@ const rowsOwnedBy = (user) => {
   const json = JSON.stringify(world.tables, (key, value) => (value && value.type === 'Buffer' ? '[bytes]' : value));
   const shareIds = world.tables.shares.filter((r) => String(r.ownerUserId) === id).map((r) => r.shareId);
   return {
-    // Includes the recipient email, the wrapped key and verifier hash that only exist inside a share.
     stringHits: json.includes(id) || json.includes(user.email) || shareIds.length > 0,
     byOwner: ['documents', 'documentversions', 'folders', 'trashfolders', 'backuplogs', 'devices', 'auditevents', 'sessions', 'otpchallenges', 'trusteddevices', 'reminderlogs', 'emergencyaccesses', 'emergencyrequests']
       .reduce((n, name) => n + world.tables[name].filter((r) => String(r.userId) === id).length, 0)
@@ -246,7 +232,6 @@ async function readyToDelete(user) {
   return { token: r.json.challengeToken, code: lastCode() };
 }
 
-// ---------- tests ----------
 test('delete-challenge re-checks the password with the login lockout and sends nothing on failure', async () => {
   reset();
   const user = addUser('ana@example.com');
@@ -291,7 +276,6 @@ test('a login code cannot authorise deletion, and a delete code cannot log in', 
   assert.equal(attack.error.message, GENERIC);
   assert.equal(world.tables.documents.length, 4, 'nothing deleted');
   assert.equal(world.tables.users.length, 1);
-  // ...and the login challenge was not harmed: it still completes the login.
   const ok = await call(verifyOtp, { body: { challengeToken: login.json.challengeToken, code: loginCode } });
   assert.equal(ok.json.sessionToken, 'session-1');
 
@@ -300,7 +284,6 @@ test('a login code cannot authorise deletion, and a delete code cannot log in', 
   assert.equal(reverse.error.status, 401);
   assert.equal(reverse.error.message, GENERIC);
   assert.equal(sessions.length, 1, 'no session was issued by a delete code');
-  // ...and the delete challenge still works for deletion.
   const real = await call(deleteAccount, { userId: user._id, body: { challengeToken: del.token, code: del.code, emailConfirmation: 'ana@example.com' } });
   assert.equal(real.status, 200);
   assert.ok(real.cleared.some((name) => /^warden_td_[0-9a-f]{16}$/.test(name)) && real.cleared.includes('warden_td'), 'the accounts trusted-browser cookie (and the old shared one) are cleared with the account');
@@ -371,7 +354,6 @@ test('deleting removes every row for the account, leaves other accounts alone, a
   assert.equal(left.stringHits, false, 'the id and the email appear nowhere in any collection');
   assert.equal(world.tables.users.length, 1);
   assert.equal(world.tables.ratelimits.filter((r) => r.key === '203.0.113.7').length, 2, 'IP-keyed rows are not about a person and stay');
-  // Ben's rows are exactly as before (compare after removing the rows that were ana's).
   assert.equal(rowsOwnedBy(ben).byOwner, 13);
   assert.ok(world.tables.sharedfiles.length === 1 && world.tables.shares.length === 1, "only ben's share and its copy remain");
   assert.ok(benBefore.length > 0 && anaBefore.documents === 8);
@@ -389,7 +371,7 @@ test('a mid-way failure rolls everything back, and the deletion can simply be ru
   populate(ana);
   const before = countsFor();
 
-  world.fail = 'folders'; // blow up after documents were already removed inside the transaction
+  world.fail = 'folders';
   const first = await readyToDelete(ana);
   const failed = await call(deleteAccount, { userId: ana._id, body: { challengeToken: first.token, code: first.code, emailConfirmation: 'ana@example.com' } });
   assert.equal(failed.error.status, 500);
@@ -409,7 +391,7 @@ test('without a transaction the order revokes access first and a retry finishes 
   const ana = addUser('ana@example.com');
   populate(ana);
 
-  world.fail = 'backuplogs'; // stops after shares, devices, tokens, sessions, documents and folders are gone
+  world.fail = 'backuplogs';
   await assert.rejects(deleteAccountData(ana._id, { email: ana.email, transaction: false }), /injected failure/);
   assert.equal(world.tables.shares.length, 0, 'share links already dead');
   assert.equal(world.tables.sharedfiles.length, 0);
@@ -422,7 +404,6 @@ test('without a transaction the order revokes access first and a retry finishes 
   assert.equal(world.tables.users.length, 0);
   assert.equal(counts.backuplogs, 1);
   assert.equal(rowsOwnedBy(ana).stringHits, false);
-  // Running it yet again is harmless.
   const again = await deleteAccountData(ana._id, { email: ana.email, transaction: false });
   assert.ok(Object.values(again).every((n) => n === 0));
 });
@@ -431,7 +412,7 @@ test('an interrupted deletion that already removed the user is finished by calli
   reset();
   const ana = addUser('ana@example.com');
   populate(ana);
-  world.tables.users = []; // the account is gone but some rows linger
+  world.tables.users = [];
   const result = await call(deleteAccount, { userId: ana._id, body: { challengeToken: 'x', code: '123456', emailConfirmation: 'ana@example.com' } });
   assert.equal(result.status, 200);
   assert.equal(rowsOwnedBy(ana).byOwner, 0);

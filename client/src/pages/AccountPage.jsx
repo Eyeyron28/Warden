@@ -19,24 +19,12 @@ import site from '../components/site/site.module.css';
 import forms from '../components/site/forms.module.css';
 import styles from './auth/auth.module.css';
 
-/**
- * Account settings: for now just the account's email and the one thing that
- * cannot be undone - deleting it (the Data Privacy Act right to erasure).
- *
- * Deleting is four deliberate steps, each of which can be walked back with
- * Back/Cancel until the last button:
- *   1. read what goes and what does not;
- *   2. master password again -> a deletion code is emailed (it cannot log in);
- *   3. the six-digit code;
- *   4. type the account email, then delete.
- * The challenge token and the code live only in this component's state.
- */
 function AccountPage() {
   usePageMeta('Account', 'Your Warden account.');
   const navigate = useNavigate();
 
   const [accountEmail, setAccountEmail] = useState('');
-  const [step, setStep] = useState('idle'); // idle | password | code | confirm
+  const [step, setStep] = useState('idle');
   const [password, setPassword] = useState('');
   const [challenge, setChallenge] = useState(null);
   const [code, setCode] = useState('');
@@ -101,11 +89,6 @@ function AccountPage() {
     setDial('unlocking');
     try {
       await deleteAccount({ challengeToken: challenge.challengeToken, code, emailConfirmation: typedEmail.trim() });
-      // Let go of everything held for the account. We leave this page first, and only
-      // then does the session token go - clearing it while this route is still
-      // mounted would bounce us to the login screen, so the navigation is
-      // committed synchronously first. Dropping the token also empties the
-      // decrypted thumbnail cache. The notice is plain text in router state.
       flushSync(() => navigate('/', { replace: true, state: { accountDeleted: true } }));
       forgetPreviousVisit({ reason: 'signout' });
       clearToken();
@@ -115,7 +98,6 @@ function AccountPage() {
       setTimeout(() => setDial('idle'), 600);
       const status = err?.response?.status;
       if (status === 401) {
-        // Wrong, expired or used code (one answer for all): back to the code step.
         setCode('');
         setStep('code');
         setError('That code is incorrect or has expired. Check it, or go back and request a new one.');
@@ -221,7 +203,6 @@ function AccountPage() {
               </p>
               <OtpChallengePanel
                 challenge={challenge}
-                // Held for the last step; the server checks it when you confirm.
                 onSubmitCode={async (entered) => entered}
                 onResend={(challengeToken) => resendDeleteCode(challengeToken)}
                 onVerified={(entered) => {

@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Quarantine's scanner (utils/fileScanner.js): every rule, on synthetic buffers built in code (test/helpers/riskySamples.js).
-// No file is committed, nothing is real malware, and the standard antivirus test string is assembled at run time.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,8 +8,6 @@ const S = require('./helpers/riskySamples');
 
 const scan = (name, buffer, type = '') => scanBuffer({ name, type, buffer });
 const reasonsOf = (name, buffer, type) => scan(name, buffer, type).reasons.sort();
-
-// ---------- clean files stay clean ----------
 
 test('ordinary files are clean: a plain PDF, PNG, JPEG, DOCX without macros, TXT, CSV, a clean SVG, an old Office file without macros', () => {
   for (const [name, buffer, type] of [
@@ -40,8 +34,6 @@ test('the plain words "on", "once" and a PDF name like /JSON or /Author are not 
   assert.equal(scan('prose.txt', S.text('onclick = nothing. once = twice. on=1')).verdict, 'clean');
   assert.equal(scan('a.pdf', S.pdfWith('/JSONData 3 0 R /AAPL 1 0 R')).verdict, 'clean');
 });
-
-// ---------- each check ----------
 
 test('TYPE_MISMATCH: the name says one thing and the bytes another (alone this is below the threshold: a note, not a hold)', () => {
   const result = scan('holiday.jpg', S.plainPdf());
@@ -72,7 +64,6 @@ test('PDF_ACTIVE: /JavaScript, /JS, /OpenAction, /AA, /Launch, /RichMedia and /E
     assert.deepEqual(result.reasons, ['PDF_ACTIVE'], marker);
     assert.equal(result.verdict, 'suspicious', marker);
   }
-  // active content near the end of a large PDF is still seen (the end of the file is searched too)
   const big = Buffer.concat([S.text('%PDF-1.4\n'), Buffer.alloc(3 * 1024 * 1024, 0x20), S.text('<< /OpenAction 1 0 R >>\n%%EOF')]);
   assert.deepEqual(scan('big.pdf', big).reasons, ['PDF_ACTIVE']);
 });
@@ -122,7 +113,6 @@ test('KNOWN_TEST_SIGNATURE and a program in disguise are BLOCKED; a program\'s o
   assert.ok(exe.reasons.includes('EXECUTABLE_CONTENT') && exe.reasons.includes('TYPE_MISMATCH'));
   assert.equal(scan('photo.png', S.fakeElf()).verdict, 'blocked');
   assert.equal(scan('setup.exe', S.fakeProgram()).verdict, 'blocked');
-  // "MZ" text without a real header is not a program
   assert.equal(scan('letters.txt', S.text('MZ is a pair of letters')).verdict, 'clean');
   assert.equal(scan('note.exe', S.text('MZ plain words, not a program')).verdict, 'suspicious');
 });
@@ -154,8 +144,6 @@ test('every reason has a weight, a severity and a plain sentence, and none of th
   assert.equal(severityOf([]), 'low');
 });
 
-// ---------- limits and safety ----------
-
 test('a 4 MB file is scanned in under 50 ms (each kind of worst case)', () => {
   const four = 4 * 1024 * 1024;
   const pdfBig = Buffer.concat([S.text('%PDF-1.4\n'), Buffer.alloc(four - 9, 0x41)]);
@@ -163,7 +151,7 @@ test('a 4 MB file is scanned in under 50 ms (each kind of worst case)', () => {
   const zipBig = Buffer.concat([S.docx(), Buffer.alloc(four - 400, 0)]);
   const oleBig = Buffer.concat([S.oleClean(), Buffer.alloc(four - 208, 0x55)]);
   for (const [name, buffer] of [['big.pdf', pdfBig], ['big.txt', textBig], ['big.docx', zipBig], ['big.doc', oleBig], ['big.bin', Buffer.alloc(four, 0x7f)]]) {
-    scan(name, buffer); // warm
+    scan(name, buffer);
     const started = process.hrtime.bigint();
     scan(name, buffer);
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
@@ -197,8 +185,6 @@ test('a buffer that is not a Buffer is an error for the caller to handle (the up
   assert.throws(() => scanBuffer({ name: 'a.txt', buffer: 'not a buffer' }), /needs a Buffer/);
 });
 
-// ---------- the docs and the demo samples ----------
-
 test('docs/QUARANTINE.md: the rules table matches the code, the honest limits are there, and the forbidden words are not', () => {
   const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'QUARANTINE.md'), 'utf8');
   for (const [code, row] of Object.entries(REASONS)) {
@@ -230,8 +216,6 @@ test('make-demo-samples writes only harmless files that the rules hold, and neve
   }
   assert.match(fs.readFileSync(path.join(__dirname, '..', '..', '.gitignore'), 'utf8'), /^demo-samples\/$/m);
 });
-
-// ---------- plain zips and archives Warden cannot inspect ----------
 
 const { isPlainZip } = require('../utils/fileScanner');
 

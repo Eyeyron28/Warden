@@ -9,7 +9,6 @@ import styles from './auth.module.css';
 
 export const CODE_DIDNT_WORK = 'That code didn’t work. Check it or ask for a new one.';
 
-/** The server's neutral answer, as millisecond timestamps for the countdowns. */
 export function readSignupChallenge(data) {
   return {
     expiresAt: new Date(data.expiresAt).getTime(),
@@ -18,18 +17,10 @@ export function readSignupChallenge(data) {
   };
 }
 
-/**
- * Step 2 of sign-up: "Enter the code we emailed". One six-digit field (numeric keypad, the browser's one-time-code
- * autofill, paste-friendly), the address it went to, "Wrong email? Go back", and a resend with its 60-second countdown.
- * Whatever goes wrong with the code, the person sees the one neutral message.
- *
- * Holds only what it needs on screen: the digits typed. The password stays in the page's state until the code is accepted,
- * and is never stored anywhere.
- */
 function SignupCodeStep({ email, challenge: initial, onSubmitCode, onResend, onBack, onExpired }) {
   const [challenge, setChallenge] = useState(() => readSignupChallenge(initial));
   const [code, setCode] = useState('');
-  const [message, setMessage] = useState(null); // { tone: 'error' | 'info', text }
+  const [message, setMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -72,7 +63,6 @@ function SignupCodeStep({ email, challenge: initial, onSubmitCode, onResend, onB
     const next = digitsOnly(event.target.value).slice(0, CODE_LENGTH);
     setCode(next);
     if (message?.tone === 'error') setMessage(null);
-    // The sixth digit sends it, so a pasted or autofilled code is one step.
     if (next.length === CODE_LENGTH) submit(next);
   };
 

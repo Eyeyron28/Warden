@@ -2,19 +2,6 @@ import VaultDial from '../../components/VaultDial.jsx';
 import site from '../../components/site/site.module.css';
 import styles from './auth.module.css';
 
-/**
- * Frame for every auth screen.
- *
- *  - Desktop landscape (1024px and wider): two columns centred in the viewport.
- *    On the left, the vault dial large, with the wordmark and a tagline under it
- *    (decorative: aria-hidden, nothing focusable). On the right, the heading, helper
- *    text and the form, centred on the same horizontal axis as the dial.
- *  - Everything else (phones, tablets in portrait, narrow windows): one column, as
- *    before - the dial small and above the form, and only when a screen asks for it.
- *
- * `layout="stacked"` opts out of the two columns (the Account page uses this frame
- * inside the app shell, where a big brand column would be out of place).
- */
 function AuthLayout({ title, subtitle, dial, children, footer, wide = false, layout = 'split', resetPage = false }) {
   const split = layout === 'split';
   return (

@@ -1,9 +1,3 @@
-// Run with: cd server && npm test
-//
-// Forgot password around the emailed code: start -> code -> single-use ticket ->
-// recovery key (vault kept) or start over (vault erased), plus "Try another way"
-// (recovery key alone). Every model is an in-memory fake, so each test can look at
-// every collection afterwards.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -38,7 +32,6 @@ function clearWorld() {
   budgets.clear();
 }
 
-/** A real account: a vault key wrapped under the password AND the recovery key, with a document and friends. */
 function addUser(email, { verified = true } = {}) {
   const salt = cryptoUtils.generateSalt();
   const dek = cryptoUtils.generateDEK();
@@ -84,7 +77,6 @@ const lastCode = () => world.mails.at(-1).text.match(/\b(\d{6})\b/)[1];
 const start = (email, ip) => call(reset.startReset, { body: { email }, headers: { 'user-agent': UA }, ip });
 const verify = (challengeToken, code) => call(reset.verifyResetCode, { body: { challengeToken, code } });
 
-/** The whole happy path up to a ticket. */
 async function ticketFor(email) {
   const s = await start(email);
   const v = await verify(s.json.challengeToken, lastCode());
@@ -99,8 +91,6 @@ const keyOnly = (email, recoveryKey, newPassword = NEW_PASSWORD, ip = '203.0.113
   call(reset.resetWithRecoveryKeyOnly, { body: { email, recoveryKey, newPassword }, headers: { 'user-agent': UA }, ip });
 
 const shapeOf = (json) => Object.keys(json).sort().join(',');
-
-// ---------------------------------------------------------------- screen 1
 
 test('start: known, unknown, unverified and malformed addresses get the same answer; only the real one is mailed', async () => {
   clearWorld();
@@ -153,7 +143,6 @@ test('start: an address with no account takes about as long as a real send', asy
   addUser('ana@example.com');
   world.sendDelayMs = 300;
   try {
-    // the decoy's wait follows a smoothed average of recent real sends, so let it settle
     let real = 0;
     for (let i = 0; i < 8; i += 1) {
       budgets.clear();
@@ -172,8 +161,6 @@ test('start: an address with no account takes about as long as a real send', asy
   }
 });
 
-// ---------------------------------------------------------------- screen 2
-
 test('code: wrong, reused, expired and out-of-tries codes all fail with the same generic 401', async () => {
   clearWorld();
   addUser('ana@example.com');
@@ -184,23 +171,19 @@ test('code: wrong, reused, expired and out-of-tries codes all fail with the same
   const failures = [];
   for (let i = 0; i < 4; i += 1) failures.push((await verify(s.json.challengeToken, wrong)).error);
   assert.ok(failures.every((e) => e.status === 401 && e.message === GENERIC_CODE_FAILURE));
-  // the 5th guess (even the right one) is the last: the challenge is gone afterwards
   assert.equal((await verify(s.json.challengeToken, wrong)).error.status, 401);
   assert.equal((await verify(s.json.challengeToken, good)).error.message, GENERIC_CODE_FAILURE, 'dead after 5 attempts');
 
-  // correct once, then not again
   const s2 = await start('ana@example.com');
   const code2 = lastCode();
   assert.ok((await verify(s2.json.challengeToken, code2)).json.resetTicket);
   assert.equal((await verify(s2.json.challengeToken, code2)).error.message, GENERIC_CODE_FAILURE, 'single use');
 
-  // expired
   const s3 = await start('ana@example.com');
   const code3 = lastCode();
   world.tables.otpchallenges.at(-1).expiresAt = new Date(Date.now() - 1000);
   assert.equal((await verify(s3.json.challengeToken, code3)).error.message, GENERIC_CODE_FAILURE);
 
-  // malformed
   for (const token of [undefined, 'x', '1.2', 5, {}]) assert.equal((await verify(token, '123456')).error.status, 401);
 });
 
@@ -228,7 +211,7 @@ test('code: resend has a 60-second gap, 3 resends, and a decoy looks the same', 
     const results = [];
     for (let i = 0; i < 4; i += 1) {
       const row = world.tables.otpchallenges.at(-1);
-      row.lastSentAt = new Date(Date.now() - 61 * 1000); // the minute has passed
+      row.lastSentAt = new Date(Date.now() - 61 * 1000);
       const out = await call(reset.resendResetCode, { body: { challengeToken: token } });
       results.push(out.error ? out.error.status : out.json.resendsLeft);
       if (!out.error) token = out.json.challengeToken;
@@ -254,18 +237,15 @@ test('purposes are separate: a login or deletion code cannot be used here, and a
   clearWorld();
   const { user } = addUser('ana@example.com');
 
-  // a LOGIN code presented to the reset verifier
   const login = await call(auth.unlock, { body: { email: user.email, password: PASSWORD }, headers: { 'user-agent': UA } });
   assert.equal(login.json.otpRequired, true);
   const loginCode = lastCode();
   assert.equal((await verify(login.json.challengeToken, loginCode)).error.message, GENERIC_CODE_FAILURE);
 
-  // a DELETE-ACCOUNT code presented to the reset verifier
   const del = await call(account.deleteChallenge, { userId: user._id, body: { password: PASSWORD } });
   const delCode = lastCode();
   assert.equal((await verify(del.json.challengeToken, delCode)).error.message, GENERIC_CODE_FAILURE);
 
-  // a RESET code presented to login and to deletion
   const s = await start(user.email);
   const resetCode = lastCode();
   assert.equal((await call(auth.verifyOtp, { body: { challengeToken: s.json.challengeToken, code: resetCode } })).error.status, 401);
@@ -274,11 +254,8 @@ test('purposes are separate: a login or deletion code cannot be used here, and a
     401
   );
   assert.equal(world.tables.sessions.length, 0, 'no session was ever issued');
-  // ...and it still works for what it is for
   assert.ok((await verify(s.json.challengeToken, resetCode)).json.resetTicket);
 });
-
-// ---------------------------------------------------------------- the ticket
 
 test('ticket: random, stored only as a hash, tied to the user, 10 minutes, never a session or a key', async () => {
   clearWorld();
@@ -300,7 +277,6 @@ test('ticket: random, stored only as a hash, tied to the user, 10 minutes, never
   assert.equal(world.tables.sessions.length, 0);
   assert.equal(world.tables.otpchallenges.length, 0, 'the code is consumed');
 
-  // a newer ticket replaces the older one
   const newer = await ticketFor(user.email);
   assert.equal(world.tables.resettickets.length, 1);
   assert.equal((await withKey(ticket, 'AAAA-AAAA-AAAA-AAAA')).error.code, 'RESET_TICKET_INVALID');
@@ -323,8 +299,6 @@ test('ticket: expired, malformed and foreign tickets are refused with one generi
   assert.equal(world.tables.users[0].passwordHash, user.passwordHash, 'nothing changed');
 });
 
-// ---------------------------------------------------------------- option A
-
 test('option A: the right recovery key (any spacing and case) keeps the vault; after login the vault key is unchanged', async () => {
   clearWorld();
   const { user, dek, recoveryKey } = addUser('ana@example.com');
@@ -343,7 +317,6 @@ test('option A: the right recovery key (any spacing and case) keeps the vault; a
   assert.equal(world.tables.folders.length, 1);
   assert.notEqual(user.passwordHash, oldHash);
   assert.equal(user.dekFingerprint, cryptoUtils.fingerprintDEK(dek), 'same vault key');
-  // the new password unwraps the SAME vault key; the old one no longer logs in
   const reopened = cryptoUtils.unwrapKey(
     user.wrappedDEKPassword,
     cryptoUtils.deriveEncryptionKey(NEW_PASSWORD, user.salt),
@@ -352,12 +325,10 @@ test('option A: the right recovery key (any spacing and case) keeps the vault; a
   );
   assert.ok(reopened.equals(dek));
   assert.ok(!cryptoUtils.verifyPassword(PASSWORD, user.salt, user.passwordHash));
-  // not logged in; the next login still needs the emailed code
   world.mails = [];
   const login = await call(auth.unlock, { body: { email: user.email, password: NEW_PASSWORD }, headers: { 'user-agent': UA } });
   assert.equal(login.json.otpRequired, true);
   assert.equal(login.json.sessionToken, undefined);
-  // and the same recovery key still works afterwards
   assert.ok(cryptoUtils.verifyRecoveryKey(recoveryKey, user.recoveryKeyHash));
 });
 
@@ -396,8 +367,6 @@ test('option A: a weak password is a form error and does not burn an attempt; th
   assert.equal((await withKey(ticket, recoveryKey, 'Another#Strong-Pass92')).error.code, 'RESET_TICKET_INVALID', 'spent');
 });
 
-// ---------------------------------------------------------------- option B
-
 test('option B: confirmation email required; the vault is wiped; a NEW recovery key is shown once; the old key is dead', async () => {
   clearWorld();
   const { user, recoveryKey: oldKey } = addUser('ana@example.com');
@@ -422,25 +391,20 @@ test('option B: confirmation email required; the vault is wiped; a NEW recovery 
   for (const table of ['documents', 'folders', 'trashfolders', 'shares', 'devices', 'backuplogs', 'trusteddevices', 'sessions', 'resettickets']) {
     assert.equal(mine(world.tables[table]).length, 0, `${table}: zero rows`);
   }
-  // The old log went with the vault; the only event is the new chain's first one: the password change itself.
   assert.deepEqual(mine(world.tables.auditevents).map((e) => [e.seq, e.type]), [[1, 'password_changed']], 'a fresh activity log');
   const bens = (rows) => rows.filter((r) => String(r.userId ?? r.ownerUserId) === String(other.user._id));
   assert.equal(bens(world.tables.documents).length, 2, "ben's vault is untouched");
   assert.equal(bens(world.tables.shares).length, 1);
 
-  // new vault key, new recovery key; the old recovery key opens nothing
   assert.ok(cryptoUtils.verifyRecoveryKey(out.json.recoveryKey, user.recoveryKeyHash));
   assert.ok(!cryptoUtils.verifyRecoveryKey(oldKey, user.recoveryKeyHash));
   assert.ok(cryptoUtils.verifyPassword(NEW_PASSWORD, user.salt, user.passwordHash));
   const old = await keyOnly(user.email, oldKey, 'Zx9$Quarry-Lantern44');
   assert.equal(old.error.status, 401, 'the old key no longer works');
   assert.equal(world.tables.documents.filter((d) => String(d.userId) === String(user._id)).length, 0);
-  // and the new one does
   budgets.clear();
   assert.equal((await keyOnly(user.email, out.json.recoveryKey, 'Zx9$Quarry-Lantern44')).status, 200);
 });
-
-// ---------------------------------------------------------------- Try another way
 
 test('try another way: the right key resets and keeps the vault, no emailed code involved', async () => {
   clearWorld();
@@ -485,30 +449,24 @@ test('try another way: failures lock with growing delays, and an IP is limited a
   const { user, recoveryKey } = addUser('ana@example.com');
   const wrong = 'ABCD-EFGH-JKMN-PQRS';
 
-  // first miss: an immediate retry is held back (and says for how long); the right key is held back too
   assert.equal((await keyOnly(user.email, wrong)).error.status, 401);
   const held = await keyOnly(user.email, recoveryKey);
   assert.equal(held.error.status, 429);
   assert.ok(held.error.retryAfterSeconds > 0);
   assert.equal(held.error.message, 'Too many attempts. Please try again later.');
-  // the same message and shape for an address that does not exist
   assert.equal((await keyOnly('ghost@example.com', wrong)).error.status, 401);
   assert.equal((await keyOnly('ghost@example.com', wrong)).error.status, 429);
 
-  // the tiers: 10 s, 2 min, 10 min, 1 h
   const names = reset.KEY_ONLY_EMAIL_BUDGETS.map((b) => `${b.name}:${b.max}:${b.windowMs}`);
   assert.deepEqual(names, ['rk-gap-10s:1:10000', 'rk-gap-2m:2:120000', 'rk-gap-10m:3:600000', 'rk-fail-1h:5:3600000']);
   assert.equal(reset.KEY_ONLY_EMAIL_BUDGETS.at(-1).max, 5, '5 failures an hour per email');
 
-  // per IP: 10 failures an hour across different emails, then even a right key is refused from that IP
   budgets.clear();
   const ip = '198.51.100.77';
   for (let i = 0; i < 10; i += 1) assert.equal((await keyOnly(`n${i}@example.com`, wrong, NEW_PASSWORD, ip)).error.status, 401);
   assert.equal((await keyOnly(user.email, recoveryKey, NEW_PASSWORD, ip)).error.status, 429);
   assert.equal((await keyOnly(user.email, recoveryKey, NEW_PASSWORD, '198.51.100.78')).status, 200, 'another IP is not affected');
 });
-
-// ---- the recovery-key-only budgets cover every case (security review, F4) ----
 
 test('try another way: a burst of parallel guesses is counted before it is checked - exactly one gets a key check', async () => {
   clearWorld();
@@ -519,7 +477,6 @@ test('try another way: a burst of parallel guesses is counted before it is check
   const refused = burst.filter((out) => out.error?.status === 429).length;
   assert.equal(checked, 1, 'only the first attempt of the 10-second gap reaches the key check');
   assert.equal(refused, 29);
-  // The same holds across different emails from one connection: 10 an hour, however they arrive.
   budgets.clear();
   const ip = '198.51.100.90';
   const spread = await Promise.all(Array.from({ length: 25 }, (_, i) => keyOnly(`burst${i}@example.com`, wrong, NEW_PASSWORD, ip)));
@@ -564,8 +521,6 @@ test('try another way: the notification email has the time and browser, no IP, n
   assert.doesNotMatch(mail.text, new RegExp(recoveryKey), 'never the key');
 });
 
-// ------------------------------------------------------- after ANY reset
-
 test('after every reset type: sessions and trusted browsers are gone, pending tickets and codes die, nobody is logged in', async () => {
   const makers = {
     'option A': async (u) => withKey(await ticketFor(u.user.email), u.recoveryKey),
@@ -578,13 +533,12 @@ test('after every reset type: sessions and trusted browsers are gone, pending ti
     const ben = addUser('ben@example.com');
     addVaultStuff(u.user._id);
     addVaultStuff(ben.user._id);
-    // pending things that must die: a login code, a delete code, a reset code, and a second ticket's worth of state
     await call(auth.unlock, { body: { email: u.user.email, password: PASSWORD }, headers: { 'user-agent': UA } });
     await start(u.user.email);
     const pending = world.tables.otpchallenges.filter((c) => String(c.userId) === String(u.user._id)).length;
     assert.ok(pending >= 2, label);
     const stale = await ticketFor(u.user.email);
-    await start(u.user.email); // another code in flight
+    await start(u.user.email);
 
     const out = await run(u);
     assert.equal(out.error, null, label);
@@ -595,23 +549,17 @@ test('after every reset type: sessions and trusted browsers are gone, pending ti
     assert.equal(mine(world.tables.otpchallenges).length, 0, `${label}: codes dropped`);
     assert.equal(mine(world.tables.resettickets).length, 0, `${label}: tickets dropped`);
     assert.equal((await withKey(stale, u.recoveryKey, 'Another#Strong-Pass92')).error.code, 'RESET_TICKET_INVALID', `${label}: the old ticket fails`);
-    // another account is untouched
     assert.equal(world.tables.sessions.filter((r) => String(r.userId) === String(ben.user._id)).length, 1, label);
     assert.equal(world.tables.trusteddevices.filter((r) => String(r.userId) === String(ben.user._id)).length, 1, label);
-    // the old password is dead; the new one only gets as far as the emailed code
     assert.equal((await call(auth.unlock, { body: { email: u.user.email, password: PASSWORD }, headers: {} })).error.status, 401, `${label}: old password`);
-    budgets.clear(); // an hour later: the per-account email budget has reset
+    budgets.clear();
     const login = await call(auth.unlock, { body: { email: u.user.email, password: NEW_PASSWORD }, headers: {} });
     assert.equal(login.json.otpRequired, true, `${label}: new password still needs the code`);
     assert.equal(login.json.sessionToken, undefined);
-    // the owner was told
     assert.ok(world.mails.some((m) => /password was changed/i.test(m.subject)), `${label}: notified`);
-    // the trusted-browser cookie of THIS browser is cleared
     assert.ok(out.cleared.some((name) => /^warden_td_[0-9a-f]{16}$/.test(name)) && out.cleared.includes('warden_td'), `${label}: cookie cleared`);
   }
 });
-
-// ------------------------------------------------------- emails, logs, removal
 
 test('emails: codes only in code emails; no reset links anywhere in the codebase or the mail', async () => {
   clearWorld();
@@ -636,7 +584,7 @@ test('emails: codes only in code emails; no reset links anywhere in the codebase
   walk(root);
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
-    if (path.basename(file) === 'auth.routes.js') continue; // the 410 handlers are named there
+    if (path.basename(file) === 'auth.routes.js') continue;
     assert.doesNotMatch(source, /reset-password\?token|resetTokenHash|resetTokenExpiresAt/, path.relative(root, file));
   }
   assert.equal(require('../models/User').schema?.path?.('resetTokenHash'), undefined);

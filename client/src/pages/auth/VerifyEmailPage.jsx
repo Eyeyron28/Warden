@@ -11,10 +11,6 @@ import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './auth.module.css';
 
-// Verification links are single-use. React's StrictMode runs effects
-// twice in development, which would send the token twice and report the
-// (already-consumed) second attempt as a failure - so each token's
-// request is made once and shared.
 const verifications = new Map();
 function verifyOnce(token) {
   if (!verifications.has(token)) verifications.set(token, verifyEmailToken(token));
@@ -25,7 +21,7 @@ function VerifyEmailPage() {
   usePageMeta('Verify your email', 'Confirm your email address to finish setting up your Warden vault.');
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
-  const [status, setStatus] = useState(token ? 'verifying' : 'invalid'); // verifying | verified | invalid
+  const [status, setStatus] = useState(token ? 'verifying' : 'invalid');
   const [email, setEmail] = useState('');
 
   useEffect(() => {

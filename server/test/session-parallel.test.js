@@ -1,14 +1,3 @@
-// Run with: cd server && npm test
-//
-// middleware/requireSession.js now slides the session and notes the device TOGETHER (Promise.all) instead of one after the
-// other. That is only acceptable if the parallel write can never do anything the sequential one could not. These tests run
-// the REAL middleware against a LOCAL throwaway MongoDB (real atomic updates, not a fake) and prove:
-//   (a) a revoked session cannot be touched, extended or reactivated - not before the request, not by a revoke that lands
-//       between the lookup and the writes;
-//   (b) the sliding update can never push a session past its absolute lifetime;
-//   (c) an expired session is refused exactly like an unknown one, and nothing is written for it;
-//   (d) the idle timeout still slides forward on use.
-// Skipped, with the reason, when no local MongoDB answers (test/helpers/realMongo.js).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -21,7 +10,6 @@ const Session = require('../models/Session');
 const Device = require('../models/Device');
 const store = require('../utils/sessionStore');
 
-// The middleware takes getSession at load time, so a "revoke lands between lookup and write" hook has to be in place before it loads.
 const realGetSession = store.getSession;
 let afterLookup = null;
 store.getSession = async (token) => {
@@ -83,7 +71,6 @@ it('(d) the device is still noted, and still at most once a minute', async () =>
   const after = await seen(device);
   assert.ok(after > before && Date.now() - after < 5000, 'lastSeenAt moved to now');
   assert.equal((await Device.findById(device._id).lean()).lastCountry, 'PH');
-  // A second request within the minute leaves it alone.
   assert.equal((await call(token)).err, undefined);
   assert.equal(await seen(device), after);
 });
@@ -98,13 +85,12 @@ it('a failing device write never fails the request (as before)', async (context)
 
 it('(b) the sliding update cannot push a session past its absolute 12 hours', async () => {
   const { token, hash } = await fresh();
-  const createdAt = new Date(Date.now() - (12 * HOUR - 5 * MIN)); // 5 minutes of life left, however busy
+  const createdAt = new Date(Date.now() - (12 * HOUR - 5 * MIN));
   await Session.updateOne({ sessionIdHash: hash }, { $set: { createdAt, expiresAt: new Date(Date.now() + 10 * MIN) } });
   assert.equal((await call(token)).err, undefined);
   const end = (await row(hash)).expiresAt.getTime();
   assert.ok(end <= createdAt.getTime() + 12 * HOUR + 1, 'never past createdAt + 12 h');
   assert.ok(end < Date.now() + 6 * MIN, 'it slid to the absolute end, not to 30 minutes from now');
-  // Past the absolute end, a use is refused and the row is removed.
   await Session.updateOne({ sessionIdHash: hash }, { $set: { createdAt: new Date(Date.now() - 12 * HOUR - MIN), expiresAt: new Date(Date.now() + 20 * MIN) } });
   const refused = await call(token);
   assert.equal(refused.err.status, 401);
@@ -117,7 +103,6 @@ it('(b) an Emergency Access session also cannot slide past its own 4-hour end', 
   const hash = crypto.createHash('sha256').update(token.split('.')[0]).digest('hex');
   const end = new Date(Date.now() + 3 * MIN);
   await Session.updateOne({ sessionIdHash: hash }, { $set: { absoluteExpiresAt: end, expiresAt: new Date(Date.now() + 2 * MIN) } });
-  // GET /api/documents is on the emergency allowlist; the guard does not matter for the slide.
   const result = await call(token);
   const slid = (await row(hash))?.expiresAt.getTime();
   assert.ok(slid !== undefined, `the session row exists (${result.err?.message})`);
@@ -155,9 +140,7 @@ it('(a) a revoke that lands between the lookup and the writes is not undone by t
   const { token, hash, userId } = await fresh();
   afterLookup = async (t) => { await store.destroySession(t); };
   const result = await call(token);
-  // It had already authenticated when the revoke landed (the same window the sequential version had)...
   assert.equal(result.err, undefined);
-  // ...but neither write may resurrect it, and the next request is refused.
   assert.equal(await Session.countDocuments({ sessionIdHash: hash }), 0, 'the slide did not recreate the session');
   assert.equal(await Session.countDocuments({ userId }), 0);
   afterLookup = null;

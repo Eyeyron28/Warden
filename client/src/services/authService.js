@@ -2,120 +2,56 @@ import api from './api.js';
 import { fetchCached } from './dataCache.js';
 import { visitMemory } from './visitMemory.js';
 
-/**
- * POST /api/auth/signup/start - step 1 of sign-up. Nothing is created: a 6-digit code is emailed (or, for an address that
- * already has an account, a notice and no code), and the answer is the same either way. The password is sent now only to
- * be checked; the server does not keep it.
- * @param {{ email: string, password: string, inviteCode?: string }} form
- * @returns {Promise<{ message: string, otpRequired: true, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
- */
 export async function signupStart({ email, password, inviteCode }) {
   const { data } = await api.post('/auth/signup/start', { email, password, termsAccepted: true, ...(inviteCode ? { inviteCode } : {}) });
   return data;
 }
 
-/**
- * POST /api/auth/signup/verify - step 2: the emailed code. Only now does the account exist. The answer carries the
- * recovery key (shown once) and a session token (the person is signed in).
- * @returns {Promise<{ sessionToken: string, recoveryKey: string }>}
- */
 export async function signupVerify({ email, password, code }) {
   const { data } = await api.post('/auth/signup/verify', { email, password, code });
   return data;
 }
 
-/** POST /api/auth/signup/resend - a new code for an address with a pending sign-up; the same answer as step 1 whatever happens. */
 export async function signupResend(email) {
   const { data } = await api.post('/auth/signup/resend', { email });
   return data;
 }
 
-/**
- * POST /api/auth/verify-email
- * @param {string} token
- * @returns {Promise<{ message: string }>}
- */
 export async function verifyEmailToken(token) {
   const { data } = await api.post('/auth/verify-email', { token });
   return data;
 }
 
-/**
- * POST /api/auth/resend-verification - always the same generic response.
- * Rejects with HTTP 429 if a link was already sent to this email in the
- * last 60 seconds.
- * @param {string} email
- * @returns {Promise<{ message: string }>}
- */
 export async function resendVerification(email) {
   const { data } = await api.post('/auth/resend-verification', { email });
   return data;
 }
 
-/**
- * GET /api/auth/config - public settings the signup screen needs.
- * @returns {Promise<{ signupMode: 'open' | 'invite' }>}
- */
 export async function getPublicConfig() {
   const { data } = await api.get('/auth/config');
   return data;
 }
 
-/**
- * POST /api/auth/unlock - step 1 of login: email + password.
- *
- * With the emailed code on (always, in production) the answer is NOT a
- * session: it is a challenge for step 2, `{ otpRequired: true,
- * challengeToken, codeLength, expiresAt, resendAvailableAt, resendsLeft }`,
- * and a 6-digit code has been emailed to the account. (Only a development
- * server with OTP_ENABLED=false answers `{ sessionToken }` directly.)
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{ sessionToken: string } | { otpRequired: true, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
- */
 export async function loginVault(email, password) {
   const { data } = await api.post('/auth/unlock', { email, password });
   return data;
 }
 
-/**
- * POST /api/auth/verify-otp - step 2 of login: the emailed code. The
- * challengeToken must be held in memory only. Every failure (wrong, expired,
- * too many tries, already used) is the same 401.
- * @param {string} challengeToken
- * @param {string} code six digits
- * @param {boolean} [trustDevice] remember this browser for 30 days
- * @returns {Promise<{ sessionToken: string }>}
- */
 export async function verifyOtp(challengeToken, code, trustDevice = false) {
-  // `trustDevice: true` asks the server to remember this browser (an HttpOnly
-  // cookie it sets) so the next login here skips the code. Never the password.
   const { data } = await api.post('/auth/verify-otp', { challengeToken, code, ...(trustDevice ? { trustDevice: true } : {}) });
   return data;
 }
 
-/**
- * POST /api/auth/resend-otp - a new code for the same login; the previous
- * one stops working. 429 carries `retryAfterSeconds` inside the cooldown.
- * @param {string} challengeToken
- * @returns {Promise<{ otpRequired: true, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
- */
 export async function resendOtp(challengeToken) {
   const { data } = await api.post('/auth/resend-otp', { challengeToken });
   return data;
 }
 
-/**
- * GET /api/auth/me - who, if anyone, the current bearer token belongs to.
- * @returns {Promise<{ email: string, emailVerified: boolean }>}
- */
 export function getMe(options) {
-  // Shared with the start-up prefetch (services/prefetch.js), so the session check does not wait for the page to render.
   return fetchCached(
     'auth/me',
     async () => {
       const me = (await api.get('/auth/me')).data;
-      // Who is signed in (in memory): a session the server ends may return to its page only for this same account (services/visitMemory.js).
       if (me?.email) visitMemory.rememberAccount(me.email);
       return me;
     },
@@ -123,63 +59,36 @@ export function getMe(options) {
   );
 }
 
-// ---- Forgot password: emailed code -> single-use ticket -> recovery key or start over ----
-// Tickets, codes, recovery keys and passwords only ever pass through here in memory.
-
-/**
- * POST /api/auth/password-reset/start - the same answer for every address. It
- * carries a code challenge (a decoy for an address with no account).
- * @param {string} email
- * @returns {Promise<{ message: string, challengeToken: string, codeLength: number, expiresAt: string, resendAvailableAt: string, resendsLeft: number }>}
- */
 export async function requestPasswordReset(email) {
   const { data } = await api.post('/auth/password-reset/start', { email });
   return data;
 }
 
-/** POST /api/auth/password-reset/resend - a new code for the same challenge. */
 export async function resendPasswordResetCode(challengeToken) {
   const { data } = await api.post('/auth/password-reset/resend', { challengeToken });
   return data;
 }
 
-/**
- * POST /api/auth/password-reset/verify - a correct code buys a single-use ticket
- * (never a session).
- * @returns {Promise<{ resetTicket: string, expiresAt: string }>}
- */
 export async function verifyPasswordResetCode(challengeToken, code) {
   const { data } = await api.post('/auth/password-reset/verify', { challengeToken, code });
   return data;
 }
 
-/** POST /api/auth/password-reset/with-recovery-key - keeps the vault. */
 export async function resetPasswordWithRecoveryKey({ resetTicket, recoveryKey, newPassword }) {
   const { data } = await api.post('/auth/password-reset/with-recovery-key', { resetTicket, recoveryKey, newPassword });
   return data;
 }
 
-/**
- * POST /api/auth/password-reset/start-over - erases the vault and starts a new one.
- * @returns {Promise<{ recoveryKey: string, documentsWiped: true }>} the NEW recovery key, shown once
- */
 export async function resetPasswordStartOver({ resetTicket, confirmEmail, newPassword }) {
   const { data } = await api.post('/auth/password-reset/start-over', { resetTicket, confirmEmail, newPassword });
   return data;
 }
 
-/** POST /api/auth/password-reset/recovery-key-only - "Try another way": no email code, vault kept. */
 export async function resetPasswordWithRecoveryKeyOnly({ email, recoveryKey, newPassword }) {
   const { data } = await api.post('/auth/password-reset/recovery-key-only', { email, recoveryKey, newPassword });
   return data;
 }
 
-/**
- * POST /api/auth/logout
- * Explicitly ends the session server-side, so "Log out" actually kills
- * the old token instead of leaving it valid until its 30-min expiry.
- * @returns {Promise<{ success: boolean }>}
- */
 export async function logoutVault() {
   const { data } = await api.post('/auth/logout');
   return data;

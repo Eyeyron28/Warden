@@ -1,8 +1,3 @@
-// After `vite build`: writes dist/shared-preview.html, a copy of index.html whose static
-// <head> says only "a document was shared with you". vercel.json serves it for /shared/*,
-// so a chat app that fetches a share link (to draw a preview card) sees nothing but generic
-// text: no file name, no purpose, no owner. The page itself is the same app: it loads the
-// same scripts and React Router shows the shared-document screen.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -15,7 +10,6 @@ const replaceOnce = (html, pattern, replacement, label) => {
   return html.replace(pattern, replacement);
 };
 
-/** @param {string} html the built index.html */
 export function makeSharePreview(html) {
   let out = html;
   out = replaceOnce(out, /<title>[\s\S]*?<\/title>/, `<title>${SHARE_TITLE}</title>`, '<title>');
@@ -27,7 +21,6 @@ export function makeSharePreview(html) {
     `<meta property="og:description" content="${SHARE_DESCRIPTION}" />`,
     'og:description'
   );
-  // Never indexed, and a preview card is a plain summary (no big user image).
   out = replaceOnce(out, /<\/head>/, '    <meta name="robots" content="noindex, nofollow" />\n  </head>', '</head>');
   return out;
 }

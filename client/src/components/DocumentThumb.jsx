@@ -4,17 +4,6 @@ import FileTypeIcon from './FileTypeIcon.jsx';
 import { getCachedThumbnail, releaseThumbnail, requestThumbnail } from '../services/thumbnailCache.js';
 import styles from './DocumentThumb.module.css';
 
-/**
- * Preview for a document card or row. Always the same fixed box (no layout
- * shift), showing, in order of preference:
- *   - the decrypted thumbnail, once it has loaded;
- *   - a soft shimmer while it is loading;
- *   - the file-type icon when the document has no thumbnail, or fetching or
- *     decrypting it failed.
- *
- * A thumbnail is only requested once the box scrolls into view, so a long
- * list costs nothing for the documents nobody has scrolled to.
- */
 function DocumentThumb({ document, variant = 'card' }) {
   const { id, filename, hasThumb } = document;
   const boxRef = useRef(null);
@@ -56,7 +45,6 @@ function DocumentThumb({ document, variant = 'card' }) {
           setSrc(url);
           setState('ready');
         } else {
-          // undefined = the session ended meanwhile; null = no usable thumbnail.
           setState('none');
         }
       });

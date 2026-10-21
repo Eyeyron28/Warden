@@ -1,4 +1,3 @@
-// Run with: cd client && npm test   (Node's built-in test runner, no deps)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -16,8 +15,6 @@ import {
   safeDownloadName,
 } from './shareCrypto.js';
 
-// The server's side of the format, so these tests prove the browser code and
-// the server code agree byte for byte (Node's Web Crypto is the browser API).
 const require = createRequire(import.meta.url);
 const server = require('../../../server/utils/shareCrypto.js');
 
@@ -123,7 +120,6 @@ test('the viewer never sends the key anywhere and removes it from the address ba
   const source = readFileSync(fileURLToPath(new URL('../pages/SharedDocumentPage.jsx', import.meta.url)), 'utf8');
   const service = readFileSync(fileURLToPath(new URL('../services/sharedService.js', import.meta.url)), 'utf8');
   assert.match(source, /history\.replaceState/);
-  // The key text is only ever handed to importShareKey, never to a request.
   assert.doesNotMatch(source.replace(/\/\/.*$/gm, ''), /fetchShared\w+\([^)]*keyText/);
   assert.doesNotMatch(service, /keyText|location\.hash|#k=/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|innerHTML|\.insertAdjacentHTML/);

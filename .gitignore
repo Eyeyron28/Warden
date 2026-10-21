@@ -19,3 +19,25 @@ demo-samples/
 # seed script input and output
 server/scripts/data/
 server/scripts/out/
+
+# secrets and certificates: never committed
+.env.*
+!.env.example
+*.crt
+*.key
+*.p12
+*.pfx
+
+# build output and caches
+coverage/
+.vite/
+*.tsbuildinfo
+
+# scratch folders and throwaway test pages
+scratch/
+tmp/
+.tmp/
+Claude outputs/
+harness-*.html
+harness-*.jsx
+*.bak

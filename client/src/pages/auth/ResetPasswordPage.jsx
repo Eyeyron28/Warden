@@ -7,12 +7,6 @@ import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './auth.module.css';
 
-/**
- * /reset-password?token=... was the page the old emailed reset link opened. That
- * flow is gone (resetting now starts from an emailed 6-digit code), but links in
- * old emails still exist. They land here and get one plain answer: the page does
- * not read, send or say anything about the token in the address.
- */
 function ResetPasswordPage() {
   usePageMeta('This reset link doesn’t work', 'Reset links have been replaced by emailed codes.');
   return (

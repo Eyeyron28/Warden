@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Quarantine on the REAL app (every middleware and route) against a LOCAL throwaway MongoDB (skipped, with the reason, without one);
-// mail is captured, no .env is read. Sample files are built in memory (test/helpers/riskySamples.js): nothing is real malware.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -50,14 +46,11 @@ const list = async (user) => (await live.api('GET', D, { token: user.token })).b
 const storage = async (user) => (await live.api('GET', `${D}/storage`, { token: user.token })).body;
 const held = async (user) => (await live.api('GET', '/api/quarantine', { token: user.token })).body;
 const rawDoc = (id) => live.mongoose.models.Document.collection.findOne({ _id: new live.mongoose.Types.ObjectId(id) });
-/** The raw driver hands a Binary: its bytes as a Buffer. */
 const bytesOf = (binary) => Buffer.from(binary.buffer);
 const docCount = () => live.mongoose.models.Document.countDocuments({});
 const events = (user, type) => live.mongoose.models.AuditEvent.find({ userId: user.userId, type }).sort({ seq: 1 }).lean();
 
 const risky = () => S.pdfWith('/JavaScript');
-
-// ---------------- the verdicts ----------------
 
 it('a blocked file is refused with 422 FILE_BLOCKED: nothing stored, nothing counted against the quota, and the same retry is refused the same way', async () => {
   const a = await account('q.block@example.com');
@@ -74,11 +67,9 @@ it('a blocked file is refused with 422 FILE_BLOCKED: nothing stored, nothing cou
   assert.equal(again.status, 422);
   assert.deepEqual(again.body.error.reasons, first.body.error.reasons);
   assert.equal(await docCount(), 0);
-  // a program in disguise
   const program = await send(a, 'report.pdf', S.fakeProgram());
   assert.equal(program.status, 422);
   assert.ok(program.body.error.reasons.some((r) => r.code === 'EXECUTABLE_CONTENT'));
-  // the activity log says so with codes only
   const refused = await events(a, 'file_refused');
   assert.equal(refused.length, 3);
   assert.deepEqual(refused.map((r) => r.detail).sort(), ['EXECUTABLE_CONTENT,TYPE_MISMATCH', 'KNOWN_TEST_SIGNATURE', 'KNOWN_TEST_SIGNATURE']);
@@ -162,8 +153,6 @@ it('a clean file and an unchecked file are normal; a scanner that throws never f
   assert.equal((await list(a)).length, 2);
 });
 
-// ---------------- isolation ----------------
-
 it('a held file cannot be previewed, thumbnailed, downloaded or shared (409 QUARANTINED); a moved or renamed one stays held', async () => {
   const a = await account('q.iso@example.com');
   const id = (await send(a, 'form.pdf', risky(), { type: 'application/pdf' })).body.id;
@@ -182,11 +171,9 @@ it('a held file cannot be previewed, thumbnailed, downloaded or shared (409 QUAR
   const bulk = await live.api('POST', '/api/shares', { token: a.token, json: { documentIds: [id], durationHours: 24 } });
   assert.equal(bulk.status, 409, bulk.text);
   assert.equal(await live.mongoose.models.Share.countDocuments({}), 0);
-  // the held file's bytes never left: no decrypted content in any answer
   const view = await live.api('GET', `${D}/${id}/view`, { token: a.token });
   assert.ok(!view.text.includes('JavaScript'));
 
-  // moving, renaming, starring and a note still work, and the held state stays
   const renamed = await live.api('PATCH', `${D}/${id}`, { token: a.token, json: { filename: 'renamed.pdf' } });
   assert.equal(renamed.status, 200, renamed.text);
   await live.api('POST', `${D}/folders`, { token: a.token, json: { name: 'Archive', parentPath: '' } });
@@ -197,7 +184,6 @@ it('a held file cannot be previewed, thumbnailed, downloaded or shared (409 QUAR
   assert.equal((await live.api('PUT', `${D}/${id}/note`, { token: a.token, json: { note: 'check later' } })).status, 200);
   assert.equal((await rawDoc(id)).quarantine.state, 'held');
   assert.equal((await list(a)).length, 0);
-  // new versions and restoring versions of a held file are refused too
   const version = await send(a, 'v2.pdf', Buffer.from('%PDF-1.4 clean'), { path: `${D}/${id}/versions` });
   assert.equal(version.status, 409);
 });
@@ -229,8 +215,6 @@ it('export and search never see a held file: the list the browser builds them fr
   assert.equal((await held(a)).count, 1, 'the count the Export page reports as left out');
 });
 
-// ---------------- release ----------------
-
 it('Release needs the typed word RELEASE; with the wrong word nothing changes; with the right one the file behaves like any other and its verdict stays', async () => {
   const a = await account('q.release@example.com');
   const id = (await send(a, 'form.pdf', risky(), { type: 'application/pdf' })).body.id;
@@ -258,9 +242,7 @@ it('Release needs the typed word RELEASE; with the wrong word nothing changes; w
   assert.equal(released.length, 1);
   assert.equal(released[0].detail, 'PDF_ACTIVE');
   assert.equal(String(released[0].targetId), id);
-  // releasing it again (it is no longer held) is a plain 404
   assert.equal((await live.api('POST', `${D}/${id}/quarantine/release`, { token: a.token, json: { confirm: 'RELEASE' } })).status, 404);
-  // the details panel carries what the scan said
   const details = await live.api('GET', `${D}/${id}/details`, { token: a.token });
   assert.equal(details.body.scan.verdict, 'suspicious');
   assert.equal(details.body.scan.state, 'released');
@@ -280,8 +262,6 @@ it('the activity log chain stays valid with the new events, and it carries codes
   assert.equal(activity.status, 200);
 });
 
-// ---------------- other accounts ----------------
-
 it('another account can never list, read or release someone else\'s held file (the same 404 as everywhere else)', async () => {
   const a = await account('q.owner@example.com');
   const b = await account('q.other@example.com');
@@ -300,8 +280,6 @@ it('another account can never list, read or release someone else\'s held file (t
   assert.equal((await rawDoc(id)).quarantine.state, 'held');
   assert.equal((await live.api('GET', '/api/quarantine')).status, 401, 'a session is required');
 });
-
-// ---------------- new versions ----------------
 
 it('a suspicious or blocked new version is refused and the current version stays; a clean one still works', async () => {
   const a = await account('q.version@example.com');
@@ -326,8 +304,6 @@ it('a suspicious or blocked new version is refused and the current version stays
   assert.equal(fine.status, 201, fine.text);
 });
 
-// ---------------- quota, retry, zip import ----------------
-
 it('a held file counts toward the quota exactly like any other file', async () => {
   const a = await account('q.quota@example.com');
   const before = (await storage(a)).usedBytes;
@@ -351,7 +327,6 @@ it('the same upload key sent again returns the held file (held: true) and stores
 
 it('zip import: every file of an archive goes through the same upload, so each is judged on its own (imported, held, refused)', async () => {
   const a = await account('q.zip@example.com');
-  // The browser unzips and uploads each entry through POST /api/documents; the server judges each one.
   const outcomes = [];
   for (const [name, buffer] of [['ok-1.txt', Buffer.from('fine')], ['ok-2.png', S.png()], ['risky.svg', S.svgScript()], ['bad.txt', S.testSignature()]]) {
     const res = await send(a, name, buffer, { folder: 'Imported' });
@@ -361,8 +336,6 @@ it('zip import: every file of an archive goes through the same upload, so each i
   assert.equal((await list(a)).length, 2);
   assert.equal((await held(a)).count, 1);
 });
-
-// ---------------- zips only through Export / Import ----------------
 
 const zipEntries = (names) => S.zip(names.map((name) => ({ name })));
 const OFFICE = () => S.zip([{ name: '[Content_Types].xml', data: '<Types/>' }, { name: 'word/document.xml', data: '<w/>' }]);

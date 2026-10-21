@@ -88,28 +88,17 @@ import {
 import styles from './FilePages.module.css';
 import Banner from '../components/Banner.jsx';
 
-// The scanner (camera input, crop, Document mode, PDF writer) is loaded the first time Scan is pressed.
 const ScanDialog = lazy(() => import('../components/scan/ScanDialog.jsx'));
 
-// A 401 mid-request means the session just expired - the axios interceptor
-// already clears it, and the route guard is about to unmount this page.
 const isSessionExpired = (err) => err?.response?.status === 401;
 
 
-// Name takes the rest; these are fixed but proportional to the screen, so wide
-// screens spread the content instead of leaving an empty band on the right.
 const FILE_COLUMNS = [
   { id: 'modified', label: 'Modified', width: 'clamp(110px, 14vw, 380px)' },
   { id: 'size', label: 'Size', width: 'clamp(84px, 9vw, 240px)', align: 'right' },
   { id: 'shared', label: 'Shared', width: 'clamp(72px, 8vw, 220px)' },
 ];
 
-/**
- * My files: the folder you are in (`?path=`), as a list or grid. Clicking a
- * file opens its preview and clicking a folder opens it - nothing downloads
- * unless you use a Download button or menu item. Checkboxes appear on hover
- * and the header turns into a selection toolbar once anything is selected.
- */
 function FilesPage() {
   usePageMeta('My files', 'Your documents.');
   const navigate = useNavigate();
@@ -118,7 +107,6 @@ function FilesPage() {
 
   const currentPath = normalizeFolderPath(params.get('path') || '');
 
-  // Coming back to this page starts from the last answer (services/dataCache.js) and refreshes it in the background.
   const [documents, setDocuments] = useState(() => peekDocuments() ?? []);
   const [loading, setLoading] = useState(() => peekDocuments() === undefined);
   const [listError, setListError] = useState('');
@@ -128,7 +116,7 @@ function FilesPage() {
   const [sort, setSort] = useState(() => getViewPrefs().sort);
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadFooter, setUploadFooter] = useState(null); // the Upload dialog's footer element (its buttons are drawn there)
+  const [uploadFooter, setUploadFooter] = useState(null);
   const [uploadError, setUploadError] = useState('');
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
@@ -140,7 +128,7 @@ function FilesPage() {
   const [renamingPath, setRenamingPath] = useState(null);
   const [sharingSelection, setSharingSelection] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(null);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, items, label, opener }
+  const [contextMenu, setContextMenu] = useState(null);
   const folderInputRef = useRef(null);
   const [scanOpen, setScanOpen] = useState(false);
   const versionInputRef = useRef(null);
@@ -162,13 +150,10 @@ function FilesPage() {
     try {
       setFolders(await listFolders(reuse ? { maxAgeMs: JUST_ASKED_MS } : undefined));
     } catch {
-      // The folder list is a convenience; a failed fetch leaves the tree as it was.
     }
     if (sidebar) refreshSidebar();
   }, [refreshSidebar]);
 
-  // On arriving: both lists ask at once. With a remembered answer the page is already showing it, so the refresh is
-  // quiet, and the sidebar (which loaded its own tree) is not asked to reload for nothing.
   useEffect(() => {
     refresh({ quiet: peekDocuments() !== undefined, reuse: true });
     refreshFolders({ sidebar: false, reuse: true });
@@ -181,8 +166,6 @@ function FilesPage() {
     [navigate]
   );
 
-  // A folder that no longer exists (its last file moved, or it was trashed)
-  // takes you to the top level rather than an empty view with no way out.
   useEffect(() => {
     if (loading || currentPath === '') return;
     const documentFolders = documents.map((doc) => normalizeFolderPath(doc.folder));
@@ -199,7 +182,6 @@ function FilesPage() {
     setViewPref('sort', next);
   };
 
-  // ---- what is shown ----
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const isSearching = normalizedSearch.length > 0;
 
@@ -261,7 +243,6 @@ function FilesPage() {
         document: doc,
         thumbDocument: doc,
         subtitle: `${formatDate(modified)} · ${formatBytes(doc.size)}${where}`,
-        // Red once expired, amber within 60 days; nothing otherwise.
         badge: (() => {
           const chip = expiryBadge(doc);
           return chip ? <StatusBadge label={chip.label} tone={chip.tone} /> : null;
@@ -280,18 +261,13 @@ function FilesPage() {
   const blocks = useMemo(() => splitIntoBlocks(items), [items]);
   const fileItems = blocks.files;
   const folderItems = blocks.folders;
-  // Select-all means the files; a folder is selected on its own tile.
   const selection = useSelection(orderedKeys, blocks.selectAllKeys);
   const previewFiles = useMemo(() => fileItems.map((item) => item.document), [fileItems]);
 
   const vaultIsEmpty = documents.length === 0 && !folders.some((name) => normalizeFolderPath(name));
 
-  // ---- uploads ----
-  // ---- uploads: checked here (while the dialog is still open), then handed to the transfer tray (services/transfers.js) ----
-  /** Splits files into what can be sent and what is refused, with the reason, against the real storage meter. */
   const sortOut = async (everything) => {
     const usage = await getStorage().catch(() => null);
-    // Zips only go through Export / Import: they are set apart here and shown as "Not saved" rows (never silently dropped).
     const zips = everything.filter((file) => isZipName(file.name));
     const files = everything.filter((file) => !isZipName(file.name));
     const accepted = [];
@@ -314,11 +290,9 @@ function FilesPage() {
     if (parts.length > 0) setActionError(parts.join(' '));
   };
 
-  // "Encrypt & upload": a refused file keeps the dialog open with the reason; an accepted one closes it at once, and the tray shows it.
   const handleUpload = async ({ files, expiryDate }) => {
     setUploadError('');
     const { accepted, rejected } = await sortOut(files);
-    // The whole batch or nothing: one refused file (the room left, a name) keeps the dialog open with the reason.
     if (rejected.length > 0) {
       setUploadError(rejected[0].reason);
       return;
@@ -343,10 +317,8 @@ function FilesPage() {
     saySkipped(rejected, zips);
   };
 
-  // Files dragged in from the computer: onto a folder tile they go into that folder, anywhere else into the open folder.
   const modalIsOpen = () => Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'));
   const carriesComputerFiles = (event) => hasFiles(event) && !dragCarriesDocuments(event) && !modalIsOpen();
-  // The highlight clears on every way a drag can end (utils/useFileDrag.js).
   const { active: dropActive, reset: clearDrop, handlers: dragHandlers } = useFileDrag(carriesComputerFiles);
 
   const handleComputerDrop = async (event) => {
@@ -370,20 +342,17 @@ function FilesPage() {
     if (dirs > 0 && rejected.length === 0 && zips.length === 0) setActionError('Folders cannot be dropped here. Use New, then Upload folder.');
   };
 
-  // ---- thumbnails ----
   const markThumbnailAdded = useCallback((id) => {
     invalidateThumbnail(id);
     setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasThumb: true, thumbFailed: false, thumbFailReason: null } : doc)));
   }, []);
 
-  // A preview drawn just after an upload (the upload no longer waits for it) shows as soon as it is stored.
   useEffect(() => {
     const onReady = (event) => event.detail?.id && markThumbnailAdded(event.detail.id);
     window.addEventListener(THUMBNAIL_READY, onReady);
     return () => window.removeEventListener(THUMBNAIL_READY, onReady);
   }, [markThumbnailAdded]);
 
-  // Background previews (opt-in): a made preview shows at once, a failed one is remembered so it is not retried.
   const previews = usePreviewGenerator({
     documents,
     onResult: (result) => {
@@ -401,8 +370,6 @@ function FilesPage() {
     },
   });
 
-  // The preview just decrypted this file: if it has no thumbnail yet, draw one
-  // from those same bytes. Silent and best-effort.
   const backfillThumbnail = useCallback(
     async (doc, bytes, sniff) => {
       if (!doc || doc.hasThumb || !sniff.mime || !/^(image\/|application\/pdf)/.test(sniff.mime)) return;
@@ -412,13 +379,11 @@ function FilesPage() {
         await putThumbnail(doc.id, thumb);
         markThumbnailAdded(doc.id);
       } catch {
-        // The file just keeps its type icon.
       }
     },
     [markThumbnailAdded]
   );
 
-  // ---- opening, trashing, downloading ----
   const openItem = (item) => {
     if (item.kind === 'folder') {
       setCurrentPath(item.path);
@@ -428,7 +393,6 @@ function FilesPage() {
     if (index !== -1) setPreviewIndex(index);
   };
 
-  // "Open" links from the Overview and the Frequently used row: show that file's preview once the list is in.
   const openId = params.get('open');
   useEffect(() => {
     if (!openId || loading) return;
@@ -485,7 +449,6 @@ function FilesPage() {
     try {
       for (const doc of docs) {
         // eslint-disable-next-line no-await-in-loop
-        // The server names the download (extension recovered from the bytes when the name has none).
         const { bytes, filename } = await fetchDocumentBytes(doc.id, { purpose: 'download' });
         downloadBytes(bytes, filename);
         // eslint-disable-next-line no-await-in-loop
@@ -498,7 +461,6 @@ function FilesPage() {
     }
   };
 
-  // ---- the selection ----
   const selectedFolderPaths = useMemo(
     () => items.filter((item) => item.kind === 'folder' && selection.isSelected(item.key)).map((item) => item.path),
     [items, selection]
@@ -508,7 +470,6 @@ function FilesPage() {
     [fileItems, selection]
   );
 
-  // Selected files, plus every file nested anywhere under a selected folder.
   const resolveSelection = () => {
     const nestedIds = new Set();
     for (const doc of documents) {
@@ -519,8 +480,6 @@ function FilesPage() {
     return { documentIds: [...allIds], looseIds: selectedFiles.filter((doc) => !nestedIds.has(doc.id)).map((doc) => doc.id) };
   };
 
-  // ---- stars and the details panel ----
-  // The star shows at once and is put back if the server refuses; the cached lists are emptied by the write itself.
   const setStar = async (ids, value) => {
     setActionError('');
     const mark = (to) => setDocuments((prev) => prev.map((doc) => (ids.includes(doc.id) ? { ...doc, starred: to } : doc)));
@@ -538,7 +497,6 @@ function FilesPage() {
     toggleStar: (id) => setStar([id], !documents.find((doc) => doc.id === id)?.starred),
     onChanged: ({ id, kind, hasNote }) => {
       if (kind === 'note') setDocuments((prev) => prev.map((doc) => (doc.id === id ? { ...doc, hasNote } : doc)));
-      // New contents: the size, the preview and the modified time are different, so the list is read again.
       if (kind === 'file') {
         invalidateThumbnail(id);
         refresh();
@@ -546,7 +504,6 @@ function FilesPage() {
     },
   });
 
-  // "Upload new version" from the file's menu: the same call as the button in the details panel.
   const handleVersionPicked = async (event) => {
     const file = event.target.files?.[0];
     const doc = versionTarget.current;
@@ -569,7 +526,6 @@ function FilesPage() {
     setActionError('');
     setBusy(true);
     const plan = resolveSelection();
-    // One request per 50 files (the server's limit), a result for each; a failure must not undo the rest.
     let fileTrashed = 0;
     let fileFailed = 0;
     if (plan.looseIds.length > 0) {
@@ -604,7 +560,6 @@ function FilesPage() {
     setSharingSelection({ documentIds: plan.documentIds, title: `Share ${plan.documentIds.length} files` });
   };
 
-  // ---- moving and renaming ----
   const followRenamedPath = (oldPath, newPath) => {
     if (currentPath === oldPath) setCurrentPath(newPath, { replace: true });
     else if (currentPath.startsWith(`${oldPath}/`)) setCurrentPath(newPath + currentPath.slice(oldPath.length), { replace: true });
@@ -677,7 +632,6 @@ function FilesPage() {
     refreshFolders();
   };
 
-  // Files dropped on a folder (one, or the whole selection): the batch move, which answers for each file.
   const handleDropDocument = async (ids, folderItem) => {
     setActionError('');
     try {
@@ -696,7 +650,6 @@ function FilesPage() {
     }
   };
 
-  // Files moved by a drop on the sidebar's folder tree (outside this page) announce themselves; show it and reload.
   useEffect(() => {
     const onChanged = async (event) => {
       if (event.detail?.message) showToast(event.detail.message);
@@ -708,7 +661,6 @@ function FilesPage() {
     return () => window.removeEventListener(DOCUMENTS_CHANGED, onChanged);
   }, [refresh, refreshFolders, showToast]);
 
-  // A new "Expires on" date: only its fields change in the list; the banner and Overview read it from the server.
   const handleExpirySaved = (updated) => {
     setDocuments((prev) =>
       prev.map((doc) =>
@@ -725,11 +677,9 @@ function FilesPage() {
     refreshFolders();
   };
 
-  // Old links to the pair / paired-devices panels now land on the Devices page.
   useEffect(() => {
     if (['pair', 'devices'].includes(params.get('panel'))) navigate('/devices', { replace: true });
   }, [params, navigate]);
-  // ---- menus: one set of actions for the "..." button, right-click, long-press and Shift+F10 ----
   const icon = (Icon) => <Icon size={18} weight="light" className={dropdownStyles.optionIcon} />;
 
   const shareFolder = (item) => {
@@ -812,8 +762,6 @@ function FilesPage() {
     { label: 'Upload folder', icon: icon(UploadSimple), onSelect: () => folderInputRef.current?.click() },
   ];
 
-  // Right-click on an item: an unselected item becomes the selection first;
-  // several selected items get the actions that apply to a selection.
   const handleItemContextMenu = (item, { x, y, opener }) => {
     const wasSelected = selection.isSelected(item.key);
     if (!wasSelected) selection.setOnly(item.key);
@@ -827,8 +775,6 @@ function FilesPage() {
     });
   };
 
-  // Right-click on empty space inside the files area (the browser menu is
-  // suppressed only here, not on the rest of the page).
   const handleAreaContextMenu = (event) => {
     if (event.target.closest('[data-file-key], a, input, select, button, textarea')) return;
     event.preventDefault();
@@ -851,7 +797,6 @@ function FilesPage() {
       onDragLeave={dragHandlers.onDragLeave}
       onDrop={handleComputerDrop}
     >
-      {/* The title stays; only the controls on the right become the selection bar. */}
       <div className={`${styles.toolbar} ${selection.count > 0 ? styles.toolbarSelecting : ''}`}>
           <div className={styles.titleBlock}>
             {isSearching ? (
@@ -991,7 +936,6 @@ function FilesPage() {
         ref={folderInputRef}
         type="file"
         hidden
-        // Whole-folder picking: non-standard attributes React passes straight through.
         webkitdirectory=""
         multiple
         onChange={(event) => {

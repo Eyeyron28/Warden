@@ -23,8 +23,6 @@ import forms from '../../components/site/forms.module.css';
 import inviteStyles from '../../components/InviteCodeField.module.css';
 import styles from './auth.module.css';
 
-// The terms/privacy dialog is only needed once someone opens it, so it (and
-// the legal text it carries) stays out of this page's own chunk.
 const LegalModal = lazy(() => import('../../components/site/LegalModal.jsx'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,31 +43,19 @@ function fieldErrors(values, { inviteRequired }) {
   return errors;
 }
 
-/**
- * Three steps, all on this page - and NO account exists until step 2 succeeds:
- *   1. the form: the server checks it and emails a 6-digit code (it creates nothing);
- *   2. "Enter the code we emailed": only the right code creates the account and signs the person in;
- *   3. the recovery key - returned once, in the answer to step 2, and never again - then into the app.
- *
- * Step 1 answers the same whether or not the address already has an account (that owner gets a notice instead of a code),
- * so this page never says whether one exists. A reload in the middle returns to step 1 with the email filled in again;
- * the password is never kept anywhere.
- */
 function SignupPage() {
   usePageMeta('Create your vault', 'Create a Warden account: an encrypted vault for your important documents.');
   const token = useSessionToken();
 
   const navigate = useNavigate();
-  const [step, setStep] = useState(() => initialSignupState().step); // form | code | key
+  const [step, setStep] = useState(() => initialSignupState().step);
   const [values, setValues] = useState(() => initialSignupState().values);
-  const [challenge, setChallenge] = useState(null); // the neutral answer to step 1 (timestamps for the countdowns)
+  const [challenge, setChallenge] = useState(null);
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [serverFieldErrors, setServerFieldErrors] = useState({});
   const [recoveryKey, setRecoveryKey] = useState(null);
-  // The session token is handed to the app only AFTER the recovery key screen is on screen: setting it in the same tick
-  // would re-render this page as "signed in" before the step change lands, and skip the key.
   const [pendingToken, setPendingToken] = useState(null);
   useEffect(() => {
     if (step === 'key' && pendingToken) {
@@ -77,18 +63,13 @@ function SignupPage() {
       setPendingToken(null);
     }
   }, [step, pendingToken]);
-  // 'loading' | 'ready' | 'error': never guessed. If the settings cannot be loaded
-  // the page offers a retry instead of a form that may be missing the invite field.
   const { status: configStatus, config, retry: retryConfig } = useSignupConfig();
-  const signupMode = config?.signupMode ?? null; // 'open' | 'invite'
+  const signupMode = config?.signupMode ?? null;
   const inviteRef = useRef(null);
   const [attempted, setAttempted] = useState(false);
-  // Terms and privacy: read in a dialog (scrolled to the end of each) before
-  // the agreement checkbox becomes tickable.
-  const [legalTab, setLegalTab] = useState(null); // null (closed) | 'terms' | 'privacy'
+  const [legalTab, setLegalTab] = useState(null);
   const [legalRead, setLegalRead] = useState({ terms: false, privacy: false });
   const [agreed, setAgreed] = useState(false);
-  // Shown when someone tries to tick the box before reading both documents.
   const [legalNotice, setLegalNotice] = useState(false);
   const legalOpenerRef = useRef(null);
 
@@ -105,7 +86,6 @@ function SignupPage() {
     setLegalTab(key);
   };
 
-  // Signed in is a reason to leave - except while the recovery key is on screen: the session is made at the moment the account is.
   if (token && step !== 'key') return <Navigate to="/files" replace />;
 
   const inviteRequired = signupMode === 'invite';
@@ -113,7 +93,6 @@ function SignupPage() {
   const visibleError = (field) => (touched[field] || serverFieldErrors[field] ? errors[field] : '');
   const isValid = Object.keys(fieldErrors(values, { inviteRequired })).length === 0;
   const legalAllRead = legalRead.terms && legalRead.privacy;
-  // Only ever a suggestion: a typo in a well-known domain is offered a one-click fix, and nothing is blocked.
   const emailSuggestion = suggestEmailFix(values.email);
   const canSubmit = isValid && agreed && legalAllRead;
 
@@ -141,7 +120,6 @@ function SignupPage() {
     setTouched({ email: true, password: true, confirm: true, invite: true });
     if (submitting) return;
     if (!canSubmit) {
-      // The button only looks disabled (aria-disabled), so a click lands here and says what is missing.
       if (isValid && !legalAllRead) setLegalNotice(true);
       focusFirstProblem(fieldErrors(values, { inviteRequired }));
       return;
@@ -162,7 +140,6 @@ function SignupPage() {
     } catch (err) {
       const failure = describeSignupFailure(err);
       if (failure.kind === 'invite' && inviteRequired) {
-        // Everything else stays filled in, the password included.
         setServerFieldErrors({ invite: failure.message });
         requestAnimationFrame(() => inviteRef.current?.focus());
       } else if (failure.kind === 'password') {
@@ -190,7 +167,6 @@ function SignupPage() {
           email={values.email.trim()}
           continueLabel="I've saved it - continue"
           onContinue={() => {
-            // The key is dropped from memory the moment this screen is left.
             setRecoveryKey(null);
             clearSignupEmail();
             navigate('/files', { replace: true });
@@ -208,7 +184,6 @@ function SignupPage() {
           challenge={challenge}
           onSubmitCode={async (code) => {
             const result = await signupVerify({ email: values.email.trim(), password: values.password, code });
-            // The account exists now. The key goes on screen first; the session (and so the app) follows it.
             setRecoveryKey(result.recoveryKey);
             setValues((prev) => ({ ...prev, password: '', confirm: '', invite: '' }));
             setStep(nextStep('code', 'verified'));
@@ -285,7 +260,6 @@ function SignupPage() {
           )}
         </div>
 
-        {/* Related fields share a row on a desktop landscape window (forms.row2); one column elsewhere. */}
         <div className={forms.row2}>
           {inviteRequired && (
             <InviteCodeField
@@ -374,8 +348,6 @@ function SignupPage() {
               type="checkbox"
               checked={agreed}
               onChange={(event) => {
-                // Not disabled, so it looks and focuses like any checkbox: until both
-                // documents are read, a click or Space just explains why it did not tick.
                 if (!legalAllRead) {
                   setLegalNotice(true);
                   return;
@@ -420,8 +392,6 @@ function SignupPage() {
           </p>
         </div>
 
-        {/* aria-disabled, not disabled: it looks and is announced as unavailable, but a click
-            (or Enter) still lands on the form and shows what is missing. */}
         <button
           type="submit"
           className={`${site.button} ${site.primary} ${site.block}`}

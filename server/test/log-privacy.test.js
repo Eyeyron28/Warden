@@ -1,14 +1,9 @@
-// Run with: cd server && npm test
-//
-// F15: the server log never carries a recipient's email address. A failed send names the recipient by a short hash and
-// repeats the provider's error with any address scrubbed out; an invalid recipient is logged by length only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 for (const [name, value] of Object.entries({ SMTP_HOST: 'smtp.example.test', SMTP_PORT: '465', SMTP_USER: 'u', SMTP_PASS: 'p', MAIL_FROM: 'Warden <no-reply@example.test>' })) process.env[name] = value;
 process.env.NODE_ENV = 'test';
 
-// A mail transport that always fails the way real SMTP servers do: with the recipient's address in the message.
 const nodemailerPath = require.resolve('nodemailer');
 require.cache[nodemailerPath] = {
   id: nodemailerPath, filename: nodemailerPath, loaded: true,

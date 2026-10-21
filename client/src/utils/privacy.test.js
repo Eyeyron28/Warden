@@ -16,25 +16,19 @@ const read = (file) => fs.readFileSync(path.join(src, file), 'utf8');
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const words = (file) => strip(read(file)).replace(/&apos;|&#39;|’/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
-// ---------- the policy version ----------
-
 test('the policy version on the page is the one the server records with a new account', () => {
   const server = require('../../../server/utils/policyVersion.js');
   assert.equal(PRIVACY_POLICY.version, server.PRIVACY_POLICY_VERSION);
   assert.match(PRIVACY_POLICY.version, /^\d{4}-\d{2}-\d{2}(\.\d+)?$/, 'a date, plus .2, .3 ... for a second text on the same day');
-  // the date shown is the same day as the version
   const [year, month, day] = PRIVACY_POLICY.version.split('.')[0].split('-').map(Number);
   assert.equal(PRIVACY_POLICY.date, `${day} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month - 1]} ${year}`);
   assert.match(strip(read('pages/public/PrivacyPage.jsx')), /\$\{PRIVACY_POLICY\.date\} \(policy version \$\{PRIVACY_POLICY\.version\}\)/);
 });
 
-// If this fails you changed what the privacy page says. Bump PRIVACY_POLICY_VERSION in server/utils/policyVersion.js and
-// PRIVACY_POLICY in client/src/config.js (version and date), then put the new fingerprint here (it is printed by the failure).
 const POLICY_TEXT_FINGERPRINT = 'af56f7ff269b69c32ea5f2dcb2c3d7e7af7177d51bad8a74274c8242d4276b4f';
 
 function policyFingerprint() {
   const files = ['pages/public/PrivacyPage.jsx', 'pages/public/limits.js', 'components/site/retention.js'];
-  // The contact address is shown on the page too, so it is part of what the version stands for.
   const contact = /CONTACT_EMAIL = '([^']+)'/.exec(read('config.js'))[1];
   const text = [...files.map((file) => strip(read(file)).replace(/\s+/g, '')), contact].join('|');
   return crypto.createHash('sha256').update(text).digest('hex');
@@ -44,8 +38,6 @@ test('the privacy text and its version change together (bump the version when th
   assert.equal(policyFingerprint(), POLICY_TEXT_FINGERPRINT, 'the privacy page text changed: bump the policy version and the date, then update this fingerprint');
 });
 
-// ---------- what the page says ----------
-
 test('the page lists each right and how it works here, and the complaint route, without a link or a named person it cannot back', () => {
   const text = words('pages/public/PrivacyPage.jsx');
   for (const right of ['Access\\.', 'Correction\\.', 'Erasure\\.', 'Objection and withdrawing consent\\.', 'Data portability\\.', 'Complaints\\.']) assert.match(text, new RegExp(right), right);
@@ -53,7 +45,6 @@ test('the page lists each right and how it works here, and the complaint route, 
   assert.match(text, /Export gives you a zip/);
   assert.match(text, /National Privacy Commission of the Philippines \(privacy\.gov\.ph\)/);
   assert.doesNotMatch(strip(read('pages/public/PrivacyPage.jsx')), /href=["'{`]?https?:\/\/(www\.)?privacy\.gov\.ph/, 'named, not linked');
-  // The contact is the mailbox the site already shows; nobody is named.
   assert.match(text, /that mailbox is the project's contact; it is not a named person/i);
   assert.match(strip(read('config.js')), /CONTACT_EMAIL = 'wardenvaultapp@gmail\.com'/);
 });
@@ -80,14 +71,12 @@ test('the retention table matches the code', () => {
   need('Your agreement (new accounts)', /deleted with it/);
   need('Everything, when you delete your account', /immediately/);
 
-  // and each number against the server's own constants
   const audit = require('../../../server/utils/auditConfig.js');
   assert.equal(audit.DEFAULT_RETENTION_DAYS, 30);
   const legacy = require('../../../server/utils/legacyCleanup.js');
   assert.equal(legacy.MIN_AGE_MS, 24 * 60 * 60 * 1000);
   const shares = require('../../../server/utils/shareLimits.js');
   assert.equal(shares.MAX_DURATION_HOURS, 24 * 30);
-  // the version limits in the table are the server's own
   const versions = require('../../../server/utils/versions.js');
   assert.equal(versions.MAX_VERSIONS, 3);
   assert.equal(versions.VERSION_DAYS, 30);

@@ -25,19 +25,13 @@ function describeExpiry(iso) {
   return `in ${Math.round(hours / 24)} days`;
 }
 
-/**
- * The share manager: every active share of this account. Names are the shared
- * files' names, decrypted by the server for this signed-in session only. We do
- * NOT keep share links or keys, so nothing here can show or recover a link -
- * a link exists only where it was copied at creation.
- */
 function SharesPage() {
   usePageMeta('Shared', 'The links you have shared.');
   const [shares, setShares] = useState(() => peekShares()?.shares ?? null);
   const [usage, setUsage] = useState(() => peekShares()?.usage ?? null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
-  const [confirming, setConfirming] = useState(null); // share id, or 'all'
+  const [confirming, setConfirming] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -58,7 +52,6 @@ function SharesPage() {
     load();
   }, [load]);
 
-  // The edit dialog shows the live version of the share it is editing.
   const editingShare = editing ? shares?.find((share) => share.id === editing) : null;
 
   const stopOne = async (id) => {

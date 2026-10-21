@@ -1,7 +1,3 @@
-// Run with: cd server && npm test
-//
-// Every email Warden sends goes through utils/emailTemplates.js. These tests render each one and
-// check the rules: one highlighted code, plain-text twin, fixed subjects, escaping, nothing remote.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -15,7 +11,7 @@ const { renderEmail, templates, esc, formatManilaTime, FOOTER_AUTOMATED, FOOTER_
 const { fromHeader, sendEmail } = require('../utils/email');
 
 const CODE = '482916';
-const WHEN = new Date('2026-10-09T09:14:00Z'); // 5:14 PM in Manila
+const WHEN = new Date('2026-10-09T09:14:00Z');
 const VERIFY_URL = 'https://warden.example.com/verify-email?token=abc123';
 
 const CODE_EMAILS = {
@@ -68,10 +64,8 @@ test('a code appears exactly once in the HTML, inside the highlighted box, and o
     assert.ok(mail.text.split('\n').includes(CODE), `${name}: on a line of its own`);
     assert.ok(!mail.subject.includes(CODE), `${name}: never in the subject`);
     assert.ok(!/preheader/.test('') && !/>[^<]*482916[^<]*<\/div>\n<table/.test(mail.html), `${name}: not in the preheader`);
-    // a single unbroken string: no spaces, hyphens or tags inside it
     assert.ok(/>482916</.test(mail.html));
   }
-  // emails without a code have no code box
   for (const [name, mail] of Object.entries(OTHER_EMAILS)) {
     assert.ok(!mail.html.includes('class="codebox"'), name);
     assert.ok(!/^\d{6}$/m.test(mail.text), `${name}: no code line`);
@@ -90,7 +84,6 @@ test('the code line says when it expires, using the real OTP_TTL_MINUTES', () =>
   }
   delete process.env.OTP_TTL_MINUTES;
   assert.ok(templates.signInCode({ code: CODE, ttlMinutes: otpTtlMinutes() }).text.includes('expires in 5 minutes'), 'the default');
-  // and the flow itself passes the configured value (not a literal)
   const challenge = fs.readFileSync(path.join(__dirname, '..', 'utils', 'otpChallenge.js'), 'utf8');
   assert.match(challenge, /emailFor\(purpose, code, ttlMinutes\)/);
   assert.match(challenge, /const ttlMinutes = otpTtlMinutes\(\)/);
@@ -112,7 +105,6 @@ test('every code email says what the code is for, never to share it, and what to
   for (const name of ['signInCode', 'deleteAccountCode', 'passwordResetCode']) {
     assert.match(CODE_EMAILS[name].text, /your account is safe\. Consider changing your password if you keep receiving these/, name);
   }
-  // delete-account and password-reset carry a stronger line on top
   assert.match(CODE_EMAILS.deleteAccountCode.text, /cannot be undone: if this was not you, change your password now/);
   assert.match(CODE_EMAILS.passwordResetCode.text, /Your password has not changed and will not unless this code is entered/);
 });
@@ -120,7 +112,6 @@ test('every code email says what the code is for, never to share it, and what to
 test('every subject is clear, unique per purpose, and carries no code, file name, purpose or personal data', () => {
   const subjects = Object.values(ALL).map((mail) => mail.subject);
   const unique = new Set(subjects);
-  // the two password-changed variants share one subject on purpose (same event); everything else is distinct
   assert.equal(unique.size, subjects.length - 1);
   assert.equal(ALL.passwordChangedKey.subject, ALL.passwordChangedWipe.subject);
   for (const subject of subjects) {
@@ -148,11 +139,9 @@ test('hostile input cannot inject markup: every interpolated value is HTML-escap
   assert.ok(!/onerror=alert\(1\)>/.test(mail.html.replace(/&lt;img src=x onerror=alert\(1\)&gt;/g, '')), 'the handler text is only ever escaped');
   assert.ok(mail.html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   assert.equal(esc(`<a href="x">'&</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&lt;/a&gt;');
-  // the plain-text part cannot be given extra lines (a CRLF in a value)
   const lines = templates.newDevice({ browser: 'Eve\r\nBcc: attacker@example.com', os: 'x', city: 'y\r\nz', when: WHEN }).text;
   assert.ok(!/\r/.test(lines));
   assert.ok(!/^Bcc:/m.test(lines));
-  // a code must be 6 plain digits, a subject one line without the code, a link https
   assert.throws(() => renderEmail({ subject: 's', preheader: 'p', title: 't', intro: 'i', code: '48 29 16' }), /single unbroken string/);
   assert.throws(() => renderEmail({ subject: 'Your code 482916', preheader: 'p', title: 't', intro: 'i', code: CODE }), /without the code/);
   assert.throws(() => renderEmail({ subject: 's\nBcc: x', preheader: 'p', title: 't', intro: 'i' }));
@@ -165,7 +154,6 @@ test('nothing loads from another site: no images, scripts, links to stylesheets,
     assert.ok(!/\ssrc=|url\(|@import|background-image/i.test(mail.html), `${name}: no remote resource reference`);
     assert.ok(!/http:\/\//i.test(mail.html + mail.text), `${name}: no plain http`);
     assert.ok(!/ on[a-z]+=/i.test(mail.html), `${name}: no event handlers`);
-    // the only <style> block is the dark-mode / small-screen one; the layout itself is inline
     assert.equal(count(mail.html, '<style>'), 1, name);
     assert.ok(count(mail.html, 'style="') > 8, `${name}: inline styles`);
   }
@@ -210,7 +198,6 @@ test('links: only to the app\'s public address, with no token or key; none at al
   } finally {
     delete process.env.PUBLIC_APP_URL;
   }
-  // the legacy verification-link email is the one place a link carries a single-use token, because that is how they work
   for (const mail of [OTHER_EMAILS.verifyEmailResend]) {
     assert.ok(mail.text.includes(VERIFY_URL));
     assert.ok(mail.html.includes(esc(VERIFY_URL)));

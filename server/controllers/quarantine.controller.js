@@ -9,16 +9,10 @@ const { codesOf } = require('../utils/quarantine');
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const fail = (status, message, code) => Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 
-/** The word that must be typed to release a held file. */
 const RELEASE_WORD = 'RELEASE';
 
 const HELD_PROJECTION = { filename: 1, folder: 1, createdAt: 1, scan: 1, quarantine: 1, size: { $binarySize: '$encryptedBlob' } };
 
-/**
- * GET /api/quarantine
- * The signed-in owner's held files (not trashed ones): name, size, dates, severity and the reasons (codes with their plain
- * sentences). Never any content. Another account's files are never read: the query is scoped by userId.
- */
 const listHeld = asyncHandler(async (req, res) => {
   const rows = await Document.aggregate([
     { $match: { userId: req.userId, 'quarantine.state': 'held', deletedAt: null } },
@@ -39,11 +33,6 @@ const listHeld = asyncHandler(async (req, res) => {
   res.status(200).json({ count: items.length, items });
 });
 
-/**
- * POST /api/documents/:id/quarantine/release   { confirm: "RELEASE" }
- * Owner only. Requires the typed word, then the file behaves like any other (its scan verdict stays "suspicious", so the details
- * panel stays honest). An audit event and a security-log line are written, with reason codes only. No email is sent.
- */
 const releaseHeld = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) throw fail(404, 'Document not found.');
@@ -57,7 +46,6 @@ const releaseHeld = asyncHandler(async (req, res) => {
     { new: false, projection: { scan: 1 } }
   );
   if (!document) {
-    // Another account's file, a missing one, a trashed one and one that is not held all look the same.
     throw fail(404, 'Held file not found.');
   }
   const codes = codesOf(document.scan?.reasons);

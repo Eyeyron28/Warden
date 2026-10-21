@@ -1,10 +1,5 @@
 import styles from './SelectionBar.module.css';
 
-/**
- * The page's header bar while anything is selected: the count, the actions
- * for exactly the selected items, and Clear. `actions` are
- * `{ key, label, icon, onClick, disabled?, title?, danger? }`.
- */
 function SelectionBar({ count, actions, onClear }) {
   return (
     <div className={styles.bar} role="toolbar" aria-label="Actions for selected items">

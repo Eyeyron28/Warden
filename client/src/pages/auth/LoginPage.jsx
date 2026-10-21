@@ -19,24 +19,12 @@ import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './auth.module.css';
 
-const SETTLE_DELAY_MS = 350; // lets the vault dial finish its "unlocked" turn
+const SETTLE_DELAY_MS = 350;
 
-/**
- * Where to go after a fresh sign-in: My Files, always - except for the same account signing in again after the server ended its
- * session on an ordinary page (services/visitMemory.js: an allowlist of known routes, never a full URL). Nothing is read from the
- * router state or the address bar, so no page the person left can come back.
- */
 export function landingFor(email) {
   return visitMemory.landingAfterLogin(email);
 }
 
-/**
- * Login is two steps. Step 1 verifies the email and password; the server
- * then emails a 6-digit code and answers with a challenge instead of a
- * session. Step 2 is the code (components/OtpChallengePanel.jsx). The
- * challenge lives ONLY in this component's state - never in storage, the URL
- * or router state - and is dropped on Back, on success, and on expiry.
- */
 function LoginPage() {
   usePageMeta('Log in', 'Log in to your Warden vault.');
   const navigate = useNavigate();
@@ -48,21 +36,17 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dial, setDial] = useState('idle');
-  // { kind: 'generic' | 'locked' | 'unverified' | 'other', message, lockedUntil? }
   const [problem, setProblem] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
-  const [challenge, setChallenge] = useState(null); // step 2 when set
+  const [challenge, setChallenge] = useState(null);
   const settleTimer = useRef(null);
-  // "Your session expired. Sign in again." - shown once, when the server ended the session we were holding.
   const [sessionNotice] = useState(() => takeSessionNotice());
-  // A second tab of a signed-in browser: pick the session up from the other tab instead of asking again.
   useEffect(() => {
     adoptTokenFromOtherTabs();
   }, []);
 
   useEffect(() => () => clearTimeout(settleTimer.current), []);
 
-  // Lockout countdown, driven by the server's own lockedUntil.
   useEffect(() => {
     if (problem?.kind !== 'locked') return undefined;
     const until = new Date(problem.lockedUntil).getTime();
@@ -76,9 +60,6 @@ function LoginPage() {
     return () => clearInterval(timer);
   }, [problem]);
 
-  // Already signed in (e.g. pressed Back after logging in): straight on.
-  // Already signed in as the owner (e.g. pressed Back after logging in): straight on, to My Files. (An emergency session does not count:
-  // signing in here ends it, below.)
   if (token && !emergency.emergency && !submitting && !challenge) return <Navigate to="/files" replace />;
 
   const locked = problem?.kind === 'locked' && secondsLeft > 0;
@@ -90,14 +71,11 @@ function LoginPage() {
   };
 
   const finishLogin = (sessionToken) => {
-    // Success: the challenge is spent, so drop it before moving on.
     setChallenge(null);
     setDial('unlocked');
     settleTimer.current = setTimeout(() => {
-      // Every fresh sign-in lands on My Files; the one exception is the same account coming back after the SERVER ended its session
-      // on an ordinary page (services/visitMemory.js). Decided BEFORE the new session starts, and the old URL leaves the history.
       const landing = landingFor(email.trim());
-      leaveEmergencyMode(); // an emergency session and an owner's session are never active together: the new one ends the old
+      leaveEmergencyMode();
       setToken(sessionToken);
       visitMemory.rememberAccount(email.trim());
       navigate(landing, { replace: true });
@@ -119,7 +97,6 @@ function LoginPage() {
       const result = await loginVault(email.trim(), password);
       setPassword('');
       if (result.otpRequired) {
-        // Step 2: a code has been emailed. No session exists yet.
         setChallenge(result);
         setSubmitting(false);
         setDial('idle');
@@ -146,7 +123,6 @@ function LoginPage() {
     }
   };
 
-  // ---- Step 2: the emailed code ----
   if (challenge) {
     return (
       <AuthLayout
@@ -169,7 +145,6 @@ function LoginPage() {
     );
   }
 
-  // ---- Step 1: email and password ----
   return (
     <AuthLayout
       title="Log in to your vault"

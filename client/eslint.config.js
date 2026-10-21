@@ -10,6 +10,7 @@ export default [
   // Older comments in the code switch off rules this config does not enable; that is not worth a warning each.
   { linterOptions: { reportUnusedDisableDirectives: 'off' } },
   js.configs.recommended,
+  { rules: { 'no-empty': ['error', { allowEmptyCatch: true }] } },
   {
     files: ['src/**/*.{js,jsx}'],
     languageOptions: {

@@ -5,12 +5,6 @@ import styles from './Preview.module.css';
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
-/**
- * A PDF drawn to a canvas with pdfjs-dist (loaded only when a PDF is opened,
- * the same dynamic import the thumbnail code uses). Only the canvas is shown:
- * no links, forms or scripts from the document are ever active. One page at a
- * time, with page buttons, PageUp/PageDown, and zoom.
- */
 function PdfViewer({ bytes, onFail }) {
   const stageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -29,7 +23,6 @@ function PdfViewer({ bytes, onFail }) {
         import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
       ]);
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-      // pdf.js takes ownership of the buffer it is given: hand it a copy.
       task = pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false, enableXfa: false });
       const loaded = await task.promise;
       if (cancelled) {

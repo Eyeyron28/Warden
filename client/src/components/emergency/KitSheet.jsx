@@ -3,12 +3,6 @@ import { createPortal } from 'react-dom';
 import { buildKitSheet } from '../../utils/kitSheet.js';
 import './kitPrint.css';
 
-/**
- * The printable "Warden Emergency Kit" A4 sheet. It exists only while the Kit screen is open, is invisible on screen,
- * and is the only thing that prints (kitPrint.css hides the rest of the page). It is built by buildKitSheet from the
- * contact's name, the Warden address, the waiting period, the kit and the date, so it cannot contain the owner's
- * password, recovery key or email. Rendered into document.body, so it vanishes with the Kit screen.
- */
 function KitSheet({ contactName, address, waitMinutes, kit, qr }) {
   const sheet = buildKitSheet({ contactName, address, waitMinutes, kit });
   return createPortal(

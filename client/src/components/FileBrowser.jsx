@@ -17,10 +17,6 @@ import { shortName } from '../utils/ellipsis.js';
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_SLOP_PX = 10;
 
-/**
- * "Select all" checkbox with an indeterminate state, for a list header or a
- * toolbar. `header` is 'none' | 'some' | 'all' (see utils/selection.js).
- */
 export function SelectAllCheckbox({ header, onChange, label = 'Select all' }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -38,7 +34,6 @@ export function SelectAllCheckbox({ header, onChange, label = 'Select all' }) {
   );
 }
 
-/** Puts keyboard focus back on an item (e.g. the card a preview was opened from). */
 export function focusBrowserItem(key) {
   const row = [...document.querySelectorAll('[data-file-key]')].find((node) => node.dataset.fileKey === key);
   const target = row?.querySelector('button[title]') ?? row?.querySelector('button');
@@ -53,7 +48,6 @@ function ItemIcon({ item, size, look }) {
   return size >= 28 ? <DocumentThumb document={item.thumbDocument} variant="row" /> : <FileTypeIcon filename={item.name} size={size} />;
 }
 
-/** A star on a file: on or off, announced as a toggle. Shown on hover, on focus, always when starred, and always on touch. */
 export function StarButton({ name, starred, onToggle }) {
   return (
     <button
@@ -72,7 +66,6 @@ export function StarButton({ name, starred, onToggle }) {
   );
 }
 
-/** A small marker on a file that has a private note. Only THAT a note exists is known here, never what it says. */
 export function NoteMarker() {
   return (
     <span className={styles.noteMarker} role="img" aria-label="Has a private note" title="Has a private note">
@@ -140,21 +133,6 @@ function ItemMenu({ item, menuItems, placeholder = false }) {
   );
 }
 
-/**
- * One list or grid of files and folders, shared by My files, Photos and
- * Trash. It owns how an item LOOKS and how a click is interpreted
- * (utils/clickAction.js): a click opens, a click on the checkbox - or Shift or
- * Ctrl/Cmd with a click - selects. Nothing in here downloads anything.
- *
- * Right-click, long-press on a touch screen, and Shift+F10 / the Menu key all
- * call `onItemContextMenu(item, { x, y, opener })`; the page decides what the
- * menu holds. The "..." button opens `menuFor(item)` as a dropdown.
- *
- * items: [{ key, kind: 'file'|'folder'|'trash-file'|'trash-folder', name,
- *   subtitle?, badge?, thumbDocument?, cells?: { [columnId]: node } }]
- * columns: [{ id, label, width, align? }] - fixed, proportional widths; the
- *   name column takes whatever is left.
- */
 function FileBrowser({
   items,
   view,
@@ -164,15 +142,12 @@ function FileBrowser({
   menuFor,
   onItemContextMenu,
   onDropOnFolder,
-  // Star and details for FILES (the pages that offer them pass these; Trash and read-only views do not).
   onToggleStar,
   onShowDetails,
   showListHeader = true,
-  // false = read-only browsing (Emergency Access): no checkboxes, no select-all, a click always opens.
   selectable = true,
   label,
 }) {
-  // The first rows now, the rest in steps while the browser is idle (utils/useProgressiveList.js).
   const shownItems = useProgressiveList(items);
   const [draggable] = useState(canDragDocuments);
   const looks = useFolderStyles();
@@ -210,11 +185,8 @@ function FileBrowser({
               y: clientY,
               timer: setTimeout(() => {
                 press.current = null;
-                // The tap that ends this press must not also open the file.
                 suppressClickUntil.current = Date.now() + 700;
                 if (navigator.vibrate) navigator.vibrate(10);
-                // A long press on a touch screen enters select mode (the checkboxes appear and every tap then selects); the
-                // "..." button still opens the actions menu. Read-only views have nothing to select, so they keep the menu.
                 if (selectable) selection.toggle(item.key);
                 else openContext(item, clientX, clientY, currentTarget.querySelector('button[title]'));
               }, LONG_PRESS_MS),
@@ -244,7 +216,6 @@ function FileBrowser({
     </span>
   );
 
-  // Read-only browsing keeps the (empty, zero-width) cell so the grid columns still line up.
   const checkbox = (item) => (selectable ? renderCheckbox(item) : <span className={styles.check} data-no-open aria-hidden="true" />);
 
   const dropProps = (item) => {
@@ -275,7 +246,6 @@ function FileBrowser({
       ? {
           draggable: true,
           onDragStart: (event) => {
-            // Dragging a selected file takes the whole selection of files with it; any other file goes alone.
             const ids = selection.isSelected(item.key)
               ? items.filter((entry) => entry.kind === 'file' && selection.isSelected(entry.key)).map((entry) => entry.id)
               : [item.id];
@@ -290,7 +260,6 @@ function FileBrowser({
     'data-selected': selection.isSelected(item.key) || undefined,
     'data-drop': dropKey === item.key || undefined,
     onClick: (event) => handleClick(item, event),
-    // Shift-click must not start a text selection.
     onMouseDown: (event) => {
       if (event.shiftKey) event.preventDefault();
     },
@@ -298,7 +267,6 @@ function FileBrowser({
       ? (event) => {
           event.preventDefault();
           event.stopPropagation();
-          // A touch long-press already opened it from the timer.
           if (Date.now() < suppressClickUntil.current) return;
           openContext(item, event.clientX, event.clientY, event.currentTarget.querySelector('button[title]'));
         }
@@ -318,7 +286,6 @@ function FileBrowser({
     ...dragProps(item),
   });
 
-  // The buttons at the end of a row or card: star and details for a file, then the "..." menu.
   const actionsFor = (item) => (
     <span className={styles.actions} data-no-open>
       {hasFileActions && item.kind === 'file' && item.document && (
@@ -331,7 +298,6 @@ function FileBrowser({
     </span>
   );
 
-  // Folders on their own: a responsive grid of compact tiles (the folder's colour and icon, its name, how many items it holds).
   if (view === 'tiles') {
     return (
       <ul className={styles.tiles} data-any-selected={anySelected || undefined} aria-label={label}>
@@ -392,7 +358,6 @@ function FileBrowser({
   const gridVars = {
     '--cols-wide': wide,
     '--cols-narrow': narrow,
-    // Room at the end of a row for star, details and the menu (just the menu where a page offers no file actions).
     '--actions-w': hasFileActions ? '120px' : '44px',
     ...(selectable ? {} : { '--check-w': '0px' }),
   };
