@@ -25,7 +25,7 @@ test('the policy version on the page is the one the server records with a new ac
   assert.match(strip(read('pages/public/PrivacyPage.jsx')), /\$\{PRIVACY_POLICY\.date\} \(policy version \$\{PRIVACY_POLICY\.version\}\)/);
 });
 
-const POLICY_TEXT_FINGERPRINT = 'af56f7ff269b69c32ea5f2dcb2c3d7e7af7177d51bad8a74274c8242d4276b4f';
+const POLICY_TEXT_FINGERPRINT = 'e29ec7559430e2581bce470a01462e16dddc070c76fbcd3601d16336049f981e';
 
 function policyFingerprint() {
   const files = ['pages/public/PrivacyPage.jsx', 'pages/public/limits.js', 'components/site/retention.js'];
@@ -46,7 +46,7 @@ test('the page lists each right and how it works here, and the complaint route, 
   assert.match(text, /National Privacy Commission of the Philippines \(privacy\.gov\.ph\)/);
   assert.doesNotMatch(strip(read('pages/public/PrivacyPage.jsx')), /href=["'{`]?https?:\/\/(www\.)?privacy\.gov\.ph/, 'named, not linked');
   assert.match(text, /that mailbox is the project's contact; it is not a named person/i);
-  assert.match(strip(read('config.js')), /CONTACT_EMAIL = 'wardenvaultapp@gmail\.com'/);
+  assert.match(strip(read('config.js')), /CONTACT_EMAIL = 'warden\.vault\.app@gmail\.com'/);
 });
 
 test('the page says new accounts record the agreement and older accounts have none', () => {

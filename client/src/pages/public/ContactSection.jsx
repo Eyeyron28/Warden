@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 
 import Icon from '../../components/site/Icon.jsx';
 import { CONTACT_EMAIL } from '../../config.js';
+import { contactFailureMessage, sendContactMessage } from '../../services/contactService.js';
 import site from '../../components/site/site.module.css';
 import forms from '../../components/site/forms.module.css';
 import styles from './ContactSection.module.css';
@@ -19,16 +20,11 @@ function validate(values) {
   return errors;
 }
 
-function buildMailto(values) {
-  const subject = `Warden: message from ${values.name.trim()}`;
-  const body = `${values.message.trim()}\n\n- ${values.name.trim()} (${values.email.trim()})`;
-  return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 function ContactSection() {
   const [values, setValues] = useState({ name: '', email: '', message: '', website: '' });
   const [touched, setTouched] = useState({});
-  const [submitted, setSubmitted] = useState(null);
+  const [status, setStatus] = useState('idle');
+  const [failure, setFailure] = useState('');
   const formRef = useRef(null);
 
   const errors = validate(values);
@@ -37,21 +33,26 @@ function ContactSection() {
   const update = (field) => (event) => setValues((prev) => ({ ...prev, [field]: event.target.value }));
   const blur = (field) => () => setTouched((prev) => ({ ...prev, [field]: true }));
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    if (status === 'sending') return;
     setTouched({ name: true, email: true, message: true });
     if (Object.keys(errors).length > 0) {
       const first = ['name', 'email', 'message'].find((field) => errors[field]);
       formRef.current?.querySelector(`#contact-${first}`)?.focus();
       return;
     }
-    if (values.website) {
-      setSubmitted({ mailto: null });
-      return;
+    setStatus('sending');
+    setFailure('');
+    try {
+      await sendContactMessage(values);
+      setValues({ name: '', email: '', message: '', website: '' });
+      setTouched({});
+      setStatus('sent');
+    } catch (error) {
+      setFailure(contactFailureMessage(error));
+      setStatus('error');
     }
-    const mailto = buildMailto(values);
-    setSubmitted({ mailto });
-    window.location.href = mailto;
   };
 
   return (
@@ -85,28 +86,16 @@ function ContactSection() {
       </header>
 
       <div className={styles.card}>
-        {submitted ? (
+        {status === 'sent' ? (
           <div className={styles.success} role="status">
             <Icon name="check" size={28} className={styles.successIcon} />
-            <h3 className={styles.successTitle}>Your email app should be open.</h3>
-            <p>
-              The message is ready to send from your own email account. Nothing is sent until you press send
-              there.
-            </p>
-            {submitted.mailto && (
-              <p>
-                Didn&apos;t open?{' '}
-                <a href={submitted.mailto} className={site.textLink}>
-                  Try again
-                </a>{' '}
-                or write to <span className={styles.address}>{CONTACT_EMAIL}</span> directly.
-              </p>
-            )}
+            <h3 className={styles.successTitle}>Message sent.</h3>
+            <p>We read everything; replies may take a few days.</p>
             <button
               type="button"
               className={`${site.button} ${site.ghost}`}
               onClick={() => {
-                setSubmitted(null);
+                setStatus('idle');
                 setValues({ name: '', email: '', message: '', website: '' });
                 setTouched({});
               }}
@@ -193,12 +182,18 @@ function ContactSection() {
               />
             </div>
 
+            {status === 'error' && (
+              <div className={forms.alert} role="alert">
+                <Icon name="alert" />
+                <p>{failure}</p>
+              </div>
+            )}
+
             <div className={styles.submitRow}>
-              <button type="submit" className={`${site.button} ${site.primary}`}>
-                Open in my email app
+              <button type="submit" className={`${site.button} ${site.primary}`} disabled={status === 'sending'}>
+                {status === 'sending' ? 'Sending…' : status === 'error' ? 'Try again' : 'Send message'}
                 <Icon name="arrowRight" size={18} />
               </button>
-              <p className={forms.hint}>Opens your own email app with this message filled in.</p>
             </div>
           </form>
         )}

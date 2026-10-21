@@ -202,15 +202,20 @@
   max-width: 70ch;
 }
 
+.accountLeft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
 @media (min-width: 1024px) {
   .appStack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (min-width: 1600px) {
-  .appStack {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .appStack > .danger {
+    grid-column: 1 / -1;
   }
 }
 

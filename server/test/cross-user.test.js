@@ -24,7 +24,7 @@ const PUBLIC_ROUTES = new Set([
   'POST /api/shared/:shareId/access', 'POST /api/shared/:shareId/email-code', 'POST /api/shared/:shareId/email-verify', 'POST /api/shared/:shareId/unlock',
   'GET /api/shared/:shareId', 'GET /api/shared/:shareId/files/:fileId',
   'POST /api/emergency/public/request-code', 'POST /api/emergency/public/request', 'POST /api/emergency/public/start-session', 'GET /api/emergency/public/deny/:token',
-  'GET /api/cron/purge-trash', 'GET /api/cron/reminders',
+  'GET /api/cron/purge-trash', 'GET /api/cron/reminders', 'POST /api/contact',
 ]);
 
 function enumerateRoutes(app) {

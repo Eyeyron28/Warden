@@ -79,7 +79,7 @@ function normalizeRecipient(raw) {
   return isSafeRecipient(trimmed) ? trimmed.toLowerCase() : null;
 }
 
-async function sendEmail({ to, subject, text, html, mailClass }) {
+async function sendEmail({ to, subject, text, html, mailClass, replyTo, logBody = true }) {
   if (typeof subject !== 'string' || typeof text !== 'string' || typeof html !== 'string') {
     console.error('Refusing to send email: it must come from utils/emailTemplates.js (subject, text and html).');
     return false;
@@ -90,13 +90,18 @@ async function sendEmail({ to, subject, text, html, mailClass }) {
     return false;
   }
 
+  if (replyTo !== undefined && !isSafeRecipient(replyTo)) {
+    console.error('Refusing to send email: invalid reply-to address.');
+    return false;
+  }
+
   if (!smtpConfigured()) {
     if (isProduction()) {
       console.error('SMTP is not configured in production; an email was not sent.');
       return false;
     }
     console.log(
-      `\n--- DEV EMAIL (SMTP not configured, logging instead of sending) ---\nTo: ${to}\nSubject: ${subject}\n\n${text}\n--- END DEV EMAIL ---\n`
+      `\n--- DEV EMAIL (SMTP not configured, logging instead of sending) ---\nTo: ${to}\nSubject: ${subject}\n\n${logBody ? text : '(body not logged)'}\n--- END DEV EMAIL ---\n`
     );
     return true;
   }
@@ -110,6 +115,7 @@ async function sendEmail({ to, subject, text, html, mailClass }) {
       subject,
       text,
       html,
+      ...(replyTo ? { replyTo } : {}),
       headers: TRANSACTIONAL_HEADERS,
     });
     return true;

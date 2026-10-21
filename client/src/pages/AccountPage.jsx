@@ -121,8 +121,10 @@ function AccountPage() {
       layout="stacked"
     >
       <div className={styles.appStack}>
-        <ReminderSetting />
-        <TrustedBrowsers />
+        <div className={styles.accountLeft}>
+          <ReminderSetting />
+          <TrustedBrowsers />
+        </div>
         <ChangePassword />
 
         <section className={styles.danger} aria-labelledby="delete-account-title">

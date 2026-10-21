@@ -95,7 +95,7 @@ test('EVERY registered route is on the allowlist, public (never sees a session),
     assert.ok(mounted.includes(expected), `${expected} is mounted and walked`);
   }
 
-  const PUBLIC_PREFIXES = ['/api/auth', '/api/shared', '/api/emergency/public', '/api/cron', '/api'];
+  const PUBLIC_PREFIXES = ['/api/auth', '/api/shared', '/api/emergency/public', '/api/cron', '/api/contact', '/api'];
   let allowed = 0;
   let refused = 0;
   let publicCount = 0;

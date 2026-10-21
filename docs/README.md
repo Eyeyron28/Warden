@@ -45,4 +45,4 @@ Where a fact could not be checked in the repo, the document says **[to confirm]*
 
 ## Contact
 
-wardenvaultapp@gmail.com. Source: github.com/Eyeyron28/Warden.
+warden.vault.app@gmail.com. Source: github.com/Eyeyron28/Warden.

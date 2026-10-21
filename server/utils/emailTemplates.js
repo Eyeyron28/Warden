@@ -229,6 +229,19 @@ const templates = {
       warning: `${NEVER_SHARE} ${IGNORE_IF_NOT_YOU} Your password has not changed and will not unless this code is entered; if you did not ask for this, change your password and check your devices.`,
     }),
 
+  contactMessage: ({ name, email, message }) =>
+    renderEmail({
+      subject: 'Warden contact form',
+      preheader: 'A message from the contact form.',
+      title: 'New contact form message',
+      intro: message,
+      details: [
+        ['From', name],
+        ['Reply to', email],
+      ],
+      footerNote: 'Reply to this email to answer the sender.',
+    }),
+
   shareCode: ({ code, ttlMinutes }) =>
     codeEmail({
       subject: 'Your code to open a shared document',
@@ -519,6 +532,7 @@ const MAIL_CLASS = Object.freeze({
   newDevice: 'bulk',
   trustedBrowser: 'bulk',
   shareCode: 'bulk',
+  contactMessage: 'bulk',
 });
 for (const name of Object.keys(templates)) {
   const build = templates[name];

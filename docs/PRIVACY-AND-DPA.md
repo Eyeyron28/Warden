@@ -2,7 +2,7 @@
 
 **This is a student project. This document is not legal advice and it is not a reviewed legal document.** The privacy page in the
 app (`client/src/pages/public/PrivacyPage.jsx`) says the same. If this document and the privacy page ever differ, the page and the
-code are the source of truth. Contact: wardenvaultapp@gmail.com.
+code are the source of truth. Contact: warden.vault.app@gmail.com.
 
 ## What personal data we hold
 
@@ -60,7 +60,7 @@ Export zips built in the browser are **not encrypted**. They leave out held file
 
 At sign-up the user must open the Terms and the Privacy policy and read them to the end before the checkbox can be used
 (`client/src/pages/auth/SignupPage.jsx`). The server refuses a sign-up without `termsAccepted`. On success the server stores the
-time and the policy version on the new account (`server/utils/policyVersion.js`, currently `2026-10-15.3`, which must equal the
+time and the policy version on the new account (`server/utils/policyVersion.js`, currently `2026-10-21`, which must equal the
 value in `client/src/config.js`). Tests check that the two values match and that the page text and the version change together.
 
 Limits: older accounts have no consent record. The client sends `termsAccepted: true` as a constant, so the server check shows
