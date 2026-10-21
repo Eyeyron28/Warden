@@ -85,15 +85,15 @@ test('empty: "Nothing is held. Every upload so far looked fine."', () => {
   assert.match(ui.list({ state: 'list', items: [] }), /Nothing is held\./, 'an empty list is the empty state');
 });
 
-test('list: name, size, date, a severity chip and the reasons in plain words, with Release and Delete', () => {
+test('list: name, size, date and the reasons in plain words, with Release and Delete, and no severity pill', () => {
   const html = ui.list({
     state: 'list',
     items: [item(), item({ id: 'b2', name: 'macro.docm', severity: 'high', reasons: [reason('OFFICE_MACRO'), reason('TYPE_MISMATCH')] }), item({ id: 'c3', name: 'odd.txt', severity: 'low', reasons: [reason('TYPE_MISMATCH')] })],
   });
   assert.equal((html.match(/data-testid="quarantine-row"/g) || []).length, 3);
-  assert.match(html, /data-severity="medium"[\s\S]*Medium/);
-  assert.match(html, /data-severity="high"[\s\S]*High/);
-  assert.match(html, /data-severity="low"[\s\S]*Low/);
+  // No pill or label for the severity: the reasons say why a file is held.
+  assert.doesNotMatch(html, />(Low|Medium|High)</);
+  assert.doesNotMatch(html, /chip/);
   assert.match(html, /2\.0 KB/);
   assert.match(html, /Held [A-Z][a-z]{2} \d{1,2}, 2026/);
   assert.match(html, /OFFICE_MACRO in plain words\./);

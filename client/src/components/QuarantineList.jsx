@@ -6,8 +6,6 @@ import { formatBytes } from '../utils/listing.js';
 import styles from './QuarantineList.module.css';
 import { shortName } from '../utils/ellipsis.js';
 
-export const SEVERITY_LABEL = Object.freeze({ low: 'Low', medium: 'Medium', high: 'High' });
-
 export const HONEST_LINE = 'Warden checks uploads with simple rules. Files that look risky are held here until you decide. This is not a full antivirus.';
 
 /**
@@ -51,9 +49,6 @@ export function QuarantineList({ state, items = [], error = '', busyId = null, o
           <div className={styles.main}>
             <div className={styles.nameLine}>
               <FileNameLabel name={item.name} className={styles.name} />
-              <span className={styles.chip} data-severity={item.severity}>
-                {SEVERITY_LABEL[item.severity] || 'Low'}
-              </span>
             </div>
             <p className={styles.meta}>
               {formatBytes(item.size)} · Held {formatDate(item.heldAt)}
